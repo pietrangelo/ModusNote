@@ -1,0 +1,2 @@
+/* Mostrato da iOS quando Modus Notes chiede il microfono per la prima volta. */
+"NSMicrophoneUsageDescription" = "Modus Notes registra note vocali, bozze di canzoni e diari dei sogni. Le registrazioni vengono cifrate su questo dispositivo prima di essere salvate.";

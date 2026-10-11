@@ -18,7 +18,8 @@ packages/schema_dynamic_content/     Bounded context (dominio puro)
 packages/blob_storage_media/         Bounded context (dominio puro)
 packages/collaboration_access_control/ Bounded context (dominio puro)
 packages/identity_cryptography_adapters/ Adapter libsodium (pacchetto `sodium`, variante sumo per Argon2id)
-packages/blob_storage_media_adapters/  Adapter di storage dei blob cifrati (filesystem tramite `package:file`)
+packages/blob_storage_media_adapters/  Storage dei blob cifrati (filesystem tramite `package:file`), muxer Ogg Opus, encoder libopus (FFI + build hook)
+packages/blob_storage_media_recorder_adapters/ Microfono tramite il plugin `record` (pacchetto Flutter, test con `flutter test`)
 packages/<context>_adapters/         Altri petali esterni (SQLCipher, Opus, ...), creati quando servono
 tool/architecture_guard/             Verifica statica delle regole della rosetta
 ```
@@ -82,7 +83,8 @@ Il dominio non sa su quale piattaforma gira. Le differenze tra Dart nativo (VM/A
 * **libsodium.** L'app usa `sodium_libs` (plugin Flutter: FFI su Android/iOS, `sodium.js`/WASM su web, installato con `dart run sodium_libs:update_web`). Gli adapter dipendono solo dal pacchetto `sodium` puro e ricevono l'istanza `SodiumSumo` già inizializzata nel costruttore. L'inizializzazione asincrona (necessaria sul web per caricare il WASM) avviene una sola volta all'avvio dell'app, quindi non esiste un adapter "non ancora inizializzato".
 * **Le API crypto restano quelle del dominio.** Si usano solo i port `EnvelopeEncryptor` e `KeyDerivationService`: XChaCha20-Poly1305 AEAD con `AssociatedData` obbligatoria, nonce generato dall'adapter e chiavi come handle opachi (`SymmetricKey`). Non si usano `secretBox` (nessun dato associato, quindi nessun legame al record), né chiavi o nonce passati come `Uint8List`.
 * **Audio come flusso di byte, mai come percorso di file.** Il port di registrazione restituisce `Stream<Uint8List>`, con chunk cifrati appena prodotti, così su nessuna piattaforma esistono file audio in chiaro. Implementazione con il pacchetto `record` (`startStream`). Nota: lo streaming di `record` produce PCM, quindi la compressione Opus va fatta dall'adapter (libopus via FFI su mobile, WebCodecs `AudioEncoder` su web). Safari non registra Opus/WebM con `MediaRecorder`; il formato effettivo va negoziato per piattaforma e salvato nei metadati cifrati del blob.
-* **Permessi microfono:** Android `RECORD_AUDIO` in `AndroidManifest.xml`; iOS `NSMicrophoneUsageDescription` in `Info.plist` (localizzata); web nessun manifest, ma solo su HTTPS (o `localhost`), con richiesta del browser a runtime. Si aggiungono in Fase 3, insieme alla registrazione.
+* **Permessi microfono:** Android `RECORD_AUDIO` in `AndroidManifest.xml`; iOS `NSMicrophoneUsageDescription` in `Info.plist`, localizzata in `ios/Runner/<lingua>.lproj/InfoPlist.strings`; web nessun manifest, ma solo su HTTPS (o `localhost`), con richiesta del browser a runtime.
+* **Opus (decisione del 2026-10-11):** libopus si compila dai sorgenti ufficiali tramite il build hook di `blob_storage_media_adapters` (versione e SHA-256 fissati in `hook/build.dart`; la CI confronta l'hash con `SHA256SUMS.txt` di xiph.org). I binding FFI sono nostri e minimi, e i `ctl` variadici passano da un piccolo shim C. Nessun wrapper di terze parti. Per build offline: `MODUSNOTE_OPUS_ARCHIVE=/percorso/opus-<versione>.tar.gz` (l'hash viene verificato comunque). Sul web, finché non arriva l'encoder WebCodecs (Fase 7), la cattura produce WAV PCM16 non compresso.
 
 ### Infrastruttura (decisione del 2026-10-11)
 | Componente | Servizio | Cosa vede il servizio |
