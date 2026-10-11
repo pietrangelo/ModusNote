@@ -5,6 +5,7 @@ import '../l10n/generated/app_localizations.dart';
 import '../theme/golden_ratio.dart';
 import '../theme/modus_colors.dart';
 import '../vault/auto_lock.dart';
+import 'markdown/markdown_document.dart';
 import 'note_editor.dart';
 import 'note_store.dart';
 import 'schema_text.dart';
@@ -207,8 +208,11 @@ class _NoteCard extends StatelessWidget {
     final l10n = AppLocalizations.of(context);
     final primary = schema?.primaryTextField;
     final title = switch (primary == null ? null : entry.valueOf(primary.key)) {
-      TextValue(:final text) when text.trim().isNotEmpty => text.trim(),
-      _ => l10n.untitled,
+      // A Markdown title shows its words, not its markup.
+      TextValue(:final text) when primary!.type is MarkdownFieldType =>
+        MarkdownDocument.parse(text).plainText,
+      TextValue(:final text) => text.trim(),
+      _ => '',
     };
     final done = entry.attributes.values.any(
       (value) => value == const BooleanValue(true),
@@ -243,7 +247,7 @@ class _NoteCard extends StatelessWidget {
               const SizedBox(height: Spacing.xs),
               Expanded(
                 child: Text(
-                  title,
+                  title.isEmpty ? l10n.untitled : title,
                   style: theme.textTheme.titleMedium,
                   maxLines: 3,
                   overflow: TextOverflow.ellipsis,
