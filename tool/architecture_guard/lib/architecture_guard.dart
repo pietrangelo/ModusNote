@@ -14,6 +14,7 @@ enum Rule {
   impureDependency,
   privateImport,
   adaptersInDomain,
+  conditionalImport,
 }
 
 final class Violation {
@@ -55,6 +56,10 @@ final class ArchitectureGuard {
   // multi-line directives cannot slip past a single-URI match.
   static final _directive = RegExp(
     r'^\s*(?:import|export|part)\b[^;]*;',
+    multiLine: true,
+  );
+  static final _conditional = RegExp(
+    r'^\s*(?:import|export)\b[^;]*\bif\s*\(',
     multiLine: true,
   );
   static final _quoted = RegExp(r'''['"]([^'"]+)['"]''');
@@ -103,6 +108,15 @@ final class ArchitectureGuard {
     for (final file in lib.listSync(recursive: true).whereType<File>()) {
       if (!file.path.endsWith('.dart')) continue;
       final ring = isDomain ? _ringOf(lib.path, file.path) : null;
+      // Platform switches belong in adapters; a domain that compiles
+      // differently per platform is no longer one domain.
+      if (isDomain && _conditional.hasMatch(file.readAsStringSync())) {
+        yield Violation(
+          Rule.conditionalImport,
+          _relative(file.path),
+          'conditional imports belong in a ${_adaptersSuffix.substring(1)} package',
+        );
+      }
       for (final uri in _directives(file)) {
         yield* _checkDirective(name, lib.path, file, ring, uri);
       }

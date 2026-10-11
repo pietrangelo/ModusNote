@@ -1,9 +1,9 @@
 # ModusNote
 
 ## MISSION
-Costruire un'applicazione mobile offline-first e crittografata end-to-end (E2EE) con motore a tipi dinamici (schemi estensibili per canzoni, sogni, to-do, note libere) e gestione di blob audio cifrati, sincronizzabile in gruppi a zero-knowledge.
+Costruire un'applicazione mobile e web offline-first e crittografata end-to-end (E2EE) con motore a tipi dinamici (schemi estensibili per canzoni, sogni, to-do, note libere) e gestione di blob audio cifrati, sincronizzabile in gruppi a zero-knowledge.
 
-- **Stack:** Flutter (Dart 3.13+), pub workspace.
+- **Stack:** Flutter (Dart 3.13+), pub workspace. Un'unica app per Android, iOS e **web** (Flutter Web, WebAssembly), che riusa gli stessi pacchetti di dominio.
 - **Dominio dell'app:** `modus.serv.run`. Identificativo Android/iOS: `run.serv.modus`.
 - **Lingue:** l'app è multi-lingua fin dal primo commit (italiano e inglese per iniziare).
 
@@ -12,7 +12,7 @@ Costruire un'applicazione mobile offline-first e crittografata end-to-end (E2EE)
 ## 0. STRUTTURA DEL REPOSITORY E COMANDI
 
 ```text
-apps/modusnote/                      Shell Flutter: UI, l10n, wiring degli adapter. Nessuna logica di dominio.
+apps/modusnote/                      Shell Flutter (Android, iOS, web): UI, l10n, wiring degli adapter. Nessuna logica di dominio.
 packages/identity_cryptography/      Bounded context (dominio puro)
 packages/schema_dynamic_content/     Bounded context (dominio puro)
 packages/blob_storage_media/         Bounded context (dominio puro)
@@ -53,6 +53,49 @@ Il pacchetto `sodium` compila libsodium dai sorgenti tramite build hook al primo
 - Le stringhe dell'app vivono in `apps/modusnote/lib/l10n/app_<lingua>.arb` (template `app_en.arb`). Nessuna stringa visibile all'utente scritta a mano nei widget.
 - Il dominio non contiene testo localizzato. Gli schemi seed referenziano le etichette dei campi tramite **chiavi** (es. `schema.song_sketch.field.bpm`), che la UI risolve con `AppLocalizations`. Gli schemi creati dall'utente portano l'etichetta scritta dall'utente così com'è.
 - Una nuova lingua si aggiunge con un nuovo file ARB e, su iOS, una voce in `CFBundleLocalizations` di `ios/Runner/Info.plist`.
+
+### Interfaccia grafica: rapporto aureo (regola permanente)
+Tutta la UI si costruisce **sempre** sul rapporto aureo φ = 1,618…:
+- **Spaziature:** scala geometrica di ragione φ a partire da una base di 8 dp (≈ 3, 5, 8, 13, 21, 34, 55 dp). Nessun valore di padding o margine fuori scala.
+- **Tipografia:** scala modulare di ragione φ (es. corpo 16 sp → titolo 26 sp → display 42 sp; didascalia 10 sp).
+- **Layout:** le suddivisioni di schermo e colonne seguono 61,8 % / 38,2 %; contenitori e card usano proporzioni φ : 1 (orizzontali) o 1 : φ (verticali).
+- **Raggi, icone e larghezze di riga** prendono i valori dalla stessa scala.
+- I valori vivono in un unico set di design token (`apps/modusnote/lib/theme/`); i widget non scrivono numeri a mano. I test di componente verificano che le dimensioni usate appartengano alla scala.
+
+### Client web
+Il client web è un'alternativa completa all'app mobile e si sincronizza con essa: per il protocollo di sync è semplicemente un altro dispositivo del vault, con la propria coppia di chiavi di identità. Si compila con `flutter build web --wasm --no-web-resources-cdn` (nessuna risorsa caricata da CDN di terzi: CanvasKit e font fanno parte del bundle servito da Cloudflare Pages).
+
+Nel browser alcune garanzie cambiano, e il codice deve tenerne conto in modo esplicito:
+* **Memoria delle chiavi:** non esistono `sodium_malloc`/`mlock`. Su web `SecureKey` è un buffer JS che viene azzerato al `dispose()`, ma il motore JS può averne fatto copie. La regola "dispose il prima possibile" resta, ma la garanzia è più debole che su mobile.
+* **Fiducia nel codice:** il server che distribuisce l'app web potrebbe servire codice malevolo a ogni caricamento. Mitigazioni obbligatorie: Content-Security-Policy restrittiva (niente script inline o di terze parti, solo `wasm-unsafe-eval`), Subresource Integrity, nessuna dipendenza da CDN, hash delle build pubblicati.
+* **XSS ed estensioni:** qualunque script iniettato vede le chiavi in memoria. Niente HTML generato da contenuti utente (Markdown e testo arricchito sono renderizzati come widget, mai come HTML).
+* **Persistenza:** niente SQLCipher. Il database locale è SQLite WASM su OPFS/IndexedDB e contiene solo record già cifrati con le buste del dominio. Le chiavi non si salvano mai in `localStorage`/IndexedDB in chiaro.
+* **Sblocco:** niente biometria nativa. La MasterKey si ottiene con la passphrase a ogni sessione oppure tramite WebAuthn con estensione PRF, dove disponibile.
+* **Crypto:** libsodium arriva via WebAssembly (backend JS del pacchetto `sodium`, variante sumo per Argon2id). Non si usa WebCrypto, che non offre XChaCha20-Poly1305 né Argon2id.
+
+### Codice per piattaforma (mobile e web)
+Il dominio non sa su quale piattaforma gira. Le differenze tra Dart nativo (VM/AOT, `dart:io`, `dart:ffi`) e web (JS/WASM, `dart:js_interop`) restano negli adapter:
+* **Ports & Adapters + conditional imports.** Quando un adapter ha bisogno di API diverse per piattaforma, il pacchetto `<context>_adapters` espone una factory che sceglie l'implementazione con `import 'x_stub.dart' if (dart.library.io) 'x_native.dart' if (dart.library.js_interop) 'x_web.dart';`. Lo stub lancia `UnsupportedError`. Nei pacchetti di dominio i conditional imports sono vietati (regola `conditionalImport` dell'architecture guard).
+* **libsodium.** L'app usa `sodium_libs` (plugin Flutter: FFI su Android/iOS, `sodium.js`/WASM su web, installato con `dart run sodium_libs:update_web`). Gli adapter dipendono solo dal pacchetto `sodium` puro e ricevono l'istanza `SodiumSumo` già inizializzata nel costruttore. L'inizializzazione asincrona (necessaria sul web per caricare il WASM) avviene una sola volta all'avvio dell'app, quindi non esiste un adapter "non ancora inizializzato".
+* **Le API crypto restano quelle del dominio.** Si usano solo i port `EnvelopeEncryptor` e `KeyDerivationService`: XChaCha20-Poly1305 AEAD con `AssociatedData` obbligatoria, nonce generato dall'adapter e chiavi come handle opachi (`SymmetricKey`). Non si usano `secretBox` (nessun dato associato, quindi nessun legame al record), né chiavi o nonce passati come `Uint8List`.
+* **Audio come flusso di byte, mai come percorso di file.** Il port di registrazione restituisce `Stream<Uint8List>`, con chunk cifrati appena prodotti, così su nessuna piattaforma esistono file audio in chiaro. Implementazione con il pacchetto `record` (`startStream`). Nota: lo streaming di `record` produce PCM, quindi la compressione Opus va fatta dall'adapter (libopus via FFI su mobile, WebCodecs `AudioEncoder` su web). Safari non registra Opus/WebM con `MediaRecorder`; il formato effettivo va negoziato per piattaforma e salvato nei metadati cifrati del blob.
+* **Permessi microfono:** Android `RECORD_AUDIO` in `AndroidManifest.xml`; iOS `NSMicrophoneUsageDescription` in `Info.plist` (localizzata); web nessun manifest, ma solo su HTTPS (o `localhost`), con richiesta del browser a runtime. Si aggiungono in Fase 3, insieme alla registrazione.
+
+### Infrastruttura (decisione del 2026-10-11)
+| Componente | Servizio | Cosa vede il servizio |
+|---|---|---|
+| Client web | **Cloudflare Pages** (file statici; build in GitHub Actions, perché l'ambiente di build di Pages non include Flutter, poi `wrangler pages deploy`) | Solo il bundle dell'app |
+| Blob audio cifrati | **Cloudflare R2** (S3-compatibile, nessun costo di egress) | Solo chunk `.enc` e la loro dimensione |
+| Sync e account | **Supabase** (PostgreSQL + Auth) | Righe cifrate, id, revisioni, timestamp; l'email dell'account |
+
+L'invariante zero-knowledge vale per tutti e tre i servizi: ricevono e restituiscono solo ciphertext prodotto dalle buste del dominio. Regole che ne derivano:
+* **Auth e chiavi sono separati.** Supabase Auth autentica l'account (email/magic link o OAuth) per l'accesso alle righe. La passphrase del vault non viene mai inviata, né usata come password di Supabase. Se in futuro si userà un'unica password, la credenziale di login deve essere derivata dalla chiave Argon2id con una derivazione separata (KDF con contesto diverso), mai la passphrase stessa.
+* **Row Level Security** obbligatoria su ogni tabella: un utente legge e scrive solo le righe dei vault di cui è membro.
+* **Metadati minimi in chiaro:** id opachi, revisione, timestamp di sync, dimensione. Titoli, tipi di nota, tag e schemi stanno solo dentro i payload cifrati.
+* **R2 tramite URL pre-firmati** emessi da una funzione lato server (Supabase Edge Function o Cloudflare Worker) dopo il controllo dell'autorizzazione. Le credenziali R2 non arrivano mai al client. CORS limitato al dominio dell'app.
+* **Cloudflare Pages senza iniezioni:** vanno disattivate tutte le funzioni che modificano l'HTML servito (Rocket Loader, Web Analytics automatico, Email Obfuscation, Zaraz), perché romperebbero CSP e SRI. CSP e altri header si dichiarano in `apps/modusnote/web/_headers`.
+* **Fiducia nel codice servito:** Cloudflare, o chiunque abbia accesso al deploy, può servire un bundle diverso. Per questo valgono le mitigazioni della sezione "Client web" (hash delle build pubblicati, build riproducibili).
+* **Piano gratuito di Supabase:** un progetto Free inattivo per una settimana viene sospeso. Il client deve gestire un backend temporaneamente non raggiungibile (offline-first lo rende naturale); in produzione va valutato il piano a pagamento.
 
 ---
 
@@ -169,8 +212,8 @@ Le interfacce (Canzone, Sogno, To-do, Appunto) **non sono tabelle o view statich
 ### Fase 3: Encrypted Blob Engine (Audio & Media)
 * Obiettivo: Gestione offline-first delle registrazioni audio cifrate.
 * Task TDD:
-   1. `AudioRecordingSession`: Contratto per acquisizione stream, compressione (Opus) e buffer locale.
-   2. `EncryptedBlobStorage`: Chunking e cifratura simmetrica in streaming del file prima del salvataggio su disco locale.
+   1. `AudioRecordingSession`: Contratto per acquisizione come `Stream<Uint8List>` (nessun percorso di file), compressione (Opus dove disponibile) e cifratura per chunk.
+   2. `EncryptedBlobStorage`: Chunking e cifratura simmetrica in streaming del file prima del salvataggio su disco locale e del caricamento su Cloudflare R2.
    3. Associazione tra `BlobMetadata` e l'attributo `AudioBlobField` del `DynamicEntry`.
    4. `Adversary Harness`: Verifica che file audio parziali, interrotti o corrotti non crashino il decifratore e non lascino mai frammenti temporanei non cifrati nella directory di cache.
 
@@ -183,11 +226,12 @@ Le interfacce (Canzone, Sogno, To-do, Appunto) **non sono tabelle o view statich
    4. `Adversary Harness`: Un membro rimosso tenta di decifrare una revisione successiva della nota; il server malevolo tenta di iniettare una nuova chiave pubblica senza firma valida.
 
 ### Fase 5: Local Persistence & Offline Sync Engine
-* Obiettivo: Salvataggio su database cifrato locale (SQLCipher / PowerSync / SQLite) e coda di sincronizzazione.
+* Obiettivo: Salvataggio su database cifrato locale (SQLCipher su mobile, SQLite WASM su web) e coda di sincronizzazione verso Supabase.
 * Task TDD:
    1. Mapping tra aggregati di dominio ed entità persistenti cifrate.
    2. Risoluzione dei conflitti (CRDT-based o Last-Write-Wins con vector clocks) mantenendo i payload cifrati.
    3. Queue di sincronizzazione offline: le operazioni eseguite senza rete vengono accodate, cifrate e applicate in ordine al ripristino della connessione.
+   4. `Adversary Harness`: le righe scritte su Supabase e gli oggetti su R2 non contengono plaintext; un utente non membro non legge le righe di un vault (test delle policy RLS).
 
 ### Fase 6: Dynamic UI Renderer & Interaction
 * Obiettivo: Interfaccia dinamica che compone i componenti visivi in base allo schema caricato.
@@ -195,6 +239,15 @@ Le interfacce (Canzone, Sogno, To-do, Appunto) **non sono tabelle o view statich
    1. `DynamicFormRenderer`: Generazione dinamica dei widget in base allo schema (Waveform player per tracce audio, editor testuale per testi, picker data/metadati).
    2. Generazione e testing dei 4 template iniziali (Canzone, Sogno, Task, Nota), con etichette localizzate.
    3. Modalità rapida per il passaggio da una tipologia di nota all'altra e ricerca su metadati locali indicizzati in chiaro (solo indici sicuri/tag anonimizzati).
+
+### Fase 7: Web Client
+* Obiettivo: Il client web come alternativa all'app mobile, sincronizzato con essa.
+* Task TDD:
+   1. Adapter crypto web: inizializzazione di libsodium WASM e stessi test dell'adapter nativo eseguiti con `dart test -p chrome`.
+   2. Persistenza web: SQLite WASM su OPFS con soli record cifrati; test che nessun plaintext raggiunga lo storage del browser.
+   3. Sblocco web: passphrase per sessione e WebAuthn PRF; blocco automatico alla chiusura o dopo inattività.
+   4. Hardening: CSP, SRI e build senza CDN, verificati in CI.
+   5. `Adversary Harness`: script iniettato che cerca chiavi in storage persistente, tab rimasta aperta dopo il blocco, risorsa servita senza integrità valida.
 
 ---
 
