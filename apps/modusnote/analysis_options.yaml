@@ -6,6 +6,7 @@ analyzer:
     - android/**
     - ios/**
     - lib/l10n/generated/**
+    - web/**
   language:
     strict-casts: true
     strict-inference: true

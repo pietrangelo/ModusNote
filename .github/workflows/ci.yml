@@ -42,3 +42,7 @@ jobs:
       - name: App tests
         working-directory: apps/modusnote
         run: flutter test
+
+      - name: Web build
+        working-directory: apps/modusnote
+        run: flutter build web --wasm --no-web-resources-cdn
