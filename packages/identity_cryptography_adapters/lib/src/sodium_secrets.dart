@@ -50,6 +50,34 @@ final class SodiumPasswordSecret implements PasswordSecret {
   String toString() => 'PasswordSecret(redacted)';
 }
 
+/// [IdentityKeyPair] whose Ed25519 and X-Wing secret keys both live in
+/// libsodium guarded memory and are released together.
+final class SodiumIdentityKeyPair implements IdentityKeyPair {
+  SodiumIdentityKeyPair.wrap({
+    required this.publicIdentity,
+    required SecureKey signingKey,
+    required SecureKey decapsulationKey,
+  }) : _signing = _Native(signingKey),
+       _decapsulation = _Native(decapsulationKey);
+
+  @override
+  final PublicIdentity publicIdentity;
+  final _Native _signing;
+  final _Native _decapsulation;
+
+  @override
+  bool get isDisposed => _signing.isDisposed;
+
+  @override
+  void dispose() {
+    _signing.dispose();
+    _decapsulation.dispose();
+  }
+
+  @override
+  String toString() => 'IdentityKeyPair(redacted)';
+}
+
 /// Shared lifecycle: dispose exactly once, refuse use afterwards.
 final class _Native {
   _Native(this._key);
@@ -84,3 +112,16 @@ SecureKey unwrapPassword(PasswordSecret password) => switch (password) {
   SodiumPasswordSecret() => password._native.key,
   _ => throw ArgumentError('passphrase was not created by a sodium adapter'),
 };
+
+@internal
+SecureKey unwrapSigningKey(IdentityKeyPair identity) => switch (identity) {
+  SodiumIdentityKeyPair() => identity._signing.key,
+  _ => throw ArgumentError('identity was not created by a sodium adapter'),
+};
+
+@internal
+SecureKey unwrapDecapsulationKey(IdentityKeyPair identity) =>
+    switch (identity) {
+      SodiumIdentityKeyPair() => identity._decapsulation.key,
+      _ => throw ArgumentError('identity was not created by a sodium adapter'),
+    };
