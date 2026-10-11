@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.47.7
+          cache: true
+
+      - name: Resolve workspace
+        run: flutter pub get
+
+      - name: Format
+        run: dart format --output=none --set-exit-if-changed $(git ls-files '*.dart')
+
+      - name: Analyze
+        run: dart analyze --fatal-infos
+
+      - name: Architecture guard
+        run: dart run tool/architecture_guard/bin/architecture_guard.dart
+
+      - name: Domain and tooling tests
+        run: |
+          for dir in packages/* tool/*; do
+            if [ -d "$dir/test" ]; then
+              echo "::group::$dir"
+              (cd "$dir" && dart test) || exit 1
+              echo "::endgroup::"
+            fi
+          done
+
+      - name: App tests
+        working-directory: apps/modusnote
+        run: flutter test

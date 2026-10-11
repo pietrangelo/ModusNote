@@ -1,0 +1,11 @@
+{
+  "@@locale": "en",
+  "appTitle": "ModusNote",
+  "@appTitle": {
+    "description": "Application name shown in the task switcher and title bar."
+  },
+  "vaultLockedMessage": "Your vault is locked.",
+  "@vaultLockedMessage": {
+    "description": "Placeholder home screen text until the vault unlock flow exists."
+  }
+}

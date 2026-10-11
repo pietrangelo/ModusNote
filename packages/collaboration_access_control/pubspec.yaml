@@ -1,0 +1,14 @@
+name: collaboration_access_control
+description: "Collaboration & Access Control: spazi condivisi, membri e rotazione delle GroupKey."
+publish_to: none
+resolution: workspace
+
+environment:
+  sdk: ^3.13.0
+
+dependencies:
+  meta: ^1.16.0
+
+dev_dependencies:
+  lints: ^6.0.0
+  test: ^1.26.0
