@@ -4,8 +4,307 @@
   "@appTitle": {
     "description": "Application name shown in the task switcher and title bar."
   },
-  "vaultLockedMessage": "Your vault is locked.",
-  "@vaultLockedMessage": {
-    "description": "Placeholder home screen text until the vault unlock flow exists."
+  "notesTitle": "Notes",
+  "@notesTitle": {
+    "description": "Title of the note library screen."
+  },
+  "searchHint": "Search notes",
+  "@searchHint": {
+    "description": "Hint in the search field of the note library."
+  },
+  "allNoteTypes": "All",
+  "@allNoteTypes": {
+    "description": "Filter chip that shows notes of every type."
+  },
+  "newNote": "New note",
+  "@newNote": {
+    "description": "Button that starts a new note."
+  },
+  "emptyLibrary": "No notes yet. Start with a song, a dream, a task or a quick note.",
+  "@emptyLibrary": {
+    "description": "Shown when the library has no notes."
+  },
+  "noResults": "No notes match your search.",
+  "@noResults": {
+    "description": "Shown when the search finds nothing."
+  },
+  "untitled": "Untitled",
+  "@untitled": {
+    "description": "Card title of a note with no text yet."
+  },
+  "save": "Save",
+  "@save": {
+    "description": "Saves the note being edited."
+  },
+  "noteType": "Note type",
+  "@noteType": {
+    "description": "Label of the note type switcher in the editor."
+  },
+  "fixErrors": "Fix the highlighted fields to save.",
+  "@fixErrors": {
+    "description": "Shown when saving a note that does not satisfy its type."
+  },
+  "noteSaved": "Note saved.",
+  "@noteSaved": {
+    "description": "Confirmation after saving a note."
+  },
+  "chooseDate": "Choose a date",
+  "@chooseDate": {
+    "description": "Button of an empty date field."
+  },
+  "chooseDateTime": "Choose date and time",
+  "@chooseDateTime": {
+    "description": "Button of an empty date-time field."
+  },
+  "clearValue": "Clear",
+  "@clearValue": {
+    "description": "Clears the value of a field."
+  },
+  "addTag": "Add a tag",
+  "@addTag": {
+    "description": "Hint of the tag input."
+  },
+  "noRecording": "No recording",
+  "@noRecording": {
+    "description": "Audio field with no recording yet."
+  },
+  "record": "Record",
+  "@record": {
+    "description": "Starts an audio recording for a field."
+  },
+  "notSet": "Not set",
+  "@notSet": {
+    "description": "Choice field with no option picked."
+  },
+  "previewNotSaved": "Preview: notes are kept only until you close the app.",
+  "@previewNotSaved": {
+    "description": "Banner shown until notes are stored in the encrypted vault."
+  },
+  "removeTag": "Remove {tag}",
+  "@removeTag": {
+    "description": "Accessibility label of a tag's delete button.",
+    "placeholders": {
+      "tag": {
+        "type": "String"
+      }
+    }
+  },
+  "ratingValue": "{rating} of {max}",
+  "@ratingValue": {
+    "description": "Accessibility label of a rating star.",
+    "placeholders": {
+      "rating": {
+        "type": "int"
+      },
+      "max": {
+        "type": "int"
+      }
+    }
+  },
+  "musicalKeyMajor": "{tonic} major",
+  "@musicalKeyMajor": {
+    "description": "A major key, e.g. C major.",
+    "placeholders": {
+      "tonic": {
+        "type": "String"
+      }
+    }
+  },
+  "musicalKeyMinor": "{tonic} minor",
+  "@musicalKeyMinor": {
+    "description": "A minor key, e.g. A minor.",
+    "placeholders": {
+      "tonic": {
+        "type": "String"
+      }
+    }
+  },
+  "violationSchemaMismatch": "This note belongs to a different type.",
+  "@violationSchemaMismatch": {
+    "description": "Message under a field for the ViolationCode.schemaMismatch rule."
+  },
+  "violationUnknownField": "This field is not part of the note type.",
+  "@violationUnknownField": {
+    "description": "Message under a field for the ViolationCode.unknownField rule."
+  },
+  "violationMissingRequired": "Required",
+  "@violationMissingRequired": {
+    "description": "Message under a field for the ViolationCode.missingRequired rule."
+  },
+  "violationTypeMismatch": "Not a valid value",
+  "@violationTypeMismatch": {
+    "description": "Message under a field for the ViolationCode.typeMismatch rule."
+  },
+  "violationTooLong": "Too long",
+  "@violationTooLong": {
+    "description": "Message under a field for the ViolationCode.tooLong rule."
+  },
+  "violationOutOfRange": "Out of range",
+  "@violationOutOfRange": {
+    "description": "Message under a field for the ViolationCode.outOfRange rule."
+  },
+  "violationNotAnInteger": "Must be a whole number",
+  "@violationNotAnInteger": {
+    "description": "Message under a field for the ViolationCode.notAnInteger rule."
+  },
+  "violationInvalidChoice": "Not one of the options",
+  "@violationInvalidChoice": {
+    "description": "Message under a field for the ViolationCode.invalidChoice rule."
+  },
+  "violationTooManyTags": "Too many tags",
+  "@violationTooManyTags": {
+    "description": "Message under a field for the ViolationCode.tooManyTags rule."
+  },
+  "violationInvalidCharacters": "Contains characters that are not allowed",
+  "@violationInvalidCharacters": {
+    "description": "Message under a field for the ViolationCode.invalidCharacters rule."
+  },
+  "schemaSongSketchLabel": "Song",
+  "@schemaSongSketchLabel": {
+    "description": "Localization of the seed schema key schema.song_sketch.label."
+  },
+  "schemaSongSketchFieldTitle": "Title",
+  "@schemaSongSketchFieldTitle": {
+    "description": "Localization of the seed schema key schema.song_sketch.field.title."
+  },
+  "schemaSongSketchFieldBpm": "BPM",
+  "@schemaSongSketchFieldBpm": {
+    "description": "Localization of the seed schema key schema.song_sketch.field.bpm."
+  },
+  "schemaSongSketchFieldKey": "Key",
+  "@schemaSongSketchFieldKey": {
+    "description": "Localization of the seed schema key schema.song_sketch.field.key."
+  },
+  "schemaSongSketchFieldLyrics": "Lyrics",
+  "@schemaSongSketchFieldLyrics": {
+    "description": "Localization of the seed schema key schema.song_sketch.field.lyrics."
+  },
+  "schemaSongSketchFieldGuideTrack": "Guide track",
+  "@schemaSongSketchFieldGuideTrack": {
+    "description": "Localization of the seed schema key schema.song_sketch.field.guide_track."
+  },
+  "schemaDreamLogLabel": "Dream",
+  "@schemaDreamLogLabel": {
+    "description": "Localization of the seed schema key schema.dream_log.label."
+  },
+  "schemaDreamLogFieldTitle": "Title",
+  "@schemaDreamLogFieldTitle": {
+    "description": "Localization of the seed schema key schema.dream_log.field.title."
+  },
+  "schemaDreamLogFieldDreamDate": "Dream date",
+  "@schemaDreamLogFieldDreamDate": {
+    "description": "Localization of the seed schema key schema.dream_log.field.dream_date."
+  },
+  "schemaDreamLogFieldLucidity": "Lucidity",
+  "@schemaDreamLogFieldLucidity": {
+    "description": "Localization of the seed schema key schema.dream_log.field.lucidity."
+  },
+  "schemaDreamLogFieldTranscription": "Transcription",
+  "@schemaDreamLogFieldTranscription": {
+    "description": "Localization of the seed schema key schema.dream_log.field.transcription."
+  },
+  "schemaDreamLogFieldWakeAudio": "Wake-up audio",
+  "@schemaDreamLogFieldWakeAudio": {
+    "description": "Localization of the seed schema key schema.dream_log.field.wake_audio."
+  },
+  "schemaTaskLabel": "Task",
+  "@schemaTaskLabel": {
+    "description": "Localization of the seed schema key schema.task.label."
+  },
+  "schemaTaskFieldDescription": "Description",
+  "@schemaTaskFieldDescription": {
+    "description": "Localization of the seed schema key schema.task.field.description."
+  },
+  "schemaTaskFieldDue": "Due",
+  "@schemaTaskFieldDue": {
+    "description": "Localization of the seed schema key schema.task.field.due."
+  },
+  "schemaTaskFieldPriority": "Priority",
+  "@schemaTaskFieldPriority": {
+    "description": "Localization of the seed schema key schema.task.field.priority."
+  },
+  "schemaTaskFieldCompleted": "Completed",
+  "@schemaTaskFieldCompleted": {
+    "description": "Localization of the seed schema key schema.task.field.completed."
+  },
+  "schemaTaskFieldPriorityLow": "Low",
+  "@schemaTaskFieldPriorityLow": {
+    "description": "Localization of the seed schema key schema.task.field.priority.low."
+  },
+  "schemaTaskFieldPriorityMedium": "Medium",
+  "@schemaTaskFieldPriorityMedium": {
+    "description": "Localization of the seed schema key schema.task.field.priority.medium."
+  },
+  "schemaTaskFieldPriorityHigh": "High",
+  "@schemaTaskFieldPriorityHigh": {
+    "description": "Localization of the seed schema key schema.task.field.priority.high."
+  },
+  "schemaTaskFieldPriorityUrgent": "Urgent",
+  "@schemaTaskFieldPriorityUrgent": {
+    "description": "Localization of the seed schema key schema.task.field.priority.urgent."
+  },
+  "schemaQuickNoteLabel": "Quick note",
+  "@schemaQuickNoteLabel": {
+    "description": "Localization of the seed schema key schema.quick_note.label."
+  },
+  "schemaQuickNoteFieldContent": "Content",
+  "@schemaQuickNoteFieldContent": {
+    "description": "Localization of the seed schema key schema.quick_note.field.content."
+  },
+  "schemaQuickNoteFieldTags": "Tags",
+  "@schemaQuickNoteFieldTags": {
+    "description": "Localization of the seed schema key schema.quick_note.field.tags."
+  },
+  "tonicC": "C",
+  "@tonicC": {
+    "description": "Note name used in musical keys."
+  },
+  "tonicCSharp": "C♯",
+  "@tonicCSharp": {
+    "description": "Note name used in musical keys."
+  },
+  "tonicD": "D",
+  "@tonicD": {
+    "description": "Note name used in musical keys."
+  },
+  "tonicEFlat": "E♭",
+  "@tonicEFlat": {
+    "description": "Note name used in musical keys."
+  },
+  "tonicE": "E",
+  "@tonicE": {
+    "description": "Note name used in musical keys."
+  },
+  "tonicF": "F",
+  "@tonicF": {
+    "description": "Note name used in musical keys."
+  },
+  "tonicFSharp": "F♯",
+  "@tonicFSharp": {
+    "description": "Note name used in musical keys."
+  },
+  "tonicG": "G",
+  "@tonicG": {
+    "description": "Note name used in musical keys."
+  },
+  "tonicAFlat": "A♭",
+  "@tonicAFlat": {
+    "description": "Note name used in musical keys."
+  },
+  "tonicA": "A",
+  "@tonicA": {
+    "description": "Note name used in musical keys."
+  },
+  "tonicBFlat": "B♭",
+  "@tonicBFlat": {
+    "description": "Note name used in musical keys."
+  },
+  "tonicB": "B",
+  "@tonicB": {
+    "description": "Note name used in musical keys."
+  },
+  "recordingAttached": "Recording attached",
+  "@recordingAttached": {
+    "description": "Audio field that holds a recording."
   }
 }
