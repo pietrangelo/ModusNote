@@ -87,6 +87,17 @@ final class SyncEngine {
   Future<RevisionBody?> read(RecordId id) async =>
       (await _loadLocal(id))?.current.revision.body;
 
+  /// Every record that currently has contents; deleted ones are left out.
+  Future<Map<RecordId, RevisionContents>> records() async {
+    final live = <RecordId, RevisionContents>{};
+    for (final id in await _store.recordIds()) {
+      if (await read(id) case final RevisionContents contents) {
+        live[id] = contents;
+      }
+    }
+    return live;
+  }
+
   /// Records an edit (or a deletion) locally and queues it for the server.
   /// Works offline; fails only if this device may not write.
   Future<void> write(RecordId id, RevisionBody body) async {

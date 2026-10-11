@@ -5,13 +5,7 @@ import 'package:identity_cryptography/identity_cryptography.dart';
 import 'package:offline_sync/offline_sync.dart';
 import 'package:sqlite3/common.dart';
 
-/// The local database file was written by a newer version of the app.
-final class UnsupportedLocalSchemaException implements Exception {
-  const UnsupportedLocalSchemaException();
-
-  @override
-  String toString() => 'UnsupportedLocalSchemaException';
-}
+import 'local_schema.dart';
 
 /// [LocalRecordStore] on SQLite, through the API shared by the native
 /// library and the WASM build, so mobile and web run the same code.
@@ -23,47 +17,13 @@ final class UnsupportedLocalSchemaException implements Exception {
 final class SqliteLocalRecordStore implements LocalRecordStore {
   SqliteLocalRecordStore(this._database, {required WorkspaceId workspace})
     : _workspace = workspace.hex {
-    _migrate();
+    migrateLocalDatabase(_database);
   }
 
-  static const schemaVersion = 1;
+  static const schemaVersion = localSchemaVersion;
 
   final CommonDatabase _database;
   final String _workspace;
-
-  void _migrate() {
-    final version = _database.userVersion;
-    if (version > schemaVersion) throw const UnsupportedLocalSchemaException();
-    // Freed pages are zeroed, so an overwritten envelope or outbox row does
-    // not linger in the file.
-    _database.execute('PRAGMA secure_delete = ON');
-    if (version == schemaVersion) return;
-    _database.execute('''
-      BEGIN;
-      CREATE TABLE records (
-        workspace TEXT NOT NULL,
-        record TEXT NOT NULL,
-        envelope BLOB NOT NULL,
-        PRIMARY KEY (workspace, record)
-      ) WITHOUT ROWID;
-      CREATE TABLE outbox (
-        workspace TEXT NOT NULL,
-        position INTEGER NOT NULL,
-        record TEXT NOT NULL,
-        epoch INTEGER NOT NULL,
-        envelope BLOB NOT NULL,
-        PRIMARY KEY (workspace, position)
-      ) WITHOUT ROWID;
-      CREATE TABLE cursors (
-        workspace TEXT NOT NULL,
-        stream TEXT NOT NULL,
-        position INTEGER NOT NULL,
-        PRIMARY KEY (workspace, stream)
-      ) WITHOUT ROWID;
-      PRAGMA user_version = $schemaVersion;
-      COMMIT;
-    ''');
-  }
 
   @override
   Future<EncryptedEnvelope?> load(RecordId id) async {
@@ -74,6 +34,15 @@ final class SqliteLocalRecordStore implements LocalRecordStore {
     if (rows.isEmpty) return null;
     return EncryptedEnvelope.parse(rows.single['envelope'] as Uint8List);
   }
+
+  @override
+  Future<List<RecordId>> recordIds() async => [
+    for (final row in _database.select(
+      'SELECT record FROM records WHERE workspace = ?',
+      [_workspace],
+    ))
+      RecordId.parse(row['record'] as String),
+  ];
 
   @override
   Future<void> save(RecordId id, EncryptedEnvelope sealed) async =>
@@ -144,16 +113,7 @@ final class SqliteLocalRecordStore implements LocalRecordStore {
         [_workspace, stream.name, cursor],
       );
 
-  void _transaction(void Function() body) {
-    _database.execute('BEGIN');
-    try {
-      body();
-      _database.execute('COMMIT');
-    } on Object {
-      _database.execute('ROLLBACK');
-      rethrow;
-    }
-  }
+  void _transaction(void Function() body) => transaction(_database, body);
 
   static SealedRow _sealedRow(String record, int epoch, Uint8List envelope) {
     try {
