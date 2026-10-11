@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:schema_dynamic_content/schema_dynamic_content.dart';
 
+import '../audio/recording_sheet.dart' show formatLength;
 import '../l10n/generated/app_localizations.dart';
 import '../theme/golden_ratio.dart';
 import '../theme/modus_colors.dart';
@@ -33,6 +34,7 @@ class DynamicFormRenderer extends StatefulWidget {
     required this.onChanged,
     this.violations = const [],
     this.onRecordAudio,
+    this.recordingLength,
     super.key,
   });
 
@@ -45,6 +47,9 @@ class DynamicFormRenderer extends StatefulWidget {
 
   /// Records into an audio field; without it the record button is off.
   final Future<BlobId?> Function(FieldDefinition field)? onRecordAudio;
+
+  /// How long the recording behind a blob is, when it is known.
+  final Duration? Function(BlobId blob)? recordingLength;
 
   @override
   State<DynamicFormRenderer> createState() => _DynamicFormRendererState();
@@ -161,6 +166,9 @@ class _DynamicFormRendererState extends State<DynamicFormRenderer> {
         label: label,
         error: error,
         attached: value is AudioBlobValue,
+        length: value is AudioBlobValue
+            ? widget.recordingLength?.call(value.blob)
+            : null,
         onRecord: switch (widget.onRecordAudio) {
           null => null,
           final record => () async {
@@ -665,12 +673,14 @@ class _AudioInput extends StatelessWidget {
     required this.label,
     required this.error,
     required this.attached,
+    required this.length,
     required this.onRecord,
   });
 
   final String label;
   final String? error;
   final bool attached;
+  final Duration? length;
   final VoidCallback? onRecord;
 
   @override
@@ -690,10 +700,13 @@ class _AudioInput extends StatelessWidget {
           ),
           const SizedBox(width: Spacing.s),
           Expanded(
-            child: Text(
-              attached ? l10n.recordingAttached : l10n.noRecording,
-              style: theme.textTheme.labelMedium,
-            ),
+            child: Text(switch ((attached, length)) {
+              (true, final Duration length) => l10n.recordingAttachedLength(
+                formatLength(length),
+              ),
+              (true, null) => l10n.recordingAttached,
+              (false, _) => l10n.noRecording,
+            }, style: theme.textTheme.labelMedium),
           ),
           TextButton.icon(
             icon: const Icon(Icons.fiber_manual_record, size: IconSizes.inline),

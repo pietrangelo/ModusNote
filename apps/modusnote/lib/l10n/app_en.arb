@@ -363,5 +363,42 @@
   "lockVault": "Lock",
   "@lockVault": {
     "description": "Tooltip of the button that locks the vault."
+  },
+  "recordingInProgress": "Recording",
+  "@recordingInProgress": {
+    "description": "Title of the sheet shown while the microphone records."
+  },
+  "recordingEncrypted": "Encrypted while it is recorded. Nothing is stored in clear.",
+  "@recordingEncrypted": {
+    "description": "Reassurance under the recording timer."
+  },
+  "stopRecording": "Stop and attach",
+  "@stopRecording": {
+    "description": "Button that stops the recording and attaches it to the note."
+  },
+  "cancelRecording": "Discard",
+  "@cancelRecording": {
+    "description": "Button that stops the recording and throws it away."
+  },
+  "microphoneDenied": "Microphone access was denied. Allow it in the system settings to record.",
+  "@microphoneDenied": {
+    "description": "Shown when the microphone permission is refused."
+  },
+  "recordingFailed": "The recording could not be saved.",
+  "@recordingFailed": {
+    "description": "Shown when a recording fails."
+  },
+  "close": "Close",
+  "@close": {
+    "description": "Button that closes a sheet or dialog."
+  },
+  "recordingAttachedLength": "Recording attached · {length}",
+  "@recordingAttachedLength": {
+    "description": "An audio field holding a recording, with its length (m:ss).",
+    "placeholders": {
+      "length": {
+        "type": "String"
+      }
+    }
   }
 }

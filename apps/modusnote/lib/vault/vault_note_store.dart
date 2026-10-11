@@ -1,29 +1,37 @@
+import 'package:blob_storage_media/blob_storage_media.dart';
 import 'package:flutter/foundation.dart';
 import 'package:offline_sync/offline_sync.dart';
 import 'package:schema_dynamic_content/schema_dynamic_content.dart';
 
+import '../audio/note_recorder.dart';
 import '../notes/note_store.dart';
 
-/// [NoteStore] on the unlocked vault: each note is an [EntryCodec] document
-/// signed and sealed by the [SyncEngine], one record per note.
+/// [NoteStore] on the unlocked vault: each note is a [RecordedNoteCodec]
+/// document (the entry plus its recordings' metadata) signed and sealed by
+/// the [SyncEngine], one record per note. Recordings themselves are
+/// encrypted blobs beside it, deleted when no note references them.
 ///
 /// Decrypted notes live only in this object's memory while the vault is
 /// open; the screens never see a record that fails to decode or validate.
 final class VaultNoteStore extends ChangeNotifier implements NoteStore {
-  VaultNoteStore._(this._engine, this._schemas);
+  VaultNoteStore._(this._engine, this._schemas, this.recorder);
 
   static Future<VaultNoteStore> open(
     SyncEngine engine, {
     required List<SchemaDefinition> schemas,
+    NoteRecorder? recorder,
   }) async {
-    final store = VaultNoteStore._(engine, schemas);
+    final store = VaultNoteStore._(engine, schemas, recorder);
     await store._load();
     return store;
   }
 
   final SyncEngine _engine;
   final List<SchemaDefinition> _schemas;
-  final _entries = <EntryId, DynamicEntry>{};
+  final _notes = <EntryId, RecordedNote>{};
+
+  @override
+  final NoteRecorder? recorder;
   var _unreadable = 0;
 
   /// Records that are not a valid note of a known schema: kept in the vault
@@ -32,40 +40,75 @@ final class VaultNoteStore extends ChangeNotifier implements NoteStore {
 
   @override
   List<DynamicEntry> get entries =>
-      _entries.values.toList()
+      [for (final note in _notes.values) note.entry]
         ..sort((a, b) => b.audit.updatedAt.compareTo(a.audit.updatedAt));
 
   @override
-  Future<void> save(DynamicEntry entry) async {
+  KeyedRecording? recordingOf(BlobId id) {
+    for (final note in _notes.values) {
+      if (note.recordings[id] case final take?) return take;
+    }
+    return null;
+  }
+
+  @override
+  Future<void> save(
+    DynamicEntry entry, {
+    Iterable<KeyedRecording> takes = const [],
+  }) async {
+    final record = _recordOf(entry.id);
+    final before = _notes[entry.id];
+    final after = before == null
+        ? RecordedNote.compose(entry, known: takes)
+        : before.edited(entry, takes: takes);
     await _engine.write(
-      _recordOf(entry.id),
-      RevisionContents(EntryCodec.encode(entry)),
+      record,
+      RevisionContents(RecordedNoteCodec.encode(after)),
     );
-    _entries[entry.id] = entry;
+    _notes[entry.id] = after;
     notifyListeners();
+    // Only once the note no longer points at them.
+    await _delete({
+      if (before != null)
+        ...RecordedNote.released(before: before, after: after),
+      for (final take in takes)
+        if (!after.recordings.containsKey(take.id)) take.id,
+    });
+  }
+
+  @override
+  Future<void> discardTakes(Iterable<KeyedRecording> takes) =>
+      _delete({for (final take in takes) take.id});
+
+  Future<void> _delete(Set<BlobId> ids) async {
+    final blobs = recorder?.blobs;
+    if (blobs == null) return;
+    for (final id in ids) {
+      await blobs.delete(id);
+    }
   }
 
   Future<void> _load() async {
     for (final MapEntry(key: record, value: contents)
         in (await _engine.records()).entries) {
-      final entry = _decode(contents.bytes);
+      final note = _decode(contents.bytes);
       // The id inside the note must name the record it is stored in, so a
       // note's bytes copied onto another record cannot surface twice.
-      if (entry == null || entry.id.value != record.hex) {
+      if (note == null || note.entry.id.value != record.hex) {
         _unreadable++;
       } else {
-        _entries[entry.id] = entry;
+        _notes[note.entry.id] = note;
       }
     }
   }
 
-  DynamicEntry? _decode(List<int> bytes) {
+  RecordedNote? _decode(List<int> bytes) {
     try {
-      return switch (EntryCodec.decode(bytes, schemas: _schemaFor)) {
+      return switch (RecordedNoteCodec.decode(bytes, schemas: _schemaFor)) {
         Valid(:final value) => value,
         Invalid() => null,
       };
-    } on EntryFormatException {
+    } on MalformedBlobException {
       return null;
     }
   }
