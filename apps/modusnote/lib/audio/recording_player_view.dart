@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../theme/golden_ratio.dart';
 import '../theme/modus_colors.dart';
+import 'audio_diagnostics.dart';
 import 'note_playback.dart';
 import 'recording_sheet.dart' show formatLength;
 
@@ -79,7 +80,8 @@ class _RecordingPlayerViewState extends State<RecordingPlayerView> {
       _fail(_Failure.unsupported);
     } on BlobNotFoundException {
       _fail(_Failure.missing);
-    } on Object {
+    } on Object catch (error, stack) {
+      reportAudioFailure('opening a recording', error, stack);
       // A chunk that fails authentication, a container that does not
       // parse, a key the device lacks: none of them is played.
       _fail(_Failure.damaged);
