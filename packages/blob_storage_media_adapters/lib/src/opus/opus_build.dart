@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:archive/archive.dart';
+import 'package:code_assets/code_assets.dart';
 import 'package:crypto/crypto.dart';
 import 'package:path/path.dart' as p;
 
@@ -52,3 +53,11 @@ List<String> sourcesFrom(File makefile, String variable) {
   }
   return sources;
 }
+
+/// System libraries libopus links against on [os]. Its float code calls
+/// `exp`, `log` and friends, which bionic (Android) and glibc keep in
+/// `libm`; Apple's libSystem and the MSVC runtime already include them.
+List<String> systemLibrariesFor(OS os) => switch (os) {
+  OS.android || OS.linux => const ['m'],
+  _ => const [],
+};
