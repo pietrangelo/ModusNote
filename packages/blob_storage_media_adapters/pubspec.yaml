@@ -20,6 +20,7 @@ dependencies:
   schema_dynamic_content: any
 
 dev_dependencies:
+  glados: ^1.1.7
   identity_cryptography: any
   identity_cryptography_adapters: any
   lints: ^6.0.0

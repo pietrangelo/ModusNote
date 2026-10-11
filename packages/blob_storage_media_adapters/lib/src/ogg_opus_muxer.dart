@@ -59,16 +59,20 @@ final class OggOpusMuxer {
     ]);
   }
 
-  /// Queues one packet of [samples] 48 kHz samples; returns a page once
-  /// [packetsPerPage] packets are waiting, otherwise null.
+  /// Queues one packet of [samples] 48 kHz samples; returns the previous
+  /// page once [packetsPerPage] packets are full and another one arrives,
+  /// otherwise null. Holding a full page back means the end-of-stream page
+  /// always carries the last packet, so its trimming granule never goes
+  /// below the page before it (RFC 7845, section 4).
   Uint8List? addPacket(Uint8List packet, {required int samples}) {
     _checkOpen();
     if (packet.length > maxPacketBytes) {
       throw ArgumentError.value(packet.length, 'packet', 'larger than Opus');
     }
+    final page = _pending.length < packetsPerPage ? null : _flush(flags: 0);
     _pending.add(Uint8List.fromList(packet));
     _decodedSamples += samples;
-    return _pending.length < packetsPerPage ? null : _flush(flags: 0);
+    return page;
   }
 
   /// Flushes the remaining packets in a final end-of-stream page whose
@@ -92,6 +96,7 @@ final class OggOpusMuxer {
   }
 
   Uint8List _flush({required int flags, int? granule}) {
+    // A flushed page holds every packet decoded so far.
     final page = _page(
       List.of(_pending),
       granule: granule ?? _decodedSamples,

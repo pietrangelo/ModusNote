@@ -103,6 +103,18 @@ void main() {
     expect(pages.last.granule, 312 + 1500);
   });
 
+  test('the end-of-stream page always carries the last packet', () {
+    // RFC 7845 forbids a granule going back; an empty final page after a
+    // full one would have to, to trim the padding.
+    final pages = parsePages(
+      mux(muxer(), [for (var i = 0; i < 6; i++) packet(10)], 5000),
+    );
+
+    expect(pages.skip(2).map((p) => p.packets.length), [3, 3]);
+    expect(pages[2].granule, 3 * 960);
+    expect(pages.last.granule, 312 + 5000);
+  });
+
   test('an empty recording still ends with an end-of-stream page', () {
     final pages = parsePages(mux(muxer(), const [], 0));
 
