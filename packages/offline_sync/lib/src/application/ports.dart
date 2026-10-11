@@ -4,6 +4,7 @@ import 'package:identity_cryptography/identity_cryptography.dart';
 import '../core/outbox.dart';
 import '../core/record_revision.dart';
 import '../core/sync_row.dart';
+import '../core/vault_header.dart';
 
 /// Port: the zero-knowledge sync server (Supabase in production). Every
 /// method throws [ServerUnavailableException] when it cannot be reached.
@@ -30,10 +31,12 @@ abstract interface class SyncServer {
 
 enum SyncStream { rows, keyBundles }
 
-/// Port: the local database (SQLCipher on mobile, SQLite WASM on web). It is
-/// only ever handed sealed data.
+/// Port: the local database (SQLite, native or WASM). It is only ever
+/// handed sealed data.
 abstract interface class LocalRecordStore {
   Future<EncryptedEnvelope?> load(RecordId id);
+
+  Future<List<RecordId>> recordIds();
 
   Future<void> save(RecordId id, EncryptedEnvelope sealed);
 
@@ -44,6 +47,26 @@ abstract interface class LocalRecordStore {
   Future<int> loadCursor(SyncStream stream);
 
   Future<void> saveCursor(SyncStream stream, int cursor);
+}
+
+/// Port: where the device keeps its vault header and the signed log of its
+/// personal workspace, so the vault reopens offline.
+///
+/// None of it is trusted on load: the header only opens with the right
+/// passphrase, and the log is re-verified against the founder it pins.
+abstract interface class VaultStore {
+  Future<VaultHeader?> loadHeader();
+
+  /// Writes the header and the founding log together, all or nothing.
+  Future<void> create(
+    VaultHeader header, {
+    required List<MembershipRecord> membership,
+    required List<KeyBundle> bundles,
+  });
+
+  Future<List<MembershipRecord>> loadMembership();
+
+  Future<List<KeyBundle>> loadKeyBundles();
 }
 
 /// Port: wall-clock time, used only to order concurrent edits.
