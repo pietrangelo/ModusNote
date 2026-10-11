@@ -70,5 +70,18 @@
   "tonicA": "La",
   "tonicBFlat": "Si♭",
   "tonicB": "Si",
-  "recordingAttached": "Registrazione allegata"
+  "recordingAttached": "Registrazione allegata",
+  "vaultCreateTitle": "Crea il tuo vault",
+  "vaultCreateBody": "Le note sono cifrate su questo dispositivo con una passphrase. Non viene mai inviata e non si può recuperare: custodiscila bene.",
+  "vaultUnlockTitle": "Sblocca le tue note",
+  "passphraseLabel": "Passphrase",
+  "passphraseConfirmLabel": "Ripeti la passphrase",
+  "vaultCreateAction": "Crea il vault",
+  "vaultUnlockAction": "Sblocca",
+  "passphraseTooShort": "Usa almeno {count} caratteri.",
+  "passphraseMismatch": "Le passphrase non coincidono.",
+  "passphraseWrong": "Passphrase errata.",
+  "vaultDamaged": "Il vault su questo dispositivo è danneggiato e non si può aprire.",
+  "vaultOpening": "Apertura del vault…",
+  "lockVault": "Blocca"
 }

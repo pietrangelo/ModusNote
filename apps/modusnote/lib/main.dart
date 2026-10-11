@@ -1,19 +1,18 @@
 import 'package:flutter/material.dart';
-import 'package:schema_dynamic_content/schema_dynamic_content.dart';
 
+import 'bootstrap/home.dart';
 import 'l10n/generated/app_localizations.dart';
-import 'notes/note_library.dart';
-import 'notes/note_store.dart';
 import 'theme/modus_theme.dart';
 
-void main() {
-  runApp(ModusNoteApp(store: InMemoryNoteStore()));
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  runApp(ModusNoteApp(home: await buildHome()));
 }
 
 class ModusNoteApp extends StatelessWidget {
-  const ModusNoteApp({required this.store, super.key});
+  const ModusNoteApp({required this.home, super.key});
 
-  final NoteStore store;
+  final Widget home;
 
   @override
   Widget build(BuildContext context) {
@@ -22,7 +21,7 @@ class ModusNoteApp extends StatelessWidget {
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
       theme: ModusTheme.dark(),
-      home: NoteLibraryScreen(schemas: SeedSchemas.all, store: store),
+      home: home,
     );
   }
 }
