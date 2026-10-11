@@ -72,6 +72,11 @@ void main() {
     );
     expect(entry.valueOf(FieldKey('completed')), const BooleanValue(false));
     expect(entry.audit.createdAt, now);
+    expect(
+      entry.id.value,
+      matches(RegExp(r'^[0-9a-f]{32}$')),
+      reason: 'the id doubles as the record id the vault stores it under',
+    );
   });
 
   testWidgets('an unreadable number blocks saving and is flagged', (

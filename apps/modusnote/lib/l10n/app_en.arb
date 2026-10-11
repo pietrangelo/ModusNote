@@ -306,5 +306,62 @@
   "recordingAttached": "Recording attached",
   "@recordingAttached": {
     "description": "Audio field that holds a recording."
+  },
+  "vaultCreateTitle": "Create your vault",
+  "@vaultCreateTitle": {
+    "description": "Title of the screen that creates the encrypted vault on first launch."
+  },
+  "vaultCreateBody": "Your notes are encrypted on this device with a passphrase. It is never sent anywhere and cannot be recovered, so keep it safe.",
+  "@vaultCreateBody": {
+    "description": "Explains the vault passphrase before creating it."
+  },
+  "vaultUnlockTitle": "Unlock your notes",
+  "@vaultUnlockTitle": {
+    "description": "Title of the screen that asks for the vault passphrase."
+  },
+  "passphraseLabel": "Passphrase",
+  "@passphraseLabel": {
+    "description": "Label of the vault passphrase field."
+  },
+  "passphraseConfirmLabel": "Repeat the passphrase",
+  "@passphraseConfirmLabel": {
+    "description": "Label of the field that confirms a new vault passphrase."
+  },
+  "vaultCreateAction": "Create vault",
+  "@vaultCreateAction": {
+    "description": "Button that creates the vault."
+  },
+  "vaultUnlockAction": "Unlock",
+  "@vaultUnlockAction": {
+    "description": "Button that unlocks the vault."
+  },
+  "passphraseTooShort": "Use at least {count} characters.",
+  "@passphraseTooShort": {
+    "description": "Shown when a new passphrase is too short.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "passphraseMismatch": "The passphrases do not match.",
+  "@passphraseMismatch": {
+    "description": "Shown when the two passphrase fields differ."
+  },
+  "passphraseWrong": "Wrong passphrase.",
+  "@passphraseWrong": {
+    "description": "Shown when the passphrase does not open the vault."
+  },
+  "vaultDamaged": "The vault on this device is damaged and cannot be opened.",
+  "@vaultDamaged": {
+    "description": "Shown when the stored vault fails verification."
+  },
+  "vaultOpening": "Opening the vault…",
+  "@vaultOpening": {
+    "description": "Shown while the passphrase is being stretched."
+  },
+  "lockVault": "Lock",
+  "@lockVault": {
+    "description": "Tooltip of the button that locks the vault."
   }
 }

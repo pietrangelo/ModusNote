@@ -8,12 +8,20 @@ environment:
   sdk: ^3.13.0
 
 dependencies:
+  collaboration_access_control: any
   flutter:
     sdk: flutter
   flutter_localizations:
     sdk: flutter
+  identity_cryptography: any
+  identity_cryptography_adapters: any
   intl: any
+  offline_sync: any
+  offline_sync_adapters: any
+  path_provider: ^2.1.6
   schema_dynamic_content: any
+  sodium: ^4.1.1
+  sqlite3: ^3.7.0
 
 dev_dependencies:
   flutter_lints: ^6.0.0

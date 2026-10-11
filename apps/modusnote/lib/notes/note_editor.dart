@@ -102,16 +102,15 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
   }
 
   /// Opaque and random: ids reach the server in clear, so they must not
-  /// reveal order, time or device.
+  /// reveal order, time or device. 128 bits as 32 hex digits, the shape of
+  /// the record id the note is stored under.
   static EntryId _newEntryId() {
     final random = Random.secure();
-    const alphabet =
-        'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
     return EntryId(
-      String.fromCharCodes([
-        for (var i = 0; i < 22; i++)
-          alphabet.codeUnitAt(random.nextInt(alphabet.length)),
-      ]),
+      List.generate(
+        16,
+        (_) => random.nextInt(256).toRadixString(16).padLeft(2, '0'),
+      ).join(),
     );
   }
 
