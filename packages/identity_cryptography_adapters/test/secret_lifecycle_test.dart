@@ -87,6 +87,36 @@ void main() {
       );
     });
 
+    test('a passphrase shorter than the policy minimum is refused', () {
+      expect(
+        () => SodiumPasswordSecret.fromUtf8Bytes(sodium, utf8Bytes('')),
+        throwsA(isA<WeakPassphraseException>()),
+      );
+      expect(
+        () => SodiumPasswordSecret.fromUtf8Bytes(sodium, utf8Bytes('1234567')),
+        throwsA(isA<WeakPassphraseException>()),
+      );
+    });
+
+    test('a refused passphrase is still wiped', () {
+      final buffer = utf8Bytes('short');
+      try {
+        SodiumPasswordSecret.fromUtf8Bytes(sodium, buffer);
+      } on WeakPassphraseException {
+        // Expected.
+      }
+
+      expect(buffer, everyElement(0));
+    });
+
+    test('code outside the adapters cannot reach the native key', () {
+      final key = encryptor.generateKey();
+      addTearDown(key.dispose);
+
+      // ignore: avoid_dynamic_calls
+      expect(() => (key as dynamic).native, throwsNoSuchMethodError);
+    });
+
     test('secrets never print their bytes', () {
       final key = encryptor.generateKey();
       final secret = password('correct horse');

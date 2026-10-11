@@ -1,6 +1,7 @@
 import 'package:meta/meta.dart';
 
 import 'schema_exception.dart';
+import 'unsafe_text.dart';
 
 /// What the UI shows for a schema or field.
 ///
@@ -35,7 +36,9 @@ final class LocalizedLabel extends Label {
 /// A label typed by the user for a schema they created, shown as is.
 final class LiteralLabel extends Label {
   LiteralLabel(String text) : text = text.trim() {
-    if (this.text.isEmpty || this.text.length > maxLength) {
+    if (this.text.isEmpty ||
+        this.text.length > maxLength ||
+        containsUnsafeCharacters(this.text)) {
       throw const InvalidSchemaException(SchemaInvariant.invalidLabel);
     }
   }

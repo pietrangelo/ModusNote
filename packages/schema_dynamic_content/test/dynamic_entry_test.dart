@@ -94,6 +94,18 @@ void main() {
     );
   });
 
+  test('tags may not carry bidi overrides or control characters', () {
+    expect(
+      codesOf(
+        create({
+          'title': const TextValue('t'),
+          'tags': TagListValue({'ok', 'evil\u202Etxt'}),
+        }),
+      ),
+      [ViolationCode.invalidCharacters],
+    );
+  });
+
   test('a value of the wrong type is a type mismatch', () {
     expect(codesOf(create({'title': NumberValue(1)})), [
       ViolationCode.typeMismatch,
