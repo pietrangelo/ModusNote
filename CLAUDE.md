@@ -60,10 +60,29 @@ Il pacchetto `sodium` compila libsodium dai sorgenti tramite build hook al primo
 ### Interfaccia grafica: rapporto aureo (regola permanente)
 Tutta la UI si costruisce **sempre** sul rapporto aureo φ = 1,618…:
 - **Spaziature:** scala geometrica di ragione φ a partire da una base di 8 dp (≈ 3, 5, 8, 13, 21, 34, 55 dp). Nessun valore di padding o margine fuori scala.
-- **Tipografia:** scala modulare di ragione φ (es. corpo 16 sp → titolo 26 sp → display 42 sp; didascalia 10 sp).
+- **Tipografia:** scala modulare di ragione φ: didascalia 10 sp, corpo 16 sp, titolo 2 26 sp, titolo 1 42 sp, display 68 sp.
 - **Layout:** le suddivisioni di schermo e colonne seguono 61,8 % / 38,2 %; contenitori e card usano proporzioni φ : 1 (orizzontali) o 1 : φ (verticali).
 - **Raggi, icone e larghezze di riga** prendono i valori dalla stessa scala.
 - I valori vivono in un unico set di design token (`apps/modusnote/lib/theme/`); i widget non scrivono numeri a mano. I test di componente verificano che le dimensioni usate appartengano alla scala.
+
+### Identità visiva (decisione del 2026-10-11)
+Il marchio, e il nome visibile dell'app (titolo, nome sotto l'icona, pagina web), è **Modus Notes**, sottotitolo "Modo · Misura · Ritmo". Il simbolo unisce la M, una nota musicale (ritmo), la spirale aurea (misura) e un segno di spunta (to-do). Il logo è in `apps/modusnote/assets/brand/`.
+
+| Ruolo UI | Nome | HEX | Uso |
+|---|---|---|---|
+| Background | Deep Void | `#090C15` | Sfondo principale (l'app è dark nativa) |
+| Surface | Abyssal Slate | `#13192B` | Card, menu laterali, fogli modali |
+| Primary | Aureo Gold | `#EBB448` | Azioni principali, note salvate, focus; testo sopra in Deep Void |
+| Secondary | Rhythm Violet | `#8B3FD6` | Ritmo/metronomo, tag audio, categorie; **solo come riempimento**, testo sopra in Pure Mist |
+| Secondary (testo) | Rhythm Violet tint | `#A265DE` | Testo e icone viola su sfondi scuri (il viola pieno arriva a 3,2:1, sotto AA) |
+| Success | Cadence Cyan | `#00A3FF` | Checkbox spuntate, scadenze completate; testo sopra in Deep Void |
+| Text | Pure Mist | `#F8FAFC` | Titoli e testo delle note |
+| Text muted | Dust Silver | `#8F9CAE` | Timestamp, sottotitoli, linee secondarie |
+
+* **Font:** Plus Jakarta Sans per i titoli, Inter per il corpo. Entrambi sono SIL OFL e sono inclusi in `apps/modusnote/assets/fonts/` (nessun font scaricato a runtime). Satoshi è stato scartato perché la sua licenza non permette di includerlo liberamente nel bundle.
+* **Contrasto:** ogni coppia testo/sfondo deve raggiungere WCAG AA (4,5:1); `test/theme_test.dart` lo verifica.
+* **Icona app:** squircle su `#090C15` con il solo monogramma "M" ingrandito del 20 %, senza linee di costruzione, con un leggero glow radiale viola/oro dietro la spirale. Per generarla serve il monogramma in formato vettoriale (SVG).
+* I token vivono in `apps/modusnote/lib/theme/` (`golden_ratio.dart`, `modus_colors.dart`, `modus_theme.dart`).
 
 ### Client web
 Il client web è un'alternativa completa all'app mobile e si sincronizza con essa: per il protocollo di sync è semplicemente un altro dispositivo del vault, con la propria coppia di chiavi di identità. Si compila con `flutter build web --wasm --no-web-resources-cdn` (nessuna risorsa caricata da CDN di terzi: CanvasKit e font fanno parte del bundle servito da Cloudflare Pages).

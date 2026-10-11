@@ -32,4 +32,13 @@ void main() {
 
     expect(find.text('Your vault is locked.'), findsOneWidget);
   });
+
+  testWidgets('the visible app name is the brand, Modus Notes', (tester) async {
+    await tester.pumpWidget(const ModusNoteApp());
+    await tester.pumpAndSettle();
+
+    final app = tester.widget<MaterialApp>(find.byType(MaterialApp));
+    final context = tester.element(find.byType(Scaffold));
+    expect(app.onGenerateTitle!(context), 'Modus Notes');
+  });
 }
