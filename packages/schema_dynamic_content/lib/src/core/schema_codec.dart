@@ -1,0 +1,236 @@
+import 'dart:convert';
+
+import 'field_type.dart';
+import 'identifiers.dart';
+import 'label.dart';
+import 'schema_definition.dart';
+import 'schema_exception.dart';
+
+/// JSON form of [SchemaDefinition], for storage and sync (always inside an
+/// encrypted envelope).
+///
+/// Decoding treats its input as hostile: size and nesting are bounded before
+/// parsing, every property is type-checked, unknown properties are refused,
+/// and the only exception that can escape is [SchemaFormatException].
+abstract final class SchemaCodec {
+  static const maxDocumentLength = 64 * 1024;
+  static const maxNestingDepth = 8;
+
+  static String encode(SchemaDefinition schema) => jsonEncode({
+    'id': schema.id.name,
+    'version': schema.id.version,
+    'label': _encodeLabel(schema.label),
+    'fields': [for (final f in schema.fields) _encodeField(f)],
+    'uiHints': [
+      for (final h in schema.uiHints)
+        {'field': h.field.value, 'section': h.section, 'order': h.order},
+    ],
+  });
+
+  static SchemaDefinition decode(String document) {
+    if (document.length > maxDocumentLength) {
+      throw const SchemaFormatException('document too large');
+    }
+    _rejectDeepNesting(document);
+    final Object? json;
+    try {
+      json = jsonDecode(document);
+    } on FormatException {
+      throw const SchemaFormatException('not valid JSON');
+    }
+    try {
+      return _decodeSchema(_Obj.of(json, 'schema'));
+    } on InvalidSchemaException catch (e) {
+      throw SchemaFormatException('invariant broken: ${e.invariant.name}');
+    } on InvalidValueException catch (e) {
+      throw SchemaFormatException(e.message);
+    }
+  }
+
+  // jsonDecode recurses per nesting level, so an unbounded document like
+  // `[[[[...]]]]` could overflow the stack; count depth first, cheaply.
+  static void _rejectDeepNesting(String document) {
+    var depth = 0;
+    var inString = false;
+    var escaped = false;
+    for (final unit in document.codeUnits) {
+      if (inString) {
+        if (escaped) {
+          escaped = false;
+        } else if (unit == 0x5C) {
+          escaped = true;
+        } else if (unit == 0x22) {
+          inString = false;
+        }
+      } else if (unit == 0x22) {
+        inString = true;
+      } else if (unit == 0x5B || unit == 0x7B) {
+        if (++depth > maxNestingDepth) {
+          throw const SchemaFormatException('nesting too deep');
+        }
+      } else if (unit == 0x5D || unit == 0x7D) {
+        depth--;
+      }
+    }
+  }
+
+  static Map<String, Object?> _encodeLabel(Label label) => switch (label) {
+    LocalizedLabel(:final key) => {'key': key},
+    LiteralLabel(:final text) => {'text': text},
+  };
+
+  static Map<String, Object?> _encodeField(FieldDefinition field) => {
+    'key': field.key.value,
+    'label': _encodeLabel(field.label),
+    'required': field.required,
+    'type': _encodeType(field.type),
+  };
+
+  static Map<String, Object?> _encodeType(FieldType type) => switch (type) {
+    TextFieldType(:final maxLength) => {'kind': 'text', 'maxLength': maxLength},
+    RichTextFieldType() => {'kind': 'rich_text'},
+    MarkdownFieldType() => {'kind': 'markdown'},
+    NumberFieldType(:final min, :final max, :final integerOnly) => {
+      'kind': 'number',
+      'min': ?min,
+      'max': ?max,
+      'integerOnly': integerOnly,
+    },
+    DateFieldType() => {'kind': 'date'},
+    DateTimeFieldType() => {'kind': 'date_time'},
+    BooleanFieldType() => {'kind': 'boolean'},
+    RatingFieldType(:final min, :final max) => {
+      'kind': 'rating',
+      'min': min,
+      'max': max,
+    },
+    ChoiceFieldType(:final options) => {'kind': 'choice', 'options': options},
+    TagListFieldType(:final maxTags) => {
+      'kind': 'tag_list',
+      'maxTags': maxTags,
+    },
+    AudioBlobFieldType() => {'kind': 'audio_blob'},
+  };
+
+  static SchemaDefinition _decodeSchema(_Obj json) {
+    json.allowOnly({'id', 'version', 'label', 'fields', 'uiHints'});
+    return SchemaDefinition(
+      id: SchemaId(json.string('id'), json.integer('version')),
+      label: _decodeLabel(json.object('label')),
+      fields: [for (final f in json.objects('fields')) _decodeField(f)],
+      uiHints: [
+        for (final h in json.objects('uiHints'))
+          (h..allowOnly({'field', 'section', 'order'})).let(
+            (h) => WidgetPlacement(
+              field: FieldKey(h.string('field')),
+              section: h.string('section'),
+              order: h.integer('order'),
+            ),
+          ),
+      ],
+    );
+  }
+
+  static Label _decodeLabel(_Obj json) {
+    if (json.has('key')) {
+      json.allowOnly({'key'});
+      return LocalizedLabel(json.string('key'));
+    }
+    json.allowOnly({'text'});
+    return LiteralLabel(json.string('text'));
+  }
+
+  static FieldDefinition _decodeField(_Obj json) {
+    json.allowOnly({'key', 'label', 'required', 'type'});
+    return FieldDefinition(
+      key: FieldKey(json.string('key')),
+      label: _decodeLabel(json.object('label')),
+      required: json.boolean('required'),
+      type: _decodeType(json.object('type')),
+    );
+  }
+
+  static FieldType _decodeType(_Obj json) {
+    final kind = json.string('kind');
+    final (allowed, build) = switch (kind) {
+      'text' => (
+        {'maxLength'},
+        () => TextFieldType(maxLength: json.integer('maxLength')),
+      ),
+      'rich_text' => (<String>{}, () => const RichTextFieldType()),
+      'markdown' => (<String>{}, () => const MarkdownFieldType()),
+      'number' => (
+        {'min', 'max', 'integerOnly'},
+        () => NumberFieldType(
+          min: json.optionalNumber('min'),
+          max: json.optionalNumber('max'),
+          integerOnly: json.boolean('integerOnly'),
+        ),
+      ),
+      'date' => (<String>{}, () => const DateFieldType()),
+      'date_time' => (<String>{}, () => const DateTimeFieldType()),
+      'boolean' => (<String>{}, () => const BooleanFieldType()),
+      'rating' => (
+        {'min', 'max'},
+        () =>
+            RatingFieldType(min: json.integer('min'), max: json.integer('max')),
+      ),
+      'choice' => ({'options'}, () => ChoiceFieldType(json.strings('options'))),
+      'tag_list' => (
+        {'maxTags'},
+        () => TagListFieldType(maxTags: json.integer('maxTags')),
+      ),
+      'audio_blob' => (<String>{}, () => const AudioBlobFieldType()),
+      _ => throw SchemaFormatException('unknown field kind "$kind"'),
+    };
+    json.allowOnly({'kind', ...allowed});
+    return build();
+  }
+}
+
+/// A JSON object read strictly: wrong types and stray keys are format errors,
+/// never `TypeError`s leaking out of the parser.
+extension type _Obj._(Map<String, Object?> _map) {
+  factory _Obj.of(Object? value, String what) => switch (value) {
+    Map<String, Object?>() => _Obj._(value),
+    _ => throw SchemaFormatException('$what must be an object'),
+  };
+
+  bool has(String key) => _map.containsKey(key);
+
+  void allowOnly(Set<String> keys) {
+    for (final key in _map.keys) {
+      if (!keys.contains(key)) {
+        throw SchemaFormatException('unexpected property "$key"');
+      }
+    }
+  }
+
+  T _get<T>(String key, String expected) => switch (_map[key]) {
+    final T value => value,
+    _ => throw SchemaFormatException('"$key" must be $expected'),
+  };
+
+  String string(String key) => _get<String>(key, 'a string');
+  int integer(String key) => _get<int>(key, 'an integer');
+  bool boolean(String key) => _get<bool>(key, 'a boolean');
+  _Obj object(String key) => _Obj.of(_map[key], '"$key"');
+
+  num? optionalNumber(String key) =>
+      has(key) ? _get<num>(key, 'a number') : null;
+
+  List<_Obj> objects(String key) => [
+    for (final item in _get<List<Object?>>(key, 'a list'))
+      _Obj.of(item, 'an item of "$key"'),
+  ];
+
+  List<String> strings(String key) => [
+    for (final item in _get<List<Object?>>(key, 'a list'))
+      switch (item) {
+        final String s => s,
+        _ => throw SchemaFormatException('"$key" must hold strings'),
+      },
+  ];
+
+  R let<R>(R Function(_Obj) f) => f(this);
+}
