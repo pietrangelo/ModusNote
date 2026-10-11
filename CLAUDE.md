@@ -21,7 +21,7 @@ packages/offline_sync/               Bounded context (dominio puro): revisioni f
 packages/identity_cryptography_adapters/ Adapter libsodium (pacchetto `sodium`, variante sumo per Argon2id)
 packages/blob_storage_media_adapters/  Storage dei blob cifrati (filesystem tramite `package:file`), muxer Ogg Opus, encoder libopus (FFI + build hook)
 packages/blob_storage_media_recorder_adapters/ Microfono tramite il plugin `record` (pacchetto Flutter, test con `flutter test`)
-packages/offline_sync_adapters/      Database locale SQLite (stessa API nativa e WASM): solo buste cifrate
+packages/offline_sync_adapters/      Database locale SQLite (stessa API nativa e WASM): solo buste cifrate; `SupabaseSyncServer` (PostgREST via `package:http`)
 packages/<context>_adapters/         Altri petali esterni, creati quando servono
 tool/architecture_guard/             Verifica statica delle regole della rosetta
 ```
@@ -52,6 +52,7 @@ dart run tool/architecture_guard/bin/architecture_guard.dart
 (cd tool/architecture_guard && dart test)
 (cd apps/modusnote && flutter test)
 bash supabase/tests/run.sh                        # migrazioni + test RLS su un PostgreSQL usa e getta
+bash supabase/tests/e2e.sh                        # SupabaseSyncServer contro un PostgREST reale (hash fissato; MODUSNOTE_POSTGREST per offline)
 ```
 
 Il pacchetto `sodium` compila libsodium dai sorgenti tramite build hook al primo `dart test` (serve un compilatore C e accesso a `download.libsodium.org`; la prima esecuzione richiede ~30 s).
@@ -124,6 +125,7 @@ L'invariante zero-knowledge vale per tutti e tre i servizi: ricevono e restituis
 * **Fiducia nel codice servito:** Cloudflare, o chiunque abbia accesso al deploy, può servire un bundle diverso. Per questo valgono le mitigazioni della sezione "Client web" (hash delle build pubblicati, build riproducibili).
 * **Schema (`supabase/migrations/`):** `workspaces`, `workspace_accounts` (account Supabase ammessi, con `can_manage`), e tre flussi **append-only**: `sync_rows` (record_id, epoca, ciphertext), `membership_records` (registro firmato, `sequence` univoca) e `key_bundles`. Nessuno può fare UPDATE o DELETE sui flussi, nemmeno con una policy aggiunta per errore, perché il privilegio è revocato. Le posizioni sono assegnate dal server per workspace sotto lock, quindi crescono in ordine di commit e un client che legge `position > cursore` non salta righe. Revocare un dispositivo significa anche togliere il suo account da `workspace_accounts`.
 * **Test RLS:** `supabase/tests/run.sh` applica le migrazioni a un PostgreSQL temporaneo con uno stub di `auth.uid()` ed esegue i test come ruolo `authenticated` con il `sub` del JWT, come fa PostgREST. Gira anche in CI.
+* **Adapter Dart (`SupabaseSyncServer`):** parla con PostgREST (`/rest/v1/<tabella>`) tramite `package:http`, con la chiave anon pubblica e il token di sessione Supabase passato come callback (mai salvato né incluso nei messaggi d'errore). I `bytea` viaggiano come `\x` esadecimale. Le risposte sono input non fidato: posizioni non strettamente crescenti o registro di membership con buchi danno `MalformedSyncDataException`, una voce illeggibile viene scartata. Errori di rete, timeout, 5xx, 408 e 429 diventano `ServerUnavailableException` (il motore resta offline e riprova); gli altri rifiuti `SyncServerRejectedException(status)`. `supabase/tests/e2e.sh` lo prova contro PostgREST v12 e PostgreSQL veri (RLS, trigger, formati), anche in CI.
 * **Limiti noti:** il registro dei membri è firmato ma non cifrato, quindi il server vede chiavi pubbliche e ruoli (non nomi né contenuti). Un membro può bloccare la sync scrivendo spazzatura nella prossima `sequence` del registro: i client la rifiutano e la sync si ferma (DoS, non perdita di riservatezza).
 * **Piano gratuito di Supabase:** un progetto Free inattivo per una settimana viene sospeso. Il client deve gestire un backend temporaneamente non raggiungibile (offline-first lo rende naturale); in produzione va valutato il piano a pagamento.
 

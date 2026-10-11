@@ -1,0 +1,273 @@
+// Runs against a real PostgREST and PostgreSQL started by
+// `supabase/tests/e2e.sh`; skipped when run on its own.
+import 'dart:convert';
+import 'dart:io';
+import 'dart:math';
+import 'dart:typed_data';
+
+import 'package:collaboration_access_control/collaboration_access_control.dart';
+import 'package:crypto/crypto.dart';
+import 'package:http/http.dart' as http;
+import 'package:identity_cryptography/identity_cryptography.dart';
+import 'package:offline_sync/offline_sync.dart';
+import 'package:offline_sync_adapters/offline_sync_adapters.dart';
+import 'package:test/test.dart';
+
+final postgrest = Platform.environment['MODUSNOTE_POSTGREST_URL'];
+final jwtSecret = Platform.environment['MODUSNOTE_JWT_SECRET'];
+
+const alice = '11111111-1111-4111-8111-111111111111';
+const bob = '22222222-2222-4222-8222-222222222222';
+
+final _random = Random.secure();
+
+String _hex(int bytes) => [
+  for (var i = 0; i < bytes; i++)
+    _random.nextInt(256).toRadixString(16).padLeft(2, '0'),
+].join();
+
+String _base64Url(List<int> bytes) =>
+    base64Url.encode(bytes).replaceAll('=', '');
+
+/// A Supabase-style access token: HS256, the account in `sub`, the
+/// `authenticated` role PostgREST switches to.
+String accessTokenFor(String account) {
+  final header = _base64Url(utf8.encode('{"alg":"HS256","typ":"JWT"}'));
+  final expiry = DateTime.now().millisecondsSinceEpoch ~/ 1000 + 3600;
+  final payload = _base64Url(
+    utf8.encode(
+      jsonEncode({'sub': account, 'role': 'authenticated', 'exp': expiry}),
+    ),
+  );
+  final signature = Hmac(
+    sha256,
+    utf8.encode(jwtSecret!),
+  ).convert(utf8.encode('$header.$payload'));
+  return '$header.$payload.${_base64Url(signature.bytes)}';
+}
+
+/// PostgREST serves at its root; Supabase puts it under `/rest/v1/`.
+final class _SupabasePaths extends http.BaseClient {
+  final _inner = http.Client();
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) {
+    final base = Uri.parse(postgrest!);
+    final forwarded =
+        http.Request(
+            request.method,
+            request.url.replace(
+              scheme: base.scheme,
+              host: base.host,
+              port: base.port,
+              path: request.url.path.replaceFirst('/rest/v1', ''),
+            ),
+          )
+          ..headers.addAll(request.headers)
+          ..bodyBytes = (request as http.Request).bodyBytes;
+    return _inner.send(forwarded);
+  }
+}
+
+SupabaseSyncServer serverFor(String account, {int pageSize = 500}) =>
+    SupabaseSyncServer(
+      projectUrl: Uri.parse('https://project.supabase.co'),
+      anonKey: 'anon',
+      accessToken: () async => accessTokenFor(account),
+      client: _SupabasePaths(),
+      pageSize: pageSize,
+    );
+
+PublicIdentity identity(int seed) => PublicIdentity(
+  signingKey: PublicSigningKey.fromBytes(
+    List.filled(PublicSigningKey.length, seed),
+  ),
+  encryptionKey: PublicEncryptionKey.fromBytes(
+    List.filled(PublicEncryptionKey.length, seed),
+  ),
+);
+
+Signature signature(int seed) =>
+    Signature.fromBytes(List.filled(Signature.length, seed));
+
+// Signatures are fake: the server never verifies them, the clients do.
+List<MembershipRecord> membershipOf(WorkspaceId workspace) => [
+  MembershipRecord(
+    workspace: workspace,
+    sequence: 0,
+    author: MemberId.of(identity(1)),
+    previous: null,
+    change: WorkspaceFounded(identity(1)),
+    signature: signature(1),
+  ),
+  MembershipRecord(
+    workspace: workspace,
+    sequence: 1,
+    author: MemberId.of(identity(1)),
+    previous: signature(1),
+    change: MemberInvited(identity(2), Role.editor),
+    signature: signature(2),
+  ),
+];
+
+KeyBundle bundleOf(WorkspaceId workspace) => KeyBundle(
+  workspace: workspace,
+  atSequence: 1,
+  issuer: MemberId.of(identity(1)),
+  grants: [
+    GroupKeyGrant(
+      recipient: MemberId.of(identity(2)),
+      epoch: KeyEpoch.initial,
+      sealedKey: SealedKey.parse(
+        Uint8List.fromList([
+          ...List.filled(SealedKey.encapsulationLength, 3),
+          EncryptedEnvelope.currentVersion,
+          ...List.filled(
+            SealedKey.length - SealedKey.encapsulationLength - 1,
+            3,
+          ),
+        ]),
+      ),
+    ),
+  ],
+  signature: signature(3),
+);
+
+SealedRow sealedRow(int marker) => SealedRow(
+  record: RecordId.parse(_hex(16)),
+  ciphertext: WorkspaceCiphertext(
+    epoch: KeyEpoch(marker),
+    envelope: EncryptedEnvelope(
+      nonce: Nonce.fromBytes(List.filled(Nonce.length, marker)),
+      ciphertext: List.filled(EncryptedEnvelope.tagLength + marker, marker),
+    ),
+  ),
+);
+
+void expectSameRows(List<PulledRow> pulled, List<SealedRow> pushed) {
+  expect(pulled.map((p) => p.row.record), pushed.map((r) => r.record));
+  expect(
+    pulled.map((p) => p.row.ciphertext.envelope.toBytes()),
+    pushed.map((r) => r.ciphertext.envelope.toBytes()),
+  );
+  expect(
+    pulled.map((p) => p.row.ciphertext.epoch),
+    pushed.map((r) => r.ciphertext.epoch),
+  );
+}
+
+Future<WorkspaceId> foundWorkspace() async {
+  final workspace = WorkspaceId.parse(_hex(16));
+  await serverFor(alice).createWorkspace(workspace);
+  return workspace;
+}
+
+void main() {
+  final skip = postgrest == null || jwtSecret == null
+      ? 'needs supabase/tests/e2e.sh'
+      : null;
+
+  group('SupabaseSyncServer against PostgREST', skip: skip, () {
+    test('rows, bundles and membership round-trip byte for byte', () async {
+      final workspace = await foundWorkspace();
+      final server = serverFor(alice, pageSize: 2);
+      final rows = [for (var i = 1; i <= 5; i++) sealedRow(i)];
+      final records = membershipOf(workspace);
+
+      for (final record in records) {
+        await server.appendMembership(record);
+      }
+      await server.appendKeyBundle(bundleOf(workspace));
+      await server.push(workspace, rows.sublist(0, 3));
+      await server.push(workspace, rows.sublist(3));
+
+      final pulled = await server.pull(workspace, after: 0);
+      expect(pulled.map((p) => p.cursor), [1, 2, 3, 4, 5]);
+      expectSameRows(pulled, rows);
+      expectSameRows(await server.pull(workspace, after: 3), rows.sublist(3));
+      expect(await server.membership(workspace, from: 0), records);
+      expect(await server.membership(workspace, from: 1), records.sublist(1));
+      expect(await server.keyBundles(workspace, after: 0), [
+        (1, bundleOf(workspace)),
+      ]);
+    });
+
+    test('an account added by a manager reads and appends', () async {
+      final workspace = await foundWorkspace();
+      await serverFor(alice).push(workspace, [sealedRow(1)]);
+
+      await serverFor(alice).addAccount(workspace, bob);
+      await serverFor(bob).push(workspace, [sealedRow(2)]);
+
+      expect(
+        (await serverFor(alice).pull(workspace, after: 0)).map((p) => p.cursor),
+        [1, 2],
+      );
+    });
+
+    group('adversary', () {
+      test('an outsider reads nothing and cannot append', () async {
+        final workspace = await foundWorkspace();
+        await serverFor(alice).push(workspace, [sealedRow(1)]);
+        await serverFor(alice).appendMembership(membershipOf(workspace)[0]);
+
+        final outsider = serverFor(bob);
+        expect(await outsider.pull(workspace, after: 0), isEmpty);
+        expect(await outsider.membership(workspace, from: 0), isEmpty);
+        await expectLater(
+          outsider.push(workspace, [sealedRow(2)]),
+          throwsA(isA<SyncServerRejectedException>()),
+        );
+        await expectLater(
+          outsider.addAccount(workspace, bob),
+          throwsA(isA<SyncServerRejectedException>()),
+        );
+      });
+
+      test('a member who is not a manager cannot add accounts', () async {
+        final workspace = await foundWorkspace();
+        await serverFor(alice).addAccount(workspace, bob);
+
+        await expectLater(
+          serverFor(bob).addAccount(workspace, _uuid()),
+          throwsA(isA<SyncServerRejectedException>()),
+        );
+      });
+
+      test('a membership sequence cannot be written twice', () async {
+        final workspace = await foundWorkspace();
+        final founded = membershipOf(workspace)[0];
+        await serverFor(alice).appendMembership(founded);
+
+        await expectLater(
+          serverFor(alice).appendMembership(founded),
+          throwsA(isA<SyncServerRejectedException>()),
+        );
+      });
+
+      test('a token signed with another secret is refused', () async {
+        final workspace = await foundWorkspace();
+        final forged = SupabaseSyncServer(
+          projectUrl: Uri.parse('https://project.supabase.co'),
+          anonKey: 'anon',
+          accessToken: () async {
+            final [header, payload, _] = accessTokenFor(alice).split('.');
+            return '$header.$payload.${_base64Url(List.filled(32, 0))}';
+          },
+          client: _SupabasePaths(),
+        );
+
+        await expectLater(
+          forged.pull(workspace, after: 0),
+          throwsA(isA<SyncServerRejectedException>()),
+        );
+      });
+    });
+  });
+}
+
+String _uuid() {
+  final h = _hex(16);
+  return '${h.substring(0, 8)}-${h.substring(8, 12)}-4${h.substring(13, 16)}-'
+      '8${h.substring(17, 20)}-${h.substring(20)}';
+}
