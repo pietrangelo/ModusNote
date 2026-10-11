@@ -83,5 +83,13 @@
   "passphraseWrong": "Passphrase errata.",
   "vaultDamaged": "Il vault su questo dispositivo è danneggiato e non si può aprire.",
   "vaultOpening": "Apertura del vault…",
-  "lockVault": "Blocca"
+  "lockVault": "Blocca",
+  "recordingInProgress": "Registrazione",
+  "recordingEncrypted": "Cifrata mentre registri. Niente viene salvato in chiaro.",
+  "stopRecording": "Ferma e allega",
+  "cancelRecording": "Scarta",
+  "microphoneDenied": "Accesso al microfono negato. Consentilo nelle impostazioni di sistema per registrare.",
+  "recordingFailed": "Non è stato possibile salvare la registrazione.",
+  "close": "Chiudi",
+  "recordingAttachedLength": "Registrazione allegata · {length}"
 }
