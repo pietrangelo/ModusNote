@@ -63,7 +63,7 @@ Tutta la UI si costruisce **sempre** sul rapporto aureo φ = 1,618…:
 - I valori vivono in un unico set di design token (`apps/modusnote/lib/theme/`); i widget non scrivono numeri a mano. I test di componente verificano che le dimensioni usate appartengano alla scala.
 
 ### Client web
-Il client web è un'alternativa completa all'app mobile e si sincronizza con essa: per il protocollo di sync è semplicemente un altro dispositivo del vault, con la propria coppia di chiavi di identità. Si compila con `flutter build web --wasm --no-web-resources-cdn` (nessuna risorsa caricata da CDN di terzi).
+Il client web è un'alternativa completa all'app mobile e si sincronizza con essa: per il protocollo di sync è semplicemente un altro dispositivo del vault, con la propria coppia di chiavi di identità. Si compila con `flutter build web --wasm --no-web-resources-cdn` (nessuna risorsa caricata da CDN di terzi: CanvasKit e font fanno parte del bundle servito da Cloudflare Pages).
 
 Nel browser alcune garanzie cambiano, e il codice deve tenerne conto in modo esplicito:
 * **Memoria delle chiavi:** non esistono `sodium_malloc`/`mlock`. Su web `SecureKey` è un buffer JS che viene azzerato al `dispose()`, ma il motore JS può averne fatto copie. La regola "dispose il prima possibile" resta, ma la garanzia è più debole che su mobile.
@@ -72,6 +72,22 @@ Nel browser alcune garanzie cambiano, e il codice deve tenerne conto in modo esp
 * **Persistenza:** niente SQLCipher. Il database locale è SQLite WASM su OPFS/IndexedDB e contiene solo record già cifrati con le buste del dominio. Le chiavi non si salvano mai in `localStorage`/IndexedDB in chiaro.
 * **Sblocco:** niente biometria nativa. La MasterKey si ottiene con la passphrase a ogni sessione oppure tramite WebAuthn con estensione PRF, dove disponibile.
 * **Crypto:** libsodium arriva via WebAssembly (backend JS del pacchetto `sodium`, variante sumo per Argon2id). Non si usa WebCrypto, che non offre XChaCha20-Poly1305 né Argon2id.
+
+### Infrastruttura (decisione del 2026-10-11)
+| Componente | Servizio | Cosa vede il servizio |
+|---|---|---|
+| Client web | **Cloudflare Pages** (file statici; build in GitHub Actions, perché l'ambiente di build di Pages non include Flutter, poi `wrangler pages deploy`) | Solo il bundle dell'app |
+| Blob audio cifrati | **Cloudflare R2** (S3-compatibile, nessun costo di egress) | Solo chunk `.enc` e la loro dimensione |
+| Sync e account | **Supabase** (PostgreSQL + Auth) | Righe cifrate, id, revisioni, timestamp; l'email dell'account |
+
+L'invariante zero-knowledge vale per tutti e tre i servizi: ricevono e restituiscono solo ciphertext prodotto dalle buste del dominio. Regole che ne derivano:
+* **Auth e chiavi sono separati.** Supabase Auth autentica l'account (email/magic link o OAuth) per l'accesso alle righe. La passphrase del vault non viene mai inviata, né usata come password di Supabase. Se in futuro si userà un'unica password, la credenziale di login deve essere derivata dalla chiave Argon2id con una derivazione separata (KDF con contesto diverso), mai la passphrase stessa.
+* **Row Level Security** obbligatoria su ogni tabella: un utente legge e scrive solo le righe dei vault di cui è membro.
+* **Metadati minimi in chiaro:** id opachi, revisione, timestamp di sync, dimensione. Titoli, tipi di nota, tag e schemi stanno solo dentro i payload cifrati.
+* **R2 tramite URL pre-firmati** emessi da una funzione lato server (Supabase Edge Function o Cloudflare Worker) dopo il controllo dell'autorizzazione. Le credenziali R2 non arrivano mai al client. CORS limitato al dominio dell'app.
+* **Cloudflare Pages senza iniezioni:** vanno disattivate tutte le funzioni che modificano l'HTML servito (Rocket Loader, Web Analytics automatico, Email Obfuscation, Zaraz), perché romperebbero CSP e SRI. CSP e altri header si dichiarano in `apps/modusnote/web/_headers`.
+* **Fiducia nel codice servito:** Cloudflare, o chiunque abbia accesso al deploy, può servire un bundle diverso. Per questo valgono le mitigazioni della sezione "Client web" (hash delle build pubblicati, build riproducibili).
+* **Piano gratuito di Supabase:** un progetto Free inattivo per una settimana viene sospeso. Il client deve gestire un backend temporaneamente non raggiungibile (offline-first lo rende naturale); in produzione va valutato il piano a pagamento.
 
 ---
 
@@ -189,7 +205,7 @@ Le interfacce (Canzone, Sogno, To-do, Appunto) **non sono tabelle o view statich
 * Obiettivo: Gestione offline-first delle registrazioni audio cifrate.
 * Task TDD:
    1. `AudioRecordingSession`: Contratto per acquisizione stream, compressione (Opus) e buffer locale.
-   2. `EncryptedBlobStorage`: Chunking e cifratura simmetrica in streaming del file prima del salvataggio su disco locale.
+   2. `EncryptedBlobStorage`: Chunking e cifratura simmetrica in streaming del file prima del salvataggio su disco locale e del caricamento su Cloudflare R2.
    3. Associazione tra `BlobMetadata` e l'attributo `AudioBlobField` del `DynamicEntry`.
    4. `Adversary Harness`: Verifica che file audio parziali, interrotti o corrotti non crashino il decifratore e non lascino mai frammenti temporanei non cifrati nella directory di cache.
 
@@ -202,11 +218,12 @@ Le interfacce (Canzone, Sogno, To-do, Appunto) **non sono tabelle o view statich
    4. `Adversary Harness`: Un membro rimosso tenta di decifrare una revisione successiva della nota; il server malevolo tenta di iniettare una nuova chiave pubblica senza firma valida.
 
 ### Fase 5: Local Persistence & Offline Sync Engine
-* Obiettivo: Salvataggio su database cifrato locale (SQLCipher / PowerSync / SQLite) e coda di sincronizzazione.
+* Obiettivo: Salvataggio su database cifrato locale (SQLCipher su mobile, SQLite WASM su web) e coda di sincronizzazione verso Supabase.
 * Task TDD:
    1. Mapping tra aggregati di dominio ed entità persistenti cifrate.
    2. Risoluzione dei conflitti (CRDT-based o Last-Write-Wins con vector clocks) mantenendo i payload cifrati.
    3. Queue di sincronizzazione offline: le operazioni eseguite senza rete vengono accodate, cifrate e applicate in ordine al ripristino della connessione.
+   4. `Adversary Harness`: le righe scritte su Supabase e gli oggetti su R2 non contengono plaintext; un utente non membro non legge le righe di un vault (test delle policy RLS).
 
 ### Fase 6: Dynamic UI Renderer & Interaction
 * Obiettivo: Interfaccia dinamica che compone i componenti visivi in base allo schema caricato.
