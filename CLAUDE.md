@@ -17,6 +17,7 @@ packages/identity_cryptography/      Bounded context (dominio puro)
 packages/schema_dynamic_content/     Bounded context (dominio puro)
 packages/blob_storage_media/         Bounded context (dominio puro)
 packages/collaboration_access_control/ Bounded context (dominio puro)
+packages/offline_sync/               Bounded context (dominio puro): revisioni firmate, conflitti, coda offline
 packages/identity_cryptography_adapters/ Adapter libsodium (pacchetto `sodium`, variante sumo per Argon2id)
 packages/blob_storage_media_adapters/  Storage dei blob cifrati (filesystem tramite `package:file`), muxer Ogg Opus, encoder libopus (FFI + build hook)
 packages/blob_storage_media_recorder_adapters/ Microfono tramite il plugin `record` (pacchetto Flutter, test con `flutter test`)
@@ -134,6 +135,7 @@ Ogni iterazione di codice eseguita da Claude CLI DEVE aderire rigorosamente a qu
   2. `Schema & Dynamic Content`: Motore meta-modello per definire tipi, proprietà, vincoli e widget (nessun tipo hardcodato nel database).
   3. `Blob Storage & Media`: Lifecycle di registrazione, compressione locale, cifratura a blocchi e streaming di file audio.
   4. `Collaboration & Access Control`: Spazi condivisi, ratcheting crittografico, rotazione delle `GroupKey`.
+  5. `Offline Sync`: Revisioni firmate e cifrate dei record, risoluzione dei conflitti, coda offline e motore di sincronizzazione.
 * **Integrità del Dominio:** Nessun framework (Flutter/React/SQLite) può contaminare le entità e i value object del dominio. Il Dominio è puro.
 
 ### B. Rosette of Beautiful Code (Artigianato e Purezza)
@@ -235,7 +237,16 @@ non sono costruibili (`InvalidSchemaException`); `SchemaCodec.decode` lancia sol
 * **Epoche e rotazione:** la `GroupKey` ha un'epoca (`KeyEpoch`). Una revoca da parte di un owner avanza l'epoca e genera subito una nuova chiave, sigillata solo a chi resta. Chi esce da solo (`leave`) non ruota, perché conoscerebbe la nuova chiave: lo fa un owner con `rotate`, e finché la chiave non c'è nessuno scrive. I nuovi membri ricevono tutte le epoche, così leggono lo storico.
 * **`KeyBundle`:** firmato da un owner, indica la posizione del registro in cui l'emittente agisce (`atSequence`). Si accetta solo se l'emittente era owner in quella posizione e se le epoche concesse esistevano già lì: un owner revocato non può usare una vecchia posizione per distribuire la chiave di un'epoca successiva. Per un'epoca già posseduta vale la prima chiave ricevuta.
 * **Contenuti:** `WorkspaceContentCipher` cifra con la chiave dell'epoca corrente; `WorkspaceCiphertext` = epoca in chiaro + busta, con dati associati `(workspace, epoca, recordId)`.
-* **Limiti noti, da chiudere in Fase 5:** il server può ancora nascondere i record più recenti (rollback o fork del registro: servono confronti tra dispositivi); un membro rimosso conosce le chiavi delle epoche passate, quindi la sync deve rifiutare revisioni nuove cifrate con epoche superate e autenticarne l'autore; la `IdentityKeyPair` va salvata cifrata con la MasterKey; i ruoli sui contenuti sono applicati da client e RLS, non dalla crittografia.
+* **Limiti noti:** chiusi in Fase 5 (vedi "Sincronizzazione") il rollback del registro, le scritture con epoche superate e il salvataggio dell'identità. Restano: i ruoli sui contenuti sono applicati da client e RLS, non dalla crittografia; un fork del registro che nessun altro membro cita resta invisibile finché un dispositivo non lo confronta.
+
+### Sincronizzazione (decisione del 2026-10-11)
+* **Revisione:** ogni modifica è una `RecordRevision` (record, workspace, `VersionVector`, autore, `writtenAt` UTC, `LedgerHead`, contenuto o cancellazione), firmata dall'autore (`SignedRevision`) e poi sigillata con la GroupKey. Il server vede solo `RecordId`, workspace, epoca e ciphertext.
+* **Server append-only:** righe, record del registro e `KeyBundle` si aggiungono e non si sovrascrivono mai. Ogni client vede tutte le revisioni e risolve da solo i conflitti: `ConflictResolver` applica il vector clock; per revisioni concorrenti vince `writtenAt` più recente, poi la chiave dell'autore. Tutti i dispositivi convergono sullo stesso vincitore. Le cancellazioni sono revisioni (tombstone), quindi una copia vecchia non le annulla.
+* **Autenticazione (`RevisionAuthenticator`):** firma dell'autore; l'autore poteva scrivere nella posizione del registro che cita e può ancora scrivere oggi; l'epoca del ciphertext è quella in vigore in quella posizione. Un membro revocato, pur avendo le chiavi vecchie, non fa accettare nulla di nuovo. Una sua modifica offline fatta prima della revoca, ma sincronizzata dopo, va persa.
+* **Rollback e fork del registro:** ogni revisione cita l'ultimo record del registro visto dall'autore (`LedgerHead`: posizione + firma). Se il server non sa mostrare quel record, o ne mostra uno diverso, la sync si ferma con `LedgerRollbackException`.
+* **Offline first:** `SyncEngine.write` salva subito in locale e mette la riga già sigillata nella `Outbox`; `sync` spinge la coda nell'ordine di scrittura, aggiorna registro e chiavi, poi scarica le righe nuove. Senza rete restituisce `offline` e la coda resta intatta.
+* **Database locale:** contiene solo buste. I record sono sigillati con una chiave locale del dispositivo (derivata dalla MasterKey), con dati associati (workspace, record); la coda contiene solo righe già cifrate con la GroupKey.
+* **Identità:** `IdentityService.sealIdentity` salva i due seed (Ed25519 e X-Wing) cifrati con la MasterKey; le chiavi pubbliche si ricavano dai seed.
 
 ---
 
