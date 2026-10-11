@@ -73,6 +73,14 @@ Nel browser alcune garanzie cambiano, e il codice deve tenerne conto in modo esp
 * **Sblocco:** niente biometria nativa. La MasterKey si ottiene con la passphrase a ogni sessione oppure tramite WebAuthn con estensione PRF, dove disponibile.
 * **Crypto:** libsodium arriva via WebAssembly (backend JS del pacchetto `sodium`, variante sumo per Argon2id). Non si usa WebCrypto, che non offre XChaCha20-Poly1305 né Argon2id.
 
+### Codice per piattaforma (mobile e web)
+Il dominio non sa su quale piattaforma gira. Le differenze tra Dart nativo (VM/AOT, `dart:io`, `dart:ffi`) e web (JS/WASM, `dart:js_interop`) restano negli adapter:
+* **Ports & Adapters + conditional imports.** Quando un adapter ha bisogno di API diverse per piattaforma, il pacchetto `<context>_adapters` espone una factory che sceglie l'implementazione con `import 'x_stub.dart' if (dart.library.io) 'x_native.dart' if (dart.library.js_interop) 'x_web.dart';`. Lo stub lancia `UnsupportedError`. Nei pacchetti di dominio i conditional imports sono vietati, e l'architecture guard lo verifica.
+* **libsodium.** L'app usa `sodium_libs` (plugin Flutter: FFI su Android/iOS, `sodium.js`/WASM su web, installato con `dart run sodium_libs:update_web`). Gli adapter dipendono solo dal pacchetto `sodium` puro e ricevono l'istanza `SodiumSumo` già inizializzata nel costruttore. L'inizializzazione asincrona (necessaria sul web per caricare il WASM) avviene una sola volta all'avvio dell'app, quindi non esiste un adapter "non ancora inizializzato".
+* **Le API crypto restano quelle del dominio.** Si usano solo i port `EnvelopeEncryptor` e `KeyDerivationService`: XChaCha20-Poly1305 AEAD con `AssociatedData` obbligatoria, nonce generato dall'adapter e chiavi come handle opachi (`SymmetricKey`). Non si usano `secretBox` (nessun dato associato, quindi nessun legame al record), né chiavi o nonce passati come `Uint8List`.
+* **Audio come flusso di byte, mai come percorso di file.** Il port di registrazione restituisce `Stream<Uint8List>`, con chunk cifrati appena prodotti, così su nessuna piattaforma esistono file audio in chiaro. Implementazione con il pacchetto `record` (`startStream`). Nota: lo streaming di `record` produce PCM, quindi la compressione Opus va fatta dall'adapter (libopus via FFI su mobile, WebCodecs `AudioEncoder` su web). Safari non registra Opus/WebM con `MediaRecorder`; il formato effettivo va negoziato per piattaforma e salvato nei metadati cifrati del blob.
+* **Permessi microfono:** Android `RECORD_AUDIO` in `AndroidManifest.xml`; iOS `NSMicrophoneUsageDescription` in `Info.plist` (localizzata); web nessun manifest, ma solo su HTTPS (o `localhost`), con richiesta del browser a runtime. Si aggiungono in Fase 3, insieme alla registrazione.
+
 ### Infrastruttura (decisione del 2026-10-11)
 | Componente | Servizio | Cosa vede il servizio |
 |---|---|---|
@@ -204,7 +212,7 @@ Le interfacce (Canzone, Sogno, To-do, Appunto) **non sono tabelle o view statich
 ### Fase 3: Encrypted Blob Engine (Audio & Media)
 * Obiettivo: Gestione offline-first delle registrazioni audio cifrate.
 * Task TDD:
-   1. `AudioRecordingSession`: Contratto per acquisizione stream, compressione (Opus) e buffer locale.
+   1. `AudioRecordingSession`: Contratto per acquisizione come `Stream<Uint8List>` (nessun percorso di file), compressione (Opus dove disponibile) e cifratura per chunk.
    2. `EncryptedBlobStorage`: Chunking e cifratura simmetrica in streaming del file prima del salvataggio su disco locale e del caricamento su Cloudflare R2.
    3. Associazione tra `BlobMetadata` e l'attributo `AudioBlobField` del `DynamicEntry`.
    4. `Adversary Harness`: Verifica che file audio parziali, interrotti o corrotti non crashino il decifratore e non lascino mai frammenti temporanei non cifrati nella directory di cache.
