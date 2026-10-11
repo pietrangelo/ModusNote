@@ -1,6 +1,6 @@
 {
   "@@locale": "en",
-  "appTitle": "ModusNote",
+  "appTitle": "Modus Notes",
   "@appTitle": {
     "description": "Application name shown in the task switcher and title bar."
   },

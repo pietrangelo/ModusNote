@@ -1,11 +1,11 @@
 {
-    "name": "ModusNote",
-    "short_name": "ModusNote",
+    "name": "Modus Notes",
+    "short_name": "Modus Notes",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#090C15",
     "theme_color": "#090C15",
-    "description": "ModusNote: note cifrate end-to-end.",
+    "description": "Modus Notes: note cifrate end-to-end.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [
