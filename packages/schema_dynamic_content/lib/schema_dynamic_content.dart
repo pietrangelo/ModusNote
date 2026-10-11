@@ -6,6 +6,7 @@
 library;
 
 export 'src/core/dynamic_entry.dart';
+export 'src/core/entry_codec.dart';
 export 'src/core/entry_search.dart';
 export 'src/core/field_type.dart';
 export 'src/core/field_value.dart';
