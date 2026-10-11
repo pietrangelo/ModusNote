@@ -1,0 +1,16 @@
+name: modusnote_workspace
+publish_to: none
+
+environment:
+  sdk: ^3.13.0
+
+workspace:
+  - apps/modusnote
+  - packages/identity_cryptography
+  - packages/schema_dynamic_content
+  - packages/blob_storage_media
+  - packages/collaboration_access_control
+  - tool/architecture_guard
+
+dev_dependencies:
+  lints: ^6.0.0
