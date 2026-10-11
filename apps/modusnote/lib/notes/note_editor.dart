@@ -1,8 +1,10 @@
 import 'dart:math';
 
+import 'package:blob_storage_media/blob_storage_media.dart';
 import 'package:flutter/material.dart';
 import 'package:schema_dynamic_content/schema_dynamic_content.dart';
 
+import '../audio/recording_sheet.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../theme/golden_ratio.dart';
 import 'dynamic_form_renderer.dart';
@@ -37,6 +39,10 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
   late SchemaDefinition _schema = widget.initialSchema;
   late FormDraft _draft = FormDraft(widget.entry?.attributes ?? const {}, {});
   List<Violation> _violations = const [];
+
+  /// Takes recorded in this edit, kept only if the note is saved.
+  final _takes = <BlobId, KeyedRecording>{};
+  var _saved = false;
 
   bool get _isNew => widget.entry == null;
 
@@ -82,7 +88,8 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
     };
     switch (result) {
       case Valid(:final value) when unreadable.isEmpty:
-        await widget.store.save(value);
+        await widget.store.save(value, takes: _takes.values);
+        _saved = true;
         messenger.showSnackBar(SnackBar(content: Text(l10n.noteSaved)));
         if (mounted) Navigator.of(context).maybePop();
       case Valid():
@@ -90,6 +97,26 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
       case Invalid(:final violations):
         _reject([...violations, ...unreadable], l10n, messenger);
     }
+  }
+
+  Future<BlobId?> _record(FieldDefinition field) async {
+    final recorder = widget.store.recorder;
+    if (recorder == null) return null;
+    final take = await RecordingSheet.show(context, recorder);
+    if (take == null) return null;
+    _takes[take.id] = take;
+    return take.id;
+  }
+
+  Duration? _lengthOf(BlobId blob) =>
+      (_takes[blob] ?? widget.store.recordingOf(blob))?.metadata.duration;
+
+  @override
+  void dispose() {
+    if (!_saved && _takes.isNotEmpty) {
+      widget.store.discardTakes(_takes.values.toList());
+    }
+    super.dispose();
   }
 
   void _reject(
@@ -160,6 +187,8 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
                 values: _draft.values,
                 violations: _violations,
                 onChanged: (draft) => _draft = draft,
+                onRecordAudio: widget.store.recorder == null ? null : _record,
+                recordingLength: _lengthOf,
               ),
             ],
           ),

@@ -7,6 +7,7 @@ import 'package:identity_cryptography/identity_cryptography.dart';
 import 'package:offline_sync/offline_sync.dart';
 import 'package:schema_dynamic_content/schema_dynamic_content.dart';
 
+import '../audio/note_recorder.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../notes/note_library.dart';
 import '../theme/golden_ratio.dart';
@@ -23,12 +24,17 @@ class VaultGate extends StatefulWidget {
     required this.keeper,
     required this.passwordFrom,
     required this.schemas,
+    this.recorderFor,
     super.key,
   });
 
   final VaultKeeper keeper;
   final PasswordFactory passwordFrom;
   final List<SchemaDefinition> schemas;
+
+  /// Builds the recorder for an unlocked vault; without it notes cannot
+  /// hold recordings.
+  final NoteRecorder Function(SyncEngine engine)? recorderFor;
 
   @override
   State<VaultGate> createState() => _VaultGateState();
@@ -112,6 +118,7 @@ class _VaultGateState extends State<VaultGate> {
       final store = await VaultNoteStore.open(
         vault.engine,
         schemas: widget.schemas,
+        recorder: widget.recorderFor?.call(vault.engine),
       );
       if (!mounted) {
         vault.lock();
