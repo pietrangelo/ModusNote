@@ -2,6 +2,7 @@ import 'package:blob_storage_media/blob_storage_media.dart';
 import 'package:flutter/foundation.dart';
 import 'package:schema_dynamic_content/schema_dynamic_content.dart';
 
+import '../audio/note_playback.dart';
 import '../audio/note_recorder.dart';
 
 /// Where the UI reads and writes notes. The screens see only decrypted
@@ -15,6 +16,10 @@ abstract interface class NoteStore implements Listenable {
   /// Records takes for audio fields; null where there is nowhere to keep
   /// them (the web preview), which turns the record button off.
   NoteRecorder? get recorder;
+
+  /// Opens recordings for listening; null where there is nothing to play
+  /// them with, which hides the player.
+  NotePlayback? get playback;
 
   /// Saves [entry] with the [takes] recorded while editing it. Takes it
   /// does not reference, and recordings it no longer references, are
@@ -47,6 +52,9 @@ final class InMemoryNoteStore extends ChangeNotifier implements NoteStore {
 
   @override
   NoteRecorder? get recorder => null;
+
+  @override
+  NotePlayback? get playback => null;
 
   @override
   Future<void> save(

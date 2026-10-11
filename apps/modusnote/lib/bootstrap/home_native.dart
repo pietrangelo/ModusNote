@@ -15,7 +15,9 @@ import 'package:schema_dynamic_content/schema_dynamic_content.dart';
 import 'package:sodium/sodium_sumo.dart';
 import 'package:sqlite3/sqlite3.dart';
 
+import '../audio/note_playback.dart';
 import '../audio/note_recorder.dart';
+import '../audio/soloud_player.dart';
 import '../vault/offline_server.dart';
 import '../vault/vault_gate.dart';
 
@@ -37,6 +39,7 @@ Future<Widget> buildHome() async {
     encryptor: SodiumEnvelopeEncryptor(sodium),
     subkeys: SodiumSubkeyDerivationService(sodium),
   );
+  final player = SoloudRecordingPlayer();
   return VaultGate(
     keeper: VaultKeeper(
       vaults: SqliteVaultStore(database),
@@ -58,6 +61,15 @@ Future<Widget> buildHome() async {
       capture: createPlatformAudioCapture,
       blobs: blobs,
       engine: engine,
+    ),
+    playbackFor: (engine) => NotePlayback(
+      decoding: RecordingPlayback(
+        storage: blobs,
+        // Web takes are WAV; everything recorded here is Ogg Opus.
+        decoders: const [OpusAudioDecoder(), WavAudioDecoder()],
+      ),
+      engine: engine,
+      player: player,
     ),
   );
 }

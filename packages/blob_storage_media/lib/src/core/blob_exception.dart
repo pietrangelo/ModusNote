@@ -63,3 +63,21 @@ final class MicrophonePermissionDeniedException extends BlobException {
   @override
   String get message => 'microphone permission denied';
 }
+
+/// No decoder on this platform reads the recording's format (e.g. AAC
+/// recorded by Safari, played back on a device without an AAC decoder).
+final class UnsupportedAudioFormatException extends BlobException {
+  const UnsupportedAudioFormatException();
+
+  @override
+  String get message => 'no decoder for this audio format';
+}
+
+/// A recording longer than playback holds in memory
+/// (`DecodedAudio.maxDuration`).
+final class RecordingTooLongException extends BlobException {
+  const RecordingTooLongException();
+
+  @override
+  String get message => 'recording too long to play';
+}
