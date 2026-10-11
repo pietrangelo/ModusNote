@@ -1,0 +1,54 @@
+/// Failures of the Identity & Cryptography context.
+///
+/// Messages are fixed strings on purpose: an exception may end up in a log or
+/// crash report, so it must never echo keys, plaintext, or ciphertext.
+sealed class CryptographyException implements Exception {
+  const CryptographyException();
+
+  String get message;
+
+  @override
+  String toString() => '$runtimeType: $message';
+}
+
+/// AEAD verification failed: the ciphertext, nonce, associated data or key
+/// does not match. No partial plaintext is ever released.
+final class AuthenticationTagMismatchException extends CryptographyException {
+  const AuthenticationTagMismatchException();
+
+  @override
+  String get message => 'authentication tag mismatch';
+}
+
+final class MalformedEnvelopeException extends CryptographyException {
+  const MalformedEnvelopeException(this.message);
+
+  @override
+  final String message;
+}
+
+final class InvalidLengthException extends CryptographyException {
+  const InvalidLengthException(this.valueObject, this.expected, this.actual);
+
+  final String valueObject;
+  final int expected;
+  final int actual;
+
+  @override
+  String get message => '$valueObject must be $expected bytes, got $actual';
+}
+
+final class WeakKdfParametersException extends CryptographyException {
+  const WeakKdfParametersException();
+
+  @override
+  String get message => 'KDF parameters are below the interactive floor';
+}
+
+/// A secret was used after `dispose()` released its native memory.
+final class DisposedKeyException extends CryptographyException {
+  const DisposedKeyException();
+
+  @override
+  String get message => 'secret used after dispose';
+}

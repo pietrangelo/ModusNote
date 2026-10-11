@@ -1,0 +1,17 @@
+name: identity_cryptography_adapters
+description: "libsodium adapters for the Identity & Cryptography bounded context."
+publish_to: none
+resolution: workspace
+
+environment:
+  sdk: ^3.13.0
+
+dependencies:
+  identity_cryptography: any
+  meta: ^1.16.0
+  sodium: ^4.1.1
+
+dev_dependencies:
+  glados: ^1.1.7
+  lints: ^6.0.0
+  test: ^1.26.0
