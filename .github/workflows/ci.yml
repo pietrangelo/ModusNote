@@ -53,6 +53,9 @@ jobs:
             fi
           done
 
+      - name: Supabase schema and RLS tests
+        run: bash supabase/tests/run.sh
+
       - name: App tests
         working-directory: apps/modusnote
         run: flutter test
