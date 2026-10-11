@@ -19,7 +19,8 @@ double contrast(Color a, Color b) {
 bool onPhiScale(double value, double base) {
   final exponent = log(value / base) / log(GoldenRatio.phi);
   final nearest = base * pow(GoldenRatio.phi, exponent.roundToDouble());
-  return (value - nearest).abs() <= 1;
+  // Whole dp drift from 8·φⁿ: at most 1 dp, or 1 % on large extents.
+  return (value - nearest).abs() <= max(1, nearest * 0.01);
 }
 
 void main() {
@@ -40,6 +41,19 @@ void main() {
       for (final size in TypeScale.all) {
         expect(onPhiScale(size, 16), isTrue, reason: '$size');
       }
+    });
+
+    test('content extents continue the same scale', () {
+      expect(Extents.all, [89, 144, 233, 377, 610, 987]);
+      for (final value in Extents.all) {
+        expect(onPhiScale(value, 8), isTrue, reason: '$value');
+      }
+      expect(Extents.all.first, greaterThan(Spacing.all.last));
+    });
+
+    test('icons take their size from the spacing scale', () {
+      expect(Spacing.all, contains(IconSizes.inline));
+      expect(Spacing.all, contains(IconSizes.prominent));
     });
 
     test('layout splits are 61.8 % and 38.2 %', () {

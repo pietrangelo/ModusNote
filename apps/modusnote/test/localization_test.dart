@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:modusnote/main.dart';
+import 'package:modusnote/notes/note_store.dart';
 
 void main() {
   testWidgets('ships at least Italian and English', (tester) async {
-    await tester.pumpWidget(const ModusNoteApp());
+    await tester.pumpWidget(ModusNoteApp(store: InMemoryNoteStore()));
 
     final app = tester.widget<MaterialApp>(find.byType(MaterialApp));
     final languages = app.supportedLocales.map((l) => l.languageCode);
@@ -15,10 +16,10 @@ void main() {
     tester.platformDispatcher.localesTestValue = const [Locale('it')];
     addTearDown(tester.platformDispatcher.clearLocalesTestValue);
 
-    await tester.pumpWidget(const ModusNoteApp());
+    await tester.pumpWidget(ModusNoteApp(store: InMemoryNoteStore()));
     await tester.pumpAndSettle();
 
-    expect(find.text('Il tuo vault è bloccato.'), findsOneWidget);
+    expect(find.text('Cerca nelle note'), findsOneWidget);
   });
 
   testWidgets('falls back to English for an unsupported locale', (
@@ -27,14 +28,14 @@ void main() {
     tester.platformDispatcher.localesTestValue = const [Locale('ja')];
     addTearDown(tester.platformDispatcher.clearLocalesTestValue);
 
-    await tester.pumpWidget(const ModusNoteApp());
+    await tester.pumpWidget(ModusNoteApp(store: InMemoryNoteStore()));
     await tester.pumpAndSettle();
 
-    expect(find.text('Your vault is locked.'), findsOneWidget);
+    expect(find.text('Search notes'), findsOneWidget);
   });
 
   testWidgets('the visible app name is the brand, Modus Notes', (tester) async {
-    await tester.pumpWidget(const ModusNoteApp());
+    await tester.pumpWidget(ModusNoteApp(store: InMemoryNoteStore()));
     await tester.pumpAndSettle();
 
     final app = tester.widget<MaterialApp>(find.byType(MaterialApp));
