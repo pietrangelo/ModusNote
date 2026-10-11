@@ -126,6 +126,8 @@ void main() {
     await open(tester, entry: original, schema: SeedSchemas.quickNoteV1);
 
     expect(find.byType(ChoiceChip), findsNothing);
+    await tester.tap(find.text('Scrivi'));
+    await tester.pumpAndSettle();
     await tester.enterText(textInput('content'), 'Dopo');
     await save(tester);
 

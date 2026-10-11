@@ -61,6 +61,20 @@ void main() {
     expect(find.text('Accordare la chitarra'), findsOneWidget);
   });
 
+  testWidgets('a Markdown title shows its words, not its markup', (
+    tester,
+  ) async {
+    await store.save(
+      entry('m', SeedSchemas.quickNoteV1, {
+        'content': const TextValue('# Spesa **oggi**\n\n- [ ] latte'),
+      }, 4),
+    );
+
+    await open(tester);
+
+    expect(find.text('Spesa oggi\nlatte'), findsOneWidget);
+  });
+
   testWidgets('search matches text and tags without accents', (tester) async {
     await open(tester);
 

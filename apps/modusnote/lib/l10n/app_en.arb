@@ -436,5 +436,21 @@
   "recordingDamaged": "The recording is damaged or was altered, so it won't be played.",
   "@recordingDamaged": {
     "description": "Audio player in a note's audio field."
+  },
+  "markdownWrite": "Write",
+  "@markdownWrite": {
+    "description": "Tab of a Markdown field that shows the text to edit."
+  },
+  "markdownPreview": "Preview",
+  "@markdownPreview": {
+    "description": "Tab of a Markdown field that shows the formatted text."
+  },
+  "markdownEmpty": "Nothing to show yet.",
+  "@markdownEmpty": {
+    "description": "Preview of an empty Markdown field."
+  },
+  "markdownImage": "Image not loaded",
+  "@markdownImage": {
+    "description": "Accessibility label of an image in a note, which is never downloaded."
   }
 }
