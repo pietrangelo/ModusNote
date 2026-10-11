@@ -261,3 +261,39 @@ final class AudioBlobFieldType extends FieldType {
   @override
   int get hashCode => (AudioBlobFieldType).hashCode;
 }
+
+/// A list of one-line tasks, each done or not.
+final class ChecklistFieldType extends FieldType {
+  ChecklistFieldType({this.maxItems = 200}) {
+    _requireRange(maxItems > 0 && maxItems <= maxAllowedItems);
+  }
+
+  static const maxAllowedItems = 1000;
+  static const maxItemLength = 500;
+
+  final int maxItems;
+
+  @override
+  List<ViolationCode> check(FieldValue value) {
+    if (value is! ChecklistValue) return const [ViolationCode.typeMismatch];
+    final items = value.items;
+    return [
+      // An empty list is no list: the UI removes the field instead.
+      if (items.isEmpty) ViolationCode.missingRequired,
+      if (items.length > maxItems) ViolationCode.tooManyItems,
+      if (items.any((item) => item.text.trim().isEmpty))
+        ViolationCode.emptyItem,
+      if (items.any((item) => _length(item.text) > maxItemLength))
+        ViolationCode.tooLong,
+      if (items.any((item) => containsUnsafeCharacters(item.text)))
+        ViolationCode.invalidCharacters,
+    ];
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is ChecklistFieldType && other.maxItems == maxItems;
+
+  @override
+  int get hashCode => Object.hash(ChecklistFieldType, maxItems);
+}

@@ -10,6 +10,7 @@ import '../l10n/generated/app_localizations.dart';
 import '../theme/golden_ratio.dart';
 import '../vault/auto_lock.dart';
 import 'dynamic_form_renderer.dart';
+import 'note_appearance.dart';
 import 'note_store.dart';
 import 'schema_text.dart';
 
@@ -188,6 +189,11 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
                   children: [
                     for (final schema in widget.schemas)
                       ChoiceChip(
+                        avatar: Icon(
+                          NoteAppearance.icon(schema.icon),
+                          size: IconSizes.inline,
+                          color: NoteAppearance.tint(schema.tint),
+                        ),
                         label: Text(text.label(schema.label)),
                         selected: schema.id == _schema.id,
                         onSelected: (_) => _switchTo(schema),

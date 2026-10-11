@@ -176,6 +176,12 @@ class _DynamicFormRendererState extends State<DynamicFormRenderer> {
         tags: value is TagListValue ? value.tags : const {},
         onChanged: (tags) => set(tags.isEmpty ? null : TagListValue(tags)),
       ),
+      ChecklistFieldType() => _ChecklistInput(
+        label: label,
+        error: error,
+        value: value is ChecklistValue ? value : null,
+        onChanged: set,
+      ),
       AudioBlobFieldType() => _AudioInput(
         label: label,
         error: error,
@@ -366,6 +372,182 @@ class _MarkdownInputState extends State<_MarkdownInput> {
             keyboardType: TextInputType.multiline,
             onChanged: (text) =>
                 widget.onChanged(text.isEmpty ? null : TextValue(text)),
+          ),
+      ],
+    );
+  }
+}
+
+/// A list of tasks, one line each. Enter after a task adds a new one
+/// below it; Enter on an empty task removes it and ends the list. Rows
+/// without text are never part of the value.
+class _ChecklistInput extends StatefulWidget {
+  const _ChecklistInput({
+    required this.label,
+    required this.error,
+    required this.value,
+    required this.onChanged,
+  });
+
+  final String label;
+  final String? error;
+  final ChecklistValue? value;
+  final ValueChanged<FieldValue?> onChanged;
+
+  @override
+  State<_ChecklistInput> createState() => _ChecklistInputState();
+}
+
+final class _TaskRow {
+  _TaskRow(String text, {this.done = false})
+    : controller = TextEditingController(text: text);
+
+  final key = UniqueKey();
+  final TextEditingController controller;
+  final focus = FocusNode();
+  bool done;
+
+  void dispose() {
+    controller.dispose();
+    focus.dispose();
+  }
+}
+
+class _ChecklistInputState extends State<_ChecklistInput> {
+  late final List<_TaskRow> _rows = [
+    for (final item in widget.value?.items ?? const <ChecklistItem>[])
+      _TaskRow(item.text, done: item.done),
+    // A new list starts with one row to type into.
+    if (widget.value == null) _TaskRow(''),
+  ];
+
+  @override
+  void dispose() {
+    for (final row in _rows) {
+      row.dispose();
+    }
+    super.dispose();
+  }
+
+  void _report() {
+    final items = [
+      for (final row in _rows)
+        if (row.controller.text.trim().isNotEmpty)
+          ChecklistItem(row.controller.text.trim(), done: row.done),
+    ];
+    widget.onChanged(items.isEmpty ? null : ChecklistValue(items));
+  }
+
+  void _insertAfter(int index) {
+    final row = _TaskRow('');
+    setState(() => _rows.insert(index + 1, row));
+    row.focus.requestFocus();
+  }
+
+  void _submitted(int index) {
+    if (_rows[index].controller.text.trim().isNotEmpty) {
+      _insertAfter(index);
+      return;
+    }
+    // An empty task closes the list.
+    _rows[index].focus.unfocus();
+    if (_rows.length > 1) _remove(index);
+  }
+
+  void _remove(int index) {
+    final row = _rows[index];
+    setState(() => _rows.removeAt(index));
+    // Its widgets let go of the controller before it is disposed.
+    WidgetsBinding.instance.addPostFrameCallback((_) => row.dispose());
+    _report();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final theme = Theme.of(context);
+    final done = _rows.where(
+      (row) => row.done && row.controller.text.trim().isNotEmpty,
+    );
+    final total = _rows.where((row) => row.controller.text.trim().isNotEmpty);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(widget.label, style: theme.textTheme.labelMedium),
+            ),
+            if (total.isNotEmpty)
+              Text(
+                l10n.taskProgress(done.length, total.length),
+                key: const ValueKey('task-progress'),
+                style: theme.textTheme.labelSmall,
+              ),
+          ],
+        ),
+        for (final (index, row) in _rows.indexed)
+          Row(
+            key: row.key,
+            children: [
+              Checkbox(
+                value: row.done,
+                activeColor: ModusColors.cadenceCyan,
+                checkColor: ModusColors.deepVoid,
+                onChanged: (value) {
+                  setState(() => row.done = value ?? false);
+                  _report();
+                },
+              ),
+              Expanded(
+                child: TextField(
+                  controller: row.controller,
+                  focusNode: row.focus,
+                  decoration: InputDecoration(
+                    hintText: l10n.taskHint,
+                    border: InputBorder.none,
+                  ),
+                  style: row.done
+                      ? theme.textTheme.bodyLarge?.copyWith(
+                          color: ModusColors.dustSilver,
+                          decoration: TextDecoration.lineThrough,
+                        )
+                      : null,
+                  textInputAction: TextInputAction.next,
+                  // Enter is handled below, never as a jump to the next field.
+                  onEditingComplete: () {},
+                  onSubmitted: (_) => _submitted(index),
+                  onChanged: (_) {
+                    setState(() {});
+                    _report();
+                  },
+                ),
+              ),
+              if (_rows.length > 1)
+                IconButton(
+                  icon: const Icon(Icons.close, size: IconSizes.inline),
+                  color: ModusColors.dustSilver,
+                  tooltip: l10n.removeTask,
+                  onPressed: () => _remove(index),
+                ),
+            ],
+          ),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton.icon(
+            onPressed: () => _rows.last.controller.text.trim().isEmpty
+                ? _rows.last.focus.requestFocus()
+                : _insertAfter(_rows.length - 1),
+            icon: const Icon(Icons.add, size: IconSizes.inline),
+            label: Text(l10n.addTask),
+          ),
+        ),
+        if (widget.error case final error?)
+          Text(
+            error,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.error,
+            ),
           ),
       ],
     );

@@ -207,7 +207,7 @@
   "@schemaDreamLogFieldWakeAudio": {
     "description": "Localization of the seed schema key schema.dream_log.field.wake_audio."
   },
-  "schemaTaskLabel": "Task",
+  "schemaTaskLabel": "To-do",
   "@schemaTaskLabel": {
     "description": "Localization of the seed schema key schema.task.label."
   },
@@ -452,5 +452,45 @@
   "markdownImage": "Image not loaded",
   "@markdownImage": {
     "description": "Accessibility label of an image in a note, which is never downloaded."
+  },
+  "violationTooManyItems": "Too many tasks",
+  "@violationTooManyItems": {
+    "description": "A list holds more tasks than its type allows."
+  },
+  "violationEmptyItem": "A task is empty",
+  "@violationEmptyItem": {
+    "description": "A task without text."
+  },
+  "schemaTaskFieldTitle": "Title",
+  "@schemaTaskFieldTitle": {
+    "description": "Optional title of a to-do list."
+  },
+  "schemaTaskFieldItems": "Tasks",
+  "@schemaTaskFieldItems": {
+    "description": "The tasks of a to-do list."
+  },
+  "addTask": "Add a task",
+  "@addTask": {
+    "description": "Button under a to-do list that adds a task."
+  },
+  "removeTask": "Remove the task",
+  "@removeTask": {
+    "description": "Tooltip of the button that removes one task."
+  },
+  "taskHint": "New task",
+  "@taskHint": {
+    "description": "Placeholder of an empty task row."
+  },
+  "taskProgress": "{done}/{total}",
+  "@taskProgress": {
+    "description": "Tasks done out of all tasks, on a note card.",
+    "placeholders": {
+      "done": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
   }
 }
