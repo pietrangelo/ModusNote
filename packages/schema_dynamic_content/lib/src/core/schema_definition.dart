@@ -105,6 +105,17 @@ final class SchemaDefinition {
 
   FieldDefinition? fieldFor(FieldKey key) => _byKey[key];
 
+  /// The field that names or holds the note: the first text-like one.
+  FieldDefinition? get primaryTextField {
+    for (final field in fields) {
+      if (field.type
+          case TextFieldType() || RichTextFieldType() || MarkdownFieldType()) {
+        return field;
+      }
+    }
+    return null;
+  }
+
   @override
   bool operator ==(Object other) =>
       other is SchemaDefinition &&

@@ -87,7 +87,7 @@ Il marchio, e il nome visibile dell'app (titolo, nome sotto l'icona, pagina web)
 
 * **Font:** Plus Jakarta Sans per i titoli, Inter per il corpo. Entrambi sono SIL OFL e sono inclusi in `apps/modusnote/assets/fonts/` (nessun font scaricato a runtime). Satoshi è stato scartato perché la sua licenza non permette di includerlo liberamente nel bundle.
 * **Contrasto:** ogni coppia testo/sfondo deve raggiungere WCAG AA (4,5:1); `test/theme_test.dart` lo verifica.
-* **Icona app:** squircle su `#090C15` con il solo monogramma "M" ingrandito del 20 %, senza linee di costruzione, con un leggero glow radiale viola/oro dietro la spirale. Per generarla serve il monogramma in formato vettoriale (SVG).
+* **Icona app:** il monogramma vettoriale è `assets/brand/modus_monogram.svg` (M come nota musicale, spirale aurea, spunta; gradiente oro → viola → ciano). `assets/brand/modus_app_icon.svg` lo mette su `#090C15` con un glow radiale viola/oro, a tutto campo, con il monogramma dentro la zona sicura dell'80 % (iOS e le icone maskable applicano la propria maschera). I PNG di Android, iOS e web si rigenerano con `python3 tool/render_icons.py` da `apps/modusnote` (Chromium headless + ImageMagick) e sono committati, quindi la build non dipende da questi strumenti.
 * I token vivono in `apps/modusnote/lib/theme/` (`golden_ratio.dart`, `modus_colors.dart`, `modus_theme.dart`).
 
 ### Client web
