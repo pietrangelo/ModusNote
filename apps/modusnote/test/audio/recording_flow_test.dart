@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:modusnote/audio/note_recorder.dart';
 import 'package:modusnote/notes/note_editor.dart';
+import 'package:modusnote/vault/auto_lock.dart';
 import 'package:modusnote/vault/vault_note_store.dart';
 import 'package:offline_sync/offline_sync.dart';
 import 'package:schema_dynamic_content/schema_dynamic_content.dart';
@@ -58,7 +59,7 @@ void main() {
     addTearDown(vault.lock);
   });
 
-  Future<void> openEditor(WidgetTester tester) => pumpApp(
+  Future<void> openEditor(WidgetTester tester, {AutoLock? autoLock}) => pumpApp(
     tester,
     Builder(
       builder: (context) => Scaffold(
@@ -66,11 +67,16 @@ void main() {
           child: TextButton(
             onPressed: () => Navigator.of(context).push(
               MaterialPageRoute<void>(
-                builder: (_) => NoteEditorScreen(
-                  schemas: SeedSchemas.all,
-                  store: store,
-                  initialSchema: SeedSchemas.songSketchV1,
-                ),
+                builder: (_) {
+                  final editor = NoteEditorScreen(
+                    schemas: SeedSchemas.all,
+                    store: store,
+                    initialSchema: SeedSchemas.songSketchV1,
+                  );
+                  return autoLock == null
+                      ? editor
+                      : AutoLockScope(autoLock: autoLock, child: editor);
+                },
               ),
             ),
             child: const Text('open'),
@@ -80,8 +86,8 @@ void main() {
     ),
   );
 
-  Future<void> startEditing(WidgetTester tester) async {
-    await openEditor(tester);
+  Future<void> startEditing(WidgetTester tester, {AutoLock? autoLock}) async {
+    await openEditor(tester, autoLock: autoLock);
     await tester.tap(find.text('open'));
     await tester.pumpAndSettle();
     await tester.enterText(textInput('title'), 'Riff');
@@ -138,6 +144,29 @@ void main() {
   });
 
   group('adversary', () {
+    testWidgets('the vault does not lock in the middle of a take', (
+      tester,
+    ) async {
+      await openStore();
+      var locks = 0;
+      final autoLock = AutoLock(
+        onLock: () => locks++,
+        idle: const Duration(minutes: 1),
+      );
+      await startEditing(tester, autoLock: autoLock);
+
+      await tapRecord(tester);
+      await tester.pump(const Duration(minutes: 10));
+      expect(locks, 0);
+
+      await tester.tap(find.text('Scarta'));
+      await tester.pumpAndSettle();
+      await settleFiles(tester);
+      await tester.pump(const Duration(minutes: 1));
+      expect(locks, 1);
+      autoLock.dispose();
+    });
+
     testWidgets('leaving the editor without saving deletes the take', (
       tester,
     ) async {
