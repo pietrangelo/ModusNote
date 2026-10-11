@@ -17,7 +17,8 @@ packages/identity_cryptography/      Bounded context (dominio puro)
 packages/schema_dynamic_content/     Bounded context (dominio puro)
 packages/blob_storage_media/         Bounded context (dominio puro)
 packages/collaboration_access_control/ Bounded context (dominio puro)
-packages/<context>_adapters/         Petali esterni (libsodium, SQLCipher, Opus, ...), creati quando servono
+packages/identity_cryptography_adapters/ Adapter libsodium (pacchetto `sodium`, variante sumo per Argon2id)
+packages/<context>_adapters/         Altri petali esterni (SQLCipher, Opus, ...), creati quando servono
 tool/architecture_guard/             Verifica statica delle regole della rosetta
 ```
 
@@ -45,6 +46,8 @@ dart run tool/architecture_guard/bin/architecture_guard.dart
 (cd tool/architecture_guard && dart test)
 (cd apps/modusnote && flutter test)
 ```
+
+Il pacchetto `sodium` compila libsodium dai sorgenti tramite build hook al primo `dart test` (serve un compilatore C e accesso a `download.libsodium.org`; la prima esecuzione richiede ~30 s).
 
 ### Localizzazione
 - Le stringhe dell'app vivono in `apps/modusnote/lib/l10n/app_<lingua>.arb` (template `app_en.arb`). Nessuna stringa visibile all'utente scritta a mano nei widget.
