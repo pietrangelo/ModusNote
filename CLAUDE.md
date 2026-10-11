@@ -49,6 +49,7 @@ dart run tool/architecture_guard/bin/architecture_guard.dart
 (cd packages/<context> && dart test)              # test di un bounded context
 (cd tool/architecture_guard && dart test)
 (cd apps/modusnote && flutter test)
+bash supabase/tests/run.sh                        # migrazioni + test RLS su un PostgreSQL usa e getta
 ```
 
 Il pacchetto `sodium` compila libsodium dai sorgenti tramite build hook al primo `dart test` (serve un compilatore C e accesso a `download.libsodium.org`; la prima esecuzione richiede ~30 s).
@@ -119,6 +120,9 @@ L'invariante zero-knowledge vale per tutti e tre i servizi: ricevono e restituis
 * **R2 tramite URL pre-firmati** emessi da una funzione lato server (Supabase Edge Function o Cloudflare Worker) dopo il controllo dell'autorizzazione. Le credenziali R2 non arrivano mai al client. CORS limitato al dominio dell'app.
 * **Cloudflare Pages senza iniezioni:** vanno disattivate tutte le funzioni che modificano l'HTML servito (Rocket Loader, Web Analytics automatico, Email Obfuscation, Zaraz), perché romperebbero CSP e SRI. CSP e altri header si dichiarano in `apps/modusnote/web/_headers`.
 * **Fiducia nel codice servito:** Cloudflare, o chiunque abbia accesso al deploy, può servire un bundle diverso. Per questo valgono le mitigazioni della sezione "Client web" (hash delle build pubblicati, build riproducibili).
+* **Schema (`supabase/migrations/`):** `workspaces`, `workspace_accounts` (account Supabase ammessi, con `can_manage`), e tre flussi **append-only**: `sync_rows` (record_id, epoca, ciphertext), `membership_records` (registro firmato, `sequence` univoca) e `key_bundles`. Nessuno può fare UPDATE o DELETE sui flussi, nemmeno con una policy aggiunta per errore, perché il privilegio è revocato. Le posizioni sono assegnate dal server per workspace sotto lock, quindi crescono in ordine di commit e un client che legge `position > cursore` non salta righe. Revocare un dispositivo significa anche togliere il suo account da `workspace_accounts`.
+* **Test RLS:** `supabase/tests/run.sh` applica le migrazioni a un PostgreSQL temporaneo con uno stub di `auth.uid()` ed esegue i test come ruolo `authenticated` con il `sub` del JWT, come fa PostgREST. Gira anche in CI.
+* **Limiti noti:** il registro dei membri è firmato ma non cifrato, quindi il server vede chiavi pubbliche e ruoli (non nomi né contenuti). Un membro può bloccare la sync scrivendo spazzatura nella prossima `sequence` del registro: i client la rifiutano e la sync si ferma (DoS, non perdita di riservatezza).
 * **Piano gratuito di Supabase:** un progetto Free inattivo per una settimana viene sospeso. Il client deve gestire un backend temporaneamente non raggiungibile (offline-first lo rende naturale); in produzione va valutato il piano a pagamento.
 
 ---
