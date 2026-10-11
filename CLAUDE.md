@@ -66,7 +66,7 @@ Tutta la UI si costruisce **sempre** sul rapporto aureo φ = 1,618…:
 - I valori vivono in un unico set di design token (`apps/modusnote/lib/theme/`); i widget non scrivono numeri a mano. I test di componente verificano che le dimensioni usate appartengano alla scala.
 
 ### Identità visiva (decisione del 2026-10-11)
-Il marchio è **Modus Notes**, sottotitolo "Modo · Misura · Ritmo". Il simbolo unisce la M, una nota musicale (ritmo), la spirale aurea (misura) e un segno di spunta (to-do). Il logo è in `apps/modusnote/assets/brand/`.
+Il marchio, e il nome visibile dell'app (titolo, nome sotto l'icona, pagina web), è **Modus Notes**, sottotitolo "Modo · Misura · Ritmo". Il simbolo unisce la M, una nota musicale (ritmo), la spirale aurea (misura) e un segno di spunta (to-do). Il logo è in `apps/modusnote/assets/brand/`.
 
 | Ruolo UI | Nome | HEX | Uso |
 |---|---|---|---|
