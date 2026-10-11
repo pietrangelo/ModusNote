@@ -13,11 +13,16 @@ class NoteLibraryScreen extends StatefulWidget {
   const NoteLibraryScreen({
     required this.schemas,
     required this.store,
+    this.onLock,
     super.key,
   });
 
   final List<SchemaDefinition> schemas;
   final NoteStore store;
+
+  /// Locks the vault; without it (no vault, e.g. the web preview) the
+  /// library shows no lock button.
+  final VoidCallback? onLock;
 
   @override
   State<NoteLibraryScreen> createState() => _NoteLibraryScreenState();
@@ -57,7 +62,17 @@ class _NoteLibraryScreenState extends State<NoteLibraryScreen> {
     final text = SchemaText(l10n);
     final theme = Theme.of(context);
     return Scaffold(
-      appBar: AppBar(title: Text(l10n.notesTitle)),
+      appBar: AppBar(
+        title: Text(l10n.notesTitle),
+        actions: [
+          if (widget.onLock case final onLock?)
+            IconButton(
+              onPressed: onLock,
+              tooltip: l10n.lockVault,
+              icon: const Icon(Icons.lock_outline),
+            ),
+        ],
+      ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _open,
         icon: const Icon(Icons.add),
