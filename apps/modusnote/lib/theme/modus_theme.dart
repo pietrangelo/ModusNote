@@ -26,11 +26,19 @@ abstract final class ModusTheme {
       onSurfaceVariant: ModusColors.dustSilver,
       outline: ModusColors.dustSilver,
     );
+    final textTheme = _textTheme();
     return ThemeData(
       useMaterial3: true,
       colorScheme: scheme,
       scaffoldBackgroundColor: ModusColors.deepVoid,
-      textTheme: _textTheme(),
+      textTheme: textTheme,
+      // Material lays the date picker's header out in a fixed 120 dp box,
+      // sized for its own 32 sp headline; a title 1 at the golden line
+      // height does not fit, a title 2 does.
+      datePickerTheme: DatePickerThemeData(
+        headerHeadlineStyle: textTheme.headlineMedium,
+        headerHelpStyle: textTheme.labelMedium,
+      ),
       cardTheme: const CardThemeData(
         color: ModusColors.abyssalSlate,
         margin: EdgeInsets.all(Spacing.s),
