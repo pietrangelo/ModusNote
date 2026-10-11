@@ -10,6 +10,7 @@ workspace:
   - packages/schema_dynamic_content
   - packages/blob_storage_media
   - packages/collaboration_access_control
+  - packages/offline_sync
   - packages/identity_cryptography_adapters
   - packages/blob_storage_media_adapters
   - packages/blob_storage_media_recorder_adapters
