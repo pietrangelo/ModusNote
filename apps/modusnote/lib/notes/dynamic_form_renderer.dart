@@ -6,6 +6,8 @@ import '../audio/recording_sheet.dart' show formatLength;
 import '../l10n/generated/app_localizations.dart';
 import '../theme/golden_ratio.dart';
 import '../theme/modus_colors.dart';
+import 'markdown/markdown_document.dart';
+import 'markdown/markdown_view.dart';
 import 'schema_text.dart';
 
 /// What the user has entered so far. [unreadable] holds fields whose input
@@ -25,8 +27,9 @@ final class FormDraft {
 /// field, chosen by its [FieldType]. Nothing here knows about songs or
 /// tasks; a new schema needs no new widget.
 ///
-/// Every value is shown through text widgets, never parsed as HTML or
-/// Markdown, so content synced from someone else cannot run as code.
+/// Every value is shown through text widgets, never parsed as HTML, so
+/// content synced from someone else cannot run as code. Markdown fields
+/// also have a preview, built from widgets by [MarkdownView].
 class DynamicFormRenderer extends StatefulWidget {
   const DynamicFormRenderer({
     required this.schema,
@@ -112,11 +115,17 @@ class _DynamicFormRendererState extends State<DynamicFormRenderer> {
         multiline: false,
         onChanged: set,
       ),
-      RichTextFieldType() || MarkdownFieldType() => _TextInput(
+      RichTextFieldType() => _TextInput(
         label: label,
         error: error,
         value: value,
         multiline: true,
+        onChanged: set,
+      ),
+      MarkdownFieldType() => _MarkdownInput(
+        label: label,
+        error: error,
+        value: value,
         onChanged: set,
       ),
       NumberFieldType() => _NumberInput(
@@ -267,6 +276,100 @@ class _TextInputState extends State<_TextInput> {
     onChanged: (text) =>
         widget.onChanged(text.isEmpty ? null : TextValue(text)),
   );
+}
+
+/// A Markdown field: the text to edit, or its preview. A note that
+/// already has text opens on the preview, since it is usually opened to
+/// be read.
+class _MarkdownInput extends StatefulWidget {
+  const _MarkdownInput({
+    required this.label,
+    required this.error,
+    required this.value,
+    required this.onChanged,
+  });
+
+  final String label;
+  final String? error;
+  final FieldValue? value;
+  final ValueChanged<FieldValue?> onChanged;
+
+  @override
+  State<_MarkdownInput> createState() => _MarkdownInputState();
+}
+
+class _MarkdownInputState extends State<_MarkdownInput> {
+  late final _controller = TextEditingController(
+    text: switch (widget.value) {
+      TextValue(:final text) => text,
+      _ => '',
+    },
+  );
+  late var _preview = _controller.text.trim().isNotEmpty;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final theme = Theme.of(context);
+    final decoration = InputDecoration(
+      labelText: widget.label,
+      errorText: widget.error,
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      spacing: Spacing.s,
+      children: [
+        SegmentedButton<bool>(
+          segments: [
+            ButtonSegment(
+              value: false,
+              label: Text(l10n.markdownWrite),
+              icon: const Icon(Icons.edit_outlined, size: IconSizes.inline),
+            ),
+            ButtonSegment(
+              value: true,
+              label: Text(l10n.markdownPreview),
+              icon: const Icon(
+                Icons.visibility_outlined,
+                size: IconSizes.inline,
+              ),
+            ),
+          ],
+          selected: {_preview},
+          showSelectedIcon: false,
+          onSelectionChanged: (selected) =>
+              setState(() => _preview = selected.single),
+        ),
+        if (_preview)
+          InputDecorator(
+            key: const ValueKey('markdown-preview'),
+            decoration: decoration,
+            isEmpty: false,
+            child: _controller.text.trim().isEmpty
+                ? Text(l10n.markdownEmpty, style: theme.textTheme.labelMedium)
+                : MarkdownView(
+                    document: MarkdownDocument.parse(_controller.text),
+                  ),
+          )
+        else
+          TextField(
+            controller: _controller,
+            decoration: decoration,
+            minLines: 3,
+            maxLines: null,
+            keyboardType: TextInputType.multiline,
+            onChanged: (text) =>
+                widget.onChanged(text.isEmpty ? null : TextValue(text)),
+          ),
+      ],
+    );
+  }
 }
 
 typedef _NumberChanged = void Function(

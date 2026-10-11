@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:modusnote/notes/dynamic_form_renderer.dart';
+import 'package:modusnote/notes/markdown/markdown_view.dart';
 import 'package:schema_dynamic_content/schema_dynamic_content.dart';
 
 import 'harness.dart';
@@ -225,6 +226,52 @@ void main() {
     );
   });
 
+  group('Markdown', () {
+    testWidgets('a new note opens on the text, a written one on the preview', (
+      tester,
+    ) async {
+      await render(tester, SeedSchemas.quickNoteV1);
+      expect(textInput('content'), findsOneWidget);
+      expect(find.byKey(const ValueKey('markdown-preview')), findsNothing);
+
+      await tester.pumpWidget(const SizedBox()); // A new editor.
+      await render(
+        tester,
+        SeedSchemas.quickNoteV1,
+        values: {k('content'): const TextValue('# Spesa\n\n- [x] pane')},
+      );
+      expect(textInput('content'), findsNothing);
+      expect(find.text('Spesa'), findsOneWidget);
+      expect(find.byKey(const ValueKey('task-done')), findsOneWidget);
+    });
+
+    testWidgets('the preview shows what was just typed, and back', (
+      tester,
+    ) async {
+      await render(tester, SeedSchemas.quickNoteV1);
+
+      await tester.enterText(textInput('content'), '**forte**');
+      await tester.tap(find.text('Anteprima'));
+      await tester.pumpAndSettle();
+      expect(find.text('forte'), findsOneWidget);
+      expect(textInput('content'), findsNothing);
+
+      await tester.tap(find.text('Scrivi'));
+      await tester.pumpAndSettle();
+      expect(find.text('**forte**'), findsOneWidget);
+      expect(drafts.last.values[k('content')], const TextValue('**forte**'));
+    });
+
+    testWidgets('an empty preview says so', (tester) async {
+      await render(tester, SeedSchemas.quickNoteV1);
+
+      await tester.tap(find.text('Anteprima'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Niente da mostrare.'), findsOneWidget);
+    });
+  });
+
   group('adversary', () {
     testWidgets('hostile text is shown as plain text, never interpreted', (
       tester,
@@ -238,6 +285,21 @@ void main() {
       );
 
       expect(tester.takeException(), isNull);
+      // The preview shows the tags as text and the link with its address.
+      final preview = tester.widget<RichText>(
+        find.descendant(
+          of: find.byType(MarkdownView),
+          matching: find.byType(RichText),
+        ),
+      );
+      expect(
+        preview.text.toPlainText(),
+        '<script>alert(1)</script> x (javascript:alert(1)) b \u202Egnp.exe',
+      );
+      expect(find.byType(InkWell), findsNWidgets(2)); // The two tabs only.
+
+      await tester.tap(find.text('Scrivi'));
+      await tester.pumpAndSettle();
       expect(find.text(hostile), findsOneWidget);
     });
 
