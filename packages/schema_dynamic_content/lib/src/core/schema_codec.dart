@@ -26,6 +26,8 @@ abstract final class SchemaCodec {
       for (final h in schema.uiHints)
         {'field': h.field.value, 'section': h.section, 'order': h.order},
     ],
+    if (schema.icon != null || schema.tint != null)
+      'appearance': {'icon': ?schema.icon?.name, 'tint': ?schema.tint?.name},
   });
 
   static SchemaDefinition decode(String document) {
@@ -84,11 +86,27 @@ abstract final class SchemaCodec {
       'maxTags': maxTags,
     },
     AudioBlobFieldType() => {'kind': 'audio_blob'},
+    ChecklistFieldType(:final maxItems) => {
+      'kind': 'checklist',
+      'maxItems': maxItems,
+    },
   };
 
   static SchemaDefinition _decodeSchema(JsonObject json) {
-    json.allowOnly({'id', 'version', 'label', 'fields', 'uiHints'});
+    json.allowOnly({
+      'id',
+      'version',
+      'label',
+      'fields',
+      'uiHints',
+      'appearance',
+    });
+    final appearance = json.has('appearance')
+        ? (json.object('appearance')..allowOnly({'icon', 'tint'}))
+        : null;
     return SchemaDefinition(
+      icon: _named(NoteIcon.values, appearance, 'icon'),
+      tint: _named(NoteTint.values, appearance, 'tint'),
       id: SchemaId(json.string('id'), json.integer('version')),
       label: _decodeLabel(json.object('label')),
       fields: [for (final f in json.objects('fields')) _decodeField(f)],
@@ -103,6 +121,21 @@ abstract final class SchemaCodec {
           ),
       ],
     );
+  }
+
+  /// A name this device does not know is dropped, not refused: a newer
+  /// device may offer more icons and tints than this one draws.
+  static T? _named<T extends Enum>(
+    List<T> values,
+    JsonObject? json,
+    String property,
+  ) {
+    if (json == null || !json.has(property)) return null;
+    final name = json.string(property);
+    for (final value in values) {
+      if (value.name == name) return value;
+    }
+    return null;
   }
 
   static Label _decodeLabel(JsonObject json) {
@@ -155,6 +188,10 @@ abstract final class SchemaCodec {
         () => TagListFieldType(maxTags: json.integer('maxTags')),
       ),
       'audio_blob' => (<String>{}, () => const AudioBlobFieldType()),
+      'checklist' => (
+        {'maxItems'},
+        () => ChecklistFieldType(maxItems: json.integer('maxItems')),
+      ),
       _ => throw SchemaFormatException('unknown field kind "$kind"'),
     };
     json.allowOnly({'kind', ...allowed});

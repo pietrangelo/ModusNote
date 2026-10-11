@@ -89,6 +89,9 @@ extension type JsonObject._(Map<String, Object?> _map) {
       },
   ];
 
+  /// A list whose items the caller matches itself.
+  List<Object?> list(String key) => _get<List<Object?>>(key, 'a list');
+
   Map<String, Object?> get entries => _map;
 
   List<int> integers(String key) => [

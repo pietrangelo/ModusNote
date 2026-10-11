@@ -12,6 +12,7 @@ export 'src/core/field_type.dart';
 export 'src/core/field_value.dart';
 export 'src/core/identifiers.dart';
 export 'src/core/label.dart';
+export 'src/core/schema_catalog.dart';
 export 'src/core/schema_codec.dart';
 export 'src/core/schema_definition.dart';
 export 'src/core/schema_exception.dart';

@@ -26,7 +26,7 @@ class VaultGate extends StatefulWidget {
   const VaultGate({
     required this.keeper,
     required this.passwordFrom,
-    required this.schemas,
+    required this.catalog,
     this.recorderFor,
     this.playbackFor,
     this.autoLockFor,
@@ -35,7 +35,9 @@ class VaultGate extends StatefulWidget {
 
   final VaultKeeper keeper;
   final PasswordFactory passwordFrom;
-  final List<SchemaDefinition> schemas;
+
+  /// The note types, current and old, the vault can read.
+  final SchemaCatalog catalog;
 
   /// Builds the recorder for an unlocked vault; without it notes cannot
   /// hold recordings.
@@ -136,7 +138,7 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
           : await widget.keeper.unlock(password);
       final store = await VaultNoteStore.open(
         vault.engine,
-        schemas: widget.schemas,
+        catalog: widget.catalog,
         recorder: widget.recorderFor?.call(vault.engine),
         playback: widget.playbackFor?.call(vault.engine),
       );
@@ -231,7 +233,7 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
     _Open(:final store, :final autoLock) => AutoLockScope(
       autoLock: autoLock,
       child: NoteLibraryScreen(
-        schemas: widget.schemas,
+        schemas: widget.catalog.current,
         store: store,
         onLock: _lock,
       ),

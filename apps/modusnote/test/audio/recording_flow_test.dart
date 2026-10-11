@@ -41,7 +41,7 @@ void main() {
     var now = DateTime.utc(2026, 10, 11, 9);
     store = await VaultNoteStore.open(
       vault.engine,
-      schemas: SeedSchemas.all,
+      catalog: SeedSchemas.catalog,
       recorder: NoteRecorder(
         capture: () => FakeCapture(voice(), denied: denied),
         blobs: storage.blobs,

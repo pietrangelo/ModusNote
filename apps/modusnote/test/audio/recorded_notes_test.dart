@@ -77,7 +77,7 @@ void main() {
   test('a saved note keeps its recording across lock and unlock', () async {
     final store = await VaultNoteStore.open(
       vault.engine,
-      schemas: SeedSchemas.all,
+      catalog: SeedSchemas.catalog,
       recorder: recorder,
     );
     final take = await recordTake();
@@ -85,7 +85,7 @@ void main() {
     await store.save(song(track: take.id), takes: [take]);
     final reopened = await VaultNoteStore.open(
       vault.engine,
-      schemas: SeedSchemas.all,
+      catalog: SeedSchemas.catalog,
     );
 
     expect(reopened.recordingOf(take.id), take);
@@ -98,7 +98,7 @@ void main() {
   test('replacing a take deletes the old one once the note is saved', () async {
     final store = await VaultNoteStore.open(
       vault.engine,
-      schemas: SeedSchemas.all,
+      catalog: SeedSchemas.catalog,
       recorder: recorder,
     );
     final first = await recordTake();
@@ -114,7 +114,7 @@ void main() {
   test('takes of an abandoned edit are deleted', () async {
     final store = await VaultNoteStore.open(
       vault.engine,
-      schemas: SeedSchemas.all,
+      catalog: SeedSchemas.catalog,
       recorder: recorder,
     );
     final take = await recordTake();
@@ -128,7 +128,7 @@ void main() {
     test('neither the take nor its metadata reach storage in clear', () async {
       final store = await VaultNoteStore.open(
         vault.engine,
-        schemas: SeedSchemas.all,
+        catalog: SeedSchemas.catalog,
         recorder: recorder,
       );
       final take = await recordTake();

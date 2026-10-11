@@ -117,12 +117,13 @@ final class DynamicEntry {
     );
   }
 
-  /// Re-homes this entry onto [target] with already-migrated [attributes].
+  /// Re-homes this entry onto [target] with already-migrated [attributes],
+  /// as a change made [at], or as the same revision when [at] is null.
   @internal
   Validated<DynamicEntry> migratedTo(
     SchemaDefinition target,
     Map<FieldKey, FieldValue> attributes,
-    DateTime at,
+    DateTime? at,
   ) => _validated(
     target,
     attributes,
@@ -130,7 +131,7 @@ final class DynamicEntry {
       id: id,
       schemaId: target.id,
       attributes: valid,
-      audit: audit.touchedAt(at),
+      audit: at == null ? audit : audit.touchedAt(at),
     ),
   );
 

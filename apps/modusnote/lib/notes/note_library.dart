@@ -3,9 +3,9 @@ import 'package:schema_dynamic_content/schema_dynamic_content.dart';
 
 import '../l10n/generated/app_localizations.dart';
 import '../theme/golden_ratio.dart';
-import '../theme/modus_colors.dart';
 import '../vault/auto_lock.dart';
 import 'markdown/markdown_document.dart';
+import 'note_appearance.dart';
 import 'note_editor.dart';
 import 'note_store.dart';
 import 'schema_text.dart';
@@ -132,6 +132,11 @@ class _NoteLibraryScreenState extends State<NoteLibraryScreen> {
                         ),
                         for (final schema in widget.schemas)
                           ChoiceChip(
+                            avatar: Icon(
+                              NoteAppearance.icon(schema.icon),
+                              size: IconSizes.inline,
+                              color: NoteAppearance.tint(schema.tint),
+                            ),
                             label: Text(text.label(schema.label)),
                             selected: _type?.id == schema.id,
                             onSelected: (_) => setState(() => _type = schema),
@@ -207,16 +212,27 @@ class _NoteCard extends StatelessWidget {
     final theme = Theme.of(context);
     final l10n = AppLocalizations.of(context);
     final primary = schema?.primaryTextField;
-    final title = switch (primary == null ? null : entry.valueOf(primary.key)) {
+    final tasks = entry.attributes.values.whereType<ChecklistValue>().toList();
+    final named = switch (primary == null ? null : entry.valueOf(primary.key)) {
       // A Markdown title shows its words, not its markup.
       TextValue(:final text) when primary!.type is MarkdownFieldType =>
         MarkdownDocument.parse(text).plainText,
       TextValue(:final text) => text.trim(),
       _ => '',
     };
-    final done = entry.attributes.values.any(
-      (value) => value == const BooleanValue(true),
-    );
+    // An untitled list is named by the tasks still to do.
+    final title = named.isNotEmpty || tasks.isEmpty
+        ? named
+        : [
+            for (final item in tasks.first.items)
+              if (!item.done) item.text,
+          ].join(', ');
+    final done = tasks.isEmpty
+        ? entry.attributes.values.any(
+            (value) => value == const BooleanValue(true),
+          )
+        : tasks.every((list) => list.allDone);
+    final tint = NoteAppearance.tint(schema?.tint);
     return Card(
       clipBehavior: Clip.antiAlias,
       child: InkWell(
@@ -228,14 +244,26 @@ class _NoteCard extends StatelessWidget {
             children: [
               Row(
                 children: [
+                  Icon(
+                    NoteAppearance.icon(schema?.icon),
+                    size: IconSizes.inline,
+                    color: tint,
+                  ),
+                  const SizedBox(width: Spacing.xs),
                   Expanded(
                     child: Text(
                       schema == null ? '' : text.label(schema!.label),
-                      style: theme.textTheme.labelSmall?.copyWith(
-                        color: ModusColors.rhythmVioletText,
-                      ),
+                      style: theme.textTheme.labelSmall?.copyWith(color: tint),
                     ),
                   ),
+                  if (tasks.isNotEmpty && !done)
+                    Text(
+                      l10n.taskProgress(
+                        tasks.fold(0, (sum, list) => sum + list.done),
+                        tasks.fold(0, (sum, list) => sum + list.total),
+                      ),
+                      style: theme.textTheme.labelSmall,
+                    ),
                   if (done)
                     Icon(
                       Icons.check_circle,

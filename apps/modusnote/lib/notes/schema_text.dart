@@ -45,6 +45,8 @@ final class SchemaText {
     ViolationCode.invalidChoice => _l10n.violationInvalidChoice,
     ViolationCode.tooManyTags => _l10n.violationTooManyTags,
     ViolationCode.invalidCharacters => _l10n.violationInvalidCharacters,
+    ViolationCode.tooManyItems => _l10n.violationTooManyItems,
+    ViolationCode.emptyItem => _l10n.violationEmptyItem,
   };
 
   static String _readable(String identifier) => identifier.replaceAll('_', ' ');
@@ -95,6 +97,8 @@ final class SchemaText {
       _l10n.schemaDreamLogFieldTranscription,
     'schema.dream_log.field.wake_audio' => _l10n.schemaDreamLogFieldWakeAudio,
     'schema.task.label' => _l10n.schemaTaskLabel,
+    'schema.task.field.title' => _l10n.schemaTaskFieldTitle,
+    'schema.task.field.items' => _l10n.schemaTaskFieldItems,
     'schema.task.field.description' => _l10n.schemaTaskFieldDescription,
     'schema.task.field.due' => _l10n.schemaTaskFieldDue,
     'schema.task.field.priority' => _l10n.schemaTaskFieldPriority,

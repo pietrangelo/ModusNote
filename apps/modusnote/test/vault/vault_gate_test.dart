@@ -16,7 +16,7 @@ Widget gateOn(Database database, {AutoLock Function(VoidCallback)? autoLock}) =>
       keeper: keeperOn(database),
       passwordFrom: (bytes) =>
           SodiumPasswordSecret.fromUtf8Bytes(sodium, bytes),
-      schemas: SeedSchemas.all,
+      catalog: SeedSchemas.catalog,
       autoLockFor: autoLock,
     );
 

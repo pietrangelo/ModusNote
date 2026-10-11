@@ -56,7 +56,7 @@ Future<Widget> buildHome() async {
       kdf: KdfParameters.moderate,
     ),
     passwordFrom: (bytes) => SodiumPasswordSecret.fromUtf8Bytes(sodium, bytes),
-    schemas: SeedSchemas.all,
+    catalog: SeedSchemas.catalog,
     recorderFor: (engine) => NoteRecorder(
       capture: createPlatformAudioCapture,
       blobs: blobs,

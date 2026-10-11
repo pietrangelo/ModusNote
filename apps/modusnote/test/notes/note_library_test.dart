@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:modusnote/notes/note_editor.dart';
 import 'package:modusnote/notes/note_library.dart';
 import 'package:modusnote/notes/note_store.dart';
+import 'package:modusnote/theme/modus_colors.dart';
 import 'package:schema_dynamic_content/schema_dynamic_content.dart';
 
 import 'harness.dart';
@@ -33,9 +34,8 @@ void main() {
       }, 1),
     );
     await store.save(
-      entry('t', SeedSchemas.taskV1, {
-        'description': const TextValue('Accordare la chitarra'),
-        'completed': const BooleanValue(false),
+      entry('t', SeedSchemas.taskV2, {
+        'items': ChecklistValue([const ChecklistItem('Accordare la chitarra')]),
       }, 2),
     );
     await store.save(
@@ -53,6 +53,9 @@ void main() {
 
   testWidgets('lists every note, newest first, with its type', (tester) async {
     await open(tester);
+    // Tall enough for every card to be laid out at once.
+    tester.view.physicalSize = const Size(1080, 4680);
+    await tester.pumpAndSettle();
 
     final riff = tester.getTopLeft(find.text('Idea per un riff'));
     final song = tester.getTopLeft(find.text('Notturno in La'));
@@ -75,6 +78,39 @@ void main() {
     expect(find.text('Spesa oggi\nlatte'), findsOneWidget);
   });
 
+  testWidgets('each card wears its type\'s icon and colour', (tester) async {
+    await open(tester);
+
+    final icon = tester.widget<Icon>(
+      find.descendant(
+        of: find.ancestor(
+          of: find.text('Accordare la chitarra'),
+          matching: find.byType(Card),
+        ),
+        matching: find.byIcon(Icons.checklist),
+      ),
+    );
+    expect(icon.color, ModusColors.cadenceCyan);
+  });
+
+  testWidgets('a list card counts what is done; an untitled one is named '
+      'by what is left', (tester) async {
+    await store.save(
+      entry('l', SeedSchemas.taskV2, {
+        'items': ChecklistValue([
+          const ChecklistItem('latte', done: true),
+          const ChecklistItem('pane'),
+          const ChecklistItem('uova'),
+        ]),
+      }, 5),
+    );
+
+    await open(tester);
+
+    expect(find.text('pane, uova'), findsOneWidget);
+    expect(find.text('1/3'), findsOneWidget);
+  });
+
   testWidgets('search matches text and tags without accents', (tester) async {
     await open(tester);
 
@@ -89,7 +125,7 @@ void main() {
   testWidgets('a type chip shows only notes of that type', (tester) async {
     await open(tester);
 
-    await tester.tap(find.widgetWithText(ChoiceChip, 'Attività'));
+    await tester.tap(find.widgetWithText(ChoiceChip, 'To-do'));
     await tester.pumpAndSettle();
 
     expect(find.text('Accordare la chitarra'), findsOneWidget);
