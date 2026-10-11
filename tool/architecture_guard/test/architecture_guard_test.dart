@@ -154,6 +154,32 @@ void main() {
   });
 
   group('adversary', () {
+    test('a domain package may not use conditional imports at all', () {
+      writePackage(
+        'vault',
+        files: {
+          'src/application/clock.dart':
+              "import 'clock_stub.dart'\n"
+              "    if (dart.library.js_interop) 'clock_web.dart';\n",
+        },
+      );
+
+      expect(check().map((v) => v.rule), contains(Rule.conditionalImport));
+    });
+
+    test('an adapters package may use conditional imports', () {
+      writePackage(
+        'vault_adapters',
+        dependencies: ['vault'],
+        files: {
+          'factory.dart':
+              "import 'stub.dart'\n"
+              "    if (dart.library.io) 'native.dart';\n",
+        },
+      );
+
+      expect(check(), isEmpty);
+    });
     test('a conditional import cannot smuggle dart:io into core', () {
       writePackage(
         'vault',
@@ -165,7 +191,10 @@ void main() {
         },
       );
 
-      expect(check().single.detail, 'dart:io');
+      expect(
+        check().where((v) => v.rule == Rule.impureCore).single.detail,
+        'dart:io',
+      );
     });
 
     test('a part directive cannot pull application code into core', () {
