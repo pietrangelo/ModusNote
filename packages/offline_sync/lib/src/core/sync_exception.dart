@@ -53,3 +53,40 @@ final class ServerUnavailableException extends SyncException {
   @override
   String get message => 'sync server unavailable';
 }
+
+/// Opening or creating the device's vault failed. Like every message in
+/// this context, the reason never carries the passphrase or key material.
+sealed class VaultException extends SyncException {
+  const VaultException();
+}
+
+final class NoVaultException extends VaultException {
+  const NoVaultException();
+
+  @override
+  String get message => 'no vault on this device';
+}
+
+/// A device holds one vault; creating another would orphan the first.
+final class VaultAlreadyExistsException extends VaultException {
+  const VaultAlreadyExistsException();
+
+  @override
+  String get message => 'a vault already exists on this device';
+}
+
+/// The passphrase does not open the identity, or the header around it was
+/// altered: the two are indistinguishable by design.
+final class WrongPassphraseException extends VaultException {
+  const WrongPassphraseException();
+
+  @override
+  String get message => 'wrong passphrase or altered vault';
+}
+
+final class VaultLockedException extends VaultException {
+  const VaultLockedException();
+
+  @override
+  String get message => 'vault is locked';
+}

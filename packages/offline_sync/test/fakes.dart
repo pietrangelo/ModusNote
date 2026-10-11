@@ -67,6 +67,9 @@ final class FakeLocalStore implements LocalRecordStore {
   Future<EncryptedEnvelope?> load(RecordId id) async => records[id];
 
   @override
+  Future<List<RecordId>> recordIds() async => [...records.keys];
+
+  @override
   Future<void> save(RecordId id, EncryptedEnvelope sealed) async =>
       records[id] = sealed;
 
@@ -94,4 +97,31 @@ final class FakeClock implements Clock {
 
   void advance([Duration by = const Duration(minutes: 1)]) =>
       current = current.add(by);
+}
+
+/// Where the vault header and its signed log live on the device.
+final class FakeVaultStore implements VaultStore {
+  VaultHeader? header;
+  final membership = <MembershipRecord>[];
+  final bundles = <KeyBundle>[];
+
+  @override
+  Future<VaultHeader?> loadHeader() async => header;
+
+  @override
+  Future<void> create(
+    VaultHeader header, {
+    required List<MembershipRecord> membership,
+    required List<KeyBundle> bundles,
+  }) async {
+    this.header = header;
+    this.membership.addAll(membership);
+    this.bundles.addAll(bundles);
+  }
+
+  @override
+  Future<List<MembershipRecord>> loadMembership() async => [...membership];
+
+  @override
+  Future<List<KeyBundle>> loadKeyBundles() async => [...bundles];
 }
