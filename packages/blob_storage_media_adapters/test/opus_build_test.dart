@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:archive/archive.dart';
+import 'package:code_assets/code_assets.dart';
 import 'package:blob_storage_media_adapters/src/opus/opus_build.dart';
 import 'package:crypto/crypto.dart';
 import 'package:test/test.dart';
@@ -43,6 +44,16 @@ void main() {
 
     expect(sourcesFrom(makefile, 'OPUS_SOURCES'), ['src/a.c', 'src/b.c']);
     expect(() => sourcesFrom(makefile, 'MISSING'), throwsStateError);
+  });
+
+  test('links the C math library where libc does not include it', () {
+    // Android's bionic keeps exp/log in libm: without it the library
+    // fails to load on the phone with "cannot locate symbol exp".
+    expect(systemLibrariesFor(OS.android), ['m']);
+    expect(systemLibrariesFor(OS.linux), ['m']);
+    expect(systemLibrariesFor(OS.iOS), isEmpty);
+    expect(systemLibrariesFor(OS.macOS), isEmpty);
+    expect(systemLibrariesFor(OS.windows), isEmpty);
   });
 
   group('adversary', () {

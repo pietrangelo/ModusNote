@@ -57,6 +57,7 @@ void main(List<String> args) async => build(args, (input, output) async {
     ],
     // Portable C only: no runtime CPU dispatch to keep one code path on
     // every target; voice at 48 kHz mono is cheap without SIMD.
+    libraries: systemLibrariesFor(input.config.code.targetOS),
     defines: {
       'OPUS_BUILD': null,
       'VAR_ARRAYS': null,
