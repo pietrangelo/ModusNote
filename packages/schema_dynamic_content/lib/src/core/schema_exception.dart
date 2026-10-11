@@ -48,3 +48,14 @@ final class SchemaFormatException implements Exception {
   @override
   String toString() => 'SchemaFormatException: $message';
 }
+
+/// A serialized entry that could not be decoded. The only exception
+/// [EntryCodec.decode] lets escape, whatever the input.
+final class EntryFormatException implements Exception {
+  const EntryFormatException(this.message);
+
+  final String message;
+
+  @override
+  String toString() => 'EntryFormatException: $message';
+}
