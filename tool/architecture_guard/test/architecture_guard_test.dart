@@ -44,6 +44,30 @@ void main() {
     expect(check(), isEmpty);
   });
 
+  test('core may use the public API of another domain context', () {
+    writePackage('vault');
+    writePackage(
+      'media',
+      dependencies: ['meta', 'vault'],
+      files: {'src/core/blob.dart': "import 'package:vault/vault.dart';\n"},
+    );
+
+    expect(check(), isEmpty);
+  });
+
+  test('core may not import an adapters package, even a sibling one', () {
+    writePackage('vault_adapters');
+    writePackage(
+      'media',
+      files: {
+        'src/core/blob.dart':
+            "import 'package:vault_adapters/vault_adapters.dart';\n",
+      },
+    );
+
+    expect(check().single.rule, Rule.impureCore);
+  });
+
   test('core may not import dart:io', () {
     writePackage('vault', files: {'src/core/key.dart': "import 'dart:io';\n"});
 
