@@ -1,0 +1,14 @@
+name: identity_cryptography
+description: "Identity & Cryptography: coppie di chiavi, derivazione Argon2id, buste XChaCha20-Poly1305."
+publish_to: none
+resolution: workspace
+
+environment:
+  sdk: ^3.13.0
+
+dependencies:
+  meta: ^1.16.0
+
+dev_dependencies:
+  lints: ^6.0.0
+  test: ^1.26.0
