@@ -1,7 +1,10 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
+import 'dart:typed_data';
 
 import 'package:collaboration_access_control/collaboration_access_control.dart';
+import 'package:identity_cryptography/identity_cryptography.dart';
 import 'package:identity_cryptography_adapters/identity_cryptography_adapters.dart';
 import 'package:offline_sync/offline_sync.dart';
 import 'package:offline_sync_adapters/offline_sync_adapters.dart';
@@ -111,4 +114,56 @@ void main() {
       );
     },
   );
+
+  test('a vault created on SQLite reopens after a restart, all sealed', () async {
+    final path = '${directory.path}/vault.db';
+
+    VaultKeeper keeperOn(Database database) => VaultKeeper(
+      vaults: SqliteVaultStore(database),
+      records: (workspace) =>
+          SqliteLocalRecordStore(database, workspace: workspace),
+      server: _OfflineServer(),
+      identities: SodiumIdentityService(sodium),
+      keys: SodiumKeyDerivationService(sodium),
+      subkeys: SodiumSubkeyDerivationService(sodium),
+      envelopes: SodiumEnvelopeEncryptor(sodium),
+      encapsulation: SodiumKeyEncapsulation(sodium),
+      clock: _Clock(),
+      random: Random.secure(),
+      kdf: KdfParameters.interactive,
+    );
+    PasswordSecret passphrase() => SodiumPasswordSecret.fromUtf8Bytes(
+      sodium,
+      Uint8List.fromList(utf8.encode('passphrase del vault')),
+    );
+
+    final first = sqlite3.open(path);
+    final created = await keeperOn(first).create(passphrase());
+    await created.engine.write(
+      note,
+      RevisionContents(utf8.encode('Testo segreto')),
+    );
+    created.lock();
+    first.close();
+
+    final onDisk = latin1.decode([
+      for (final file in directory.listSync().whereType<File>())
+        ...file.readAsBytesSync(),
+    ]);
+    expect(onDisk, isNot(contains('segreto')));
+    expect(onDisk, isNot(contains('passphrase')));
+
+    final second = sqlite3.open(path);
+    addTearDown(second.close);
+    final unlocked = await keeperOn(second).unlock(passphrase());
+    addTearDown(unlocked.lock);
+
+    expect(unlocked.member, created.member);
+    expect(
+      (await unlocked.engine.records()).map(
+        (id, body) => MapEntry(id, utf8.decode(body.bytes)),
+      ),
+      {note: 'Testo segreto'},
+    );
+  });
 }

@@ -66,6 +66,17 @@ void main() {
       expect(await reopened.load(other), envelope(3));
     });
 
+    test('lists the ids of its own workspace only', () async {
+      await store.save(note, envelope(1));
+      await store.save(other, envelope(2));
+      await SqliteLocalRecordStore(
+        database,
+        workspace: otherWorkspace,
+      ).save(note, envelope(3));
+
+      expect(await store.recordIds(), unorderedEquals([note, other]));
+    });
+
     test(
       'workspaces sharing a database never see each other\'s records',
       () async {
