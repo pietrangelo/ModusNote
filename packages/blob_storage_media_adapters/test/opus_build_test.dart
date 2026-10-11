@@ -2,8 +2,8 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:archive/archive.dart';
-import 'package:code_assets/code_assets.dart';
 import 'package:blob_storage_media_adapters/src/opus/opus_build.dart';
+import 'package:code_assets/code_assets.dart';
 import 'package:crypto/crypto.dart';
 import 'package:test/test.dart';
 
