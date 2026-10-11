@@ -80,10 +80,9 @@ void main() {
 
     expect(await reopened.loadHeader(), header(me()));
     expect(await reopened.loadMembership(), [founded.record]);
-    expect(
-      (await reopened.loadKeyBundles()).map((b) => b.toBytes()),
-      [founded.bundle!.toBytes()],
-    );
+    expect((await reopened.loadKeyBundles()).map((b) => b.toBytes()), [
+      founded.bundle!.toBytes(),
+    ]);
   });
 
   test('shares the file with the record store without clashing', () async {
