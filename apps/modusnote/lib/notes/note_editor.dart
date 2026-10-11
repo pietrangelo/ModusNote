@@ -4,6 +4,7 @@ import 'package:blob_storage_media/blob_storage_media.dart';
 import 'package:flutter/material.dart';
 import 'package:schema_dynamic_content/schema_dynamic_content.dart';
 
+import '../audio/recording_player_view.dart';
 import '../audio/recording_sheet.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../theme/golden_ratio.dart';
@@ -111,6 +112,20 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
   Duration? _lengthOf(BlobId blob) =>
       (_takes[blob] ?? widget.store.recordingOf(blob))?.metadata.duration;
 
+  Widget? _playerOf(BlobId blob) {
+    final playback = widget.store.playback;
+    final take = _takes[blob] ?? widget.store.recordingOf(blob);
+    if (playback == null || take == null || !playback.canPlay(take)) {
+      return null;
+    }
+    return RecordingPlayerView(
+      // A new take is a new player: the old samples go with the old one.
+      key: ValueKey(blob),
+      open: () => playback.open(take),
+      length: take.metadata.duration,
+    );
+  }
+
   @override
   void dispose() {
     if (!_saved && _takes.isNotEmpty) {
@@ -189,6 +204,7 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
                 onChanged: (draft) => _draft = draft,
                 onRecordAudio: widget.store.recorder == null ? null : _record,
                 recordingLength: _lengthOf,
+                recordingPlayer: _playerOf,
               ),
             ],
           ),

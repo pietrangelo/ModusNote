@@ -35,6 +35,7 @@ class DynamicFormRenderer extends StatefulWidget {
     this.violations = const [],
     this.onRecordAudio,
     this.recordingLength,
+    this.recordingPlayer,
     super.key,
   });
 
@@ -50,6 +51,10 @@ class DynamicFormRenderer extends StatefulWidget {
 
   /// How long the recording behind a blob is, when it is known.
   final Duration? Function(BlobId blob)? recordingLength;
+
+  /// The player for an attached recording, or null where it cannot be
+  /// played; the field then shows only its length.
+  final Widget? Function(BlobId blob)? recordingPlayer;
 
   @override
   State<DynamicFormRenderer> createState() => _DynamicFormRendererState();
@@ -168,6 +173,9 @@ class _DynamicFormRendererState extends State<DynamicFormRenderer> {
         attached: value is AudioBlobValue,
         length: value is AudioBlobValue
             ? widget.recordingLength?.call(value.blob)
+            : null,
+        player: value is AudioBlobValue
+            ? widget.recordingPlayer?.call(value.blob)
             : null,
         onRecord: switch (widget.onRecordAudio) {
           null => null,
@@ -674,6 +682,7 @@ class _AudioInput extends StatelessWidget {
     required this.error,
     required this.attached,
     required this.length,
+    required this.player,
     required this.onRecord,
   });
 
@@ -681,40 +690,50 @@ class _AudioInput extends StatelessWidget {
   final String? error;
   final bool attached;
   final Duration? length;
+  final Widget? player;
   final VoidCallback? onRecord;
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
+    final record = TextButton.icon(
+      icon: const Icon(Icons.fiber_manual_record, size: IconSizes.inline),
+      label: Text(l10n.record),
+      onPressed: onRecord,
+    );
     return _Framed(
       label: label,
       error: error,
-      child: Row(
-        children: [
-          Icon(
-            attached ? Icons.graphic_eq : Icons.mic_none,
-            size: IconSizes.inline,
-            // Violet tags audio; the tint is the variant legible as an icon.
-            color: ModusColors.rhythmVioletText,
-          ),
-          const SizedBox(width: Spacing.s),
-          Expanded(
-            child: Text(switch ((attached, length)) {
-              (true, final Duration length) => l10n.recordingAttachedLength(
-                formatLength(length),
-              ),
-              (true, null) => l10n.recordingAttached,
-              (false, _) => l10n.noRecording,
-            }, style: theme.textTheme.labelMedium),
-          ),
-          TextButton.icon(
-            icon: const Icon(Icons.fiber_manual_record, size: IconSizes.inline),
-            label: Text(l10n.record),
-            onPressed: onRecord,
-          ),
-        ],
-      ),
+      // The player takes the whole width, so its waveform stays readable
+      // on a phone; recording again moves below it.
+      child: switch (player) {
+        final player? => Column(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [player, record],
+        ),
+        null => Row(
+          children: [
+            Icon(
+              attached ? Icons.graphic_eq : Icons.mic_none,
+              size: IconSizes.inline,
+              // Violet tags audio; the tint is the variant legible as an icon.
+              color: ModusColors.rhythmVioletText,
+            ),
+            const SizedBox(width: Spacing.s),
+            Expanded(
+              child: Text(switch ((attached, length)) {
+                (true, final Duration length) => l10n.recordingAttachedLength(
+                  formatLength(length),
+                ),
+                (true, null) => l10n.recordingAttached,
+                (false, _) => l10n.noRecording,
+              }, style: theme.textTheme.labelMedium),
+            ),
+            record,
+          ],
+        ),
+      },
     );
   }
 }
