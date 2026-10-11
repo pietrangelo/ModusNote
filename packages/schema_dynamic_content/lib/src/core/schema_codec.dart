@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'field_type.dart';
 import 'identifiers.dart';
+import 'json_reader.dart';
 import 'label.dart';
 import 'schema_definition.dart';
 import 'schema_exception.dart';
@@ -31,46 +32,19 @@ abstract final class SchemaCodec {
     if (document.length > maxDocumentLength) {
       throw const SchemaFormatException('document too large');
     }
-    _rejectDeepNesting(document);
-    final Object? json;
     try {
-      json = jsonDecode(document);
-    } on FormatException {
-      throw const SchemaFormatException('not valid JSON');
-    }
-    try {
-      return _decodeSchema(_Obj.of(json, 'schema'));
+      return _decodeSchema(
+        JsonObject.of(
+          parseBoundedJson(document, maxDepth: maxNestingDepth),
+          'schema',
+        ),
+      );
+    } on JsonShapeException catch (e) {
+      throw SchemaFormatException(e.message);
     } on InvalidSchemaException catch (e) {
       throw SchemaFormatException('invariant broken: ${e.invariant.name}');
     } on InvalidValueException catch (e) {
       throw SchemaFormatException(e.message);
-    }
-  }
-
-  // jsonDecode recurses per nesting level, so an unbounded document like
-  // `[[[[...]]]]` could overflow the stack; count depth first, cheaply.
-  static void _rejectDeepNesting(String document) {
-    var depth = 0;
-    var inString = false;
-    var escaped = false;
-    for (final unit in document.codeUnits) {
-      if (inString) {
-        if (escaped) {
-          escaped = false;
-        } else if (unit == 0x5C) {
-          escaped = true;
-        } else if (unit == 0x22) {
-          inString = false;
-        }
-      } else if (unit == 0x22) {
-        inString = true;
-      } else if (unit == 0x5B || unit == 0x7B) {
-        if (++depth > maxNestingDepth) {
-          throw const SchemaFormatException('nesting too deep');
-        }
-      } else if (unit == 0x5D || unit == 0x7D) {
-        depth--;
-      }
     }
   }
 
@@ -112,7 +86,7 @@ abstract final class SchemaCodec {
     AudioBlobFieldType() => {'kind': 'audio_blob'},
   };
 
-  static SchemaDefinition _decodeSchema(_Obj json) {
+  static SchemaDefinition _decodeSchema(JsonObject json) {
     json.allowOnly({'id', 'version', 'label', 'fields', 'uiHints'});
     return SchemaDefinition(
       id: SchemaId(json.string('id'), json.integer('version')),
@@ -131,7 +105,7 @@ abstract final class SchemaCodec {
     );
   }
 
-  static Label _decodeLabel(_Obj json) {
+  static Label _decodeLabel(JsonObject json) {
     if (json.has('key')) {
       json.allowOnly({'key'});
       return LocalizedLabel(json.string('key'));
@@ -140,7 +114,7 @@ abstract final class SchemaCodec {
     return LiteralLabel(json.string('text'));
   }
 
-  static FieldDefinition _decodeField(_Obj json) {
+  static FieldDefinition _decodeField(JsonObject json) {
     json.allowOnly({'key', 'label', 'required', 'type'});
     return FieldDefinition(
       key: FieldKey(json.string('key')),
@@ -150,7 +124,7 @@ abstract final class SchemaCodec {
     );
   }
 
-  static FieldType _decodeType(_Obj json) {
+  static FieldType _decodeType(JsonObject json) {
     final kind = json.string('kind');
     final (allowed, build) = switch (kind) {
       'text' => (
@@ -186,51 +160,4 @@ abstract final class SchemaCodec {
     json.allowOnly({'kind', ...allowed});
     return build();
   }
-}
-
-/// A JSON object read strictly: wrong types and stray keys are format errors,
-/// never `TypeError`s leaking out of the parser.
-extension type _Obj._(Map<String, Object?> _map) {
-  factory _Obj.of(Object? value, String what) => switch (value) {
-    Map<String, Object?>() => _Obj._(value),
-    _ => throw SchemaFormatException('$what must be an object'),
-  };
-
-  bool has(String key) => _map.containsKey(key);
-
-  void allowOnly(Set<String> keys) {
-    for (final key in _map.keys) {
-      if (!keys.contains(key)) {
-        throw SchemaFormatException('unexpected property "$key"');
-      }
-    }
-  }
-
-  T _get<T>(String key, String expected) => switch (_map[key]) {
-    final T value => value,
-    _ => throw SchemaFormatException('"$key" must be $expected'),
-  };
-
-  String string(String key) => _get<String>(key, 'a string');
-  int integer(String key) => _get<int>(key, 'an integer');
-  bool boolean(String key) => _get<bool>(key, 'a boolean');
-  _Obj object(String key) => _Obj.of(_map[key], '"$key"');
-
-  num? optionalNumber(String key) =>
-      has(key) ? _get<num>(key, 'a number') : null;
-
-  List<_Obj> objects(String key) => [
-    for (final item in _get<List<Object?>>(key, 'a list'))
-      _Obj.of(item, 'an item of "$key"'),
-  ];
-
-  List<String> strings(String key) => [
-    for (final item in _get<List<Object?>>(key, 'a list'))
-      switch (item) {
-        final String s => s,
-        _ => throw SchemaFormatException('"$key" must hold strings'),
-      },
-  ];
-
-  R let<R>(R Function(_Obj) f) => f(this);
 }
