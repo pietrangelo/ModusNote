@@ -17,6 +17,16 @@ jobs:
           flutter-version: 3.47.7
           cache: true
 
+      - name: Verify the pinned libopus hash against xiph.org
+        run: |
+          hook=packages/blob_storage_media_adapters/hook/build.dart
+          version=$(sed -n "s/^const opusVersion = '\(.*\)';/\1/p" "$hook")
+          pinned=$(grep -A1 '^const opusSha256' "$hook" | grep -o '[0-9a-f]\{64\}')
+          published=$(curl -fsSL https://downloads.xiph.org/releases/opus/SHA256SUMS.txt \
+            | grep " opus-$version.tar.gz$" | cut -d' ' -f1)
+          echo "opus $version pinned=$pinned published=$published"
+          test -n "$published" && test "$pinned" = "$published"
+
       - name: Resolve workspace
         run: flutter pub get
 
@@ -34,7 +44,11 @@ jobs:
           for dir in packages/* tool/*; do
             if [ -d "$dir/test" ]; then
               echo "::group::$dir"
-              (cd "$dir" && dart test) || exit 1
+              if grep -q "sdk: flutter" "$dir/pubspec.yaml"; then
+                (cd "$dir" && flutter test) || exit 1
+              else
+                (cd "$dir" && dart test) || exit 1
+              fi
               echo "::endgroup::"
             fi
           done
