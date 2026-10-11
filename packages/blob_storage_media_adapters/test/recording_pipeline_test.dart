@@ -111,6 +111,31 @@ void main() {
     },
   );
 
+  test('a take plays back as the samples that were recorded', () async {
+    final microphone = FakeMicrophone();
+    final session = AudioRecordingSession(
+      capture: StreamingAudioCapture(
+        microphone: microphone,
+        encoder: OpusStreamEncoder(),
+      ),
+      storage: storage,
+      clock: () => DateTime.utc(2026, 10, 11),
+    );
+    await session.start(id: BlobId('take-3'), contentKey: contentKey);
+    final pcm = speech(48000 + 123);
+    microphone.pcm.add(pcm);
+    final metadata = await session.stop();
+
+    final playback = RecordingPlayback(
+      storage: storage,
+      decoders: const [WavAudioDecoder(), OpusAudioDecoder()],
+    );
+    final audio = await playback.open(metadata, contentKey: contentKey);
+
+    expect(playback.canPlay(AudioFormat.aacMp4), isFalse);
+    expect(audio.samples, hasLength(48000 + 123));
+  });
+
   group('adversary', () {
     test('neither PCM nor the Ogg container ever reaches the disk', () async {
       final microphone = FakeMicrophone();
