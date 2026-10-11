@@ -10,6 +10,7 @@ workspace:
   - packages/schema_dynamic_content
   - packages/blob_storage_media
   - packages/collaboration_access_control
+  - packages/identity_cryptography_adapters
   - tool/architecture_guard
 
 dev_dependencies:
