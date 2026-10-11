@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../theme/golden_ratio.dart';
 import '../theme/modus_colors.dart';
+import 'audio_diagnostics.dart';
 import 'note_recorder.dart';
 
 /// The sheet shown while a take is recorded: elapsed time, stop to attach,
@@ -58,7 +59,8 @@ class _RecordingSheetState extends State<RecordingSheet> {
       });
     } on MicrophonePermissionDeniedException {
       if (mounted) setState(() => _failure = _Failure.denied);
-    } on Object {
+    } on Object catch (error, stack) {
+      reportAudioFailure('starting a take', error, stack);
       if (mounted) setState(() => _failure = _Failure.failed);
     }
   }
@@ -76,7 +78,12 @@ class _RecordingSheetState extends State<RecordingSheet> {
         await take.cancel();
         navigator.pop();
       }
-    } on Object {
+    } on Object catch (error, stack) {
+      reportAudioFailure(
+        keep ? 'stopping a take' : 'discarding a take',
+        error,
+        stack,
+      );
       if (mounted) {
         setState(() {
           _failure = _Failure.failed;
