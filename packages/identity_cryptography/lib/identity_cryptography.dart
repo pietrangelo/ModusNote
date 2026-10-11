@@ -13,4 +13,5 @@ export 'src/core/cryptography_exception.dart';
 export 'src/core/encrypted_envelope.dart';
 export 'src/core/kdf_parameters.dart';
 export 'src/core/nonce.dart';
+export 'src/core/passphrase_policy.dart';
 export 'src/core/salt.dart';

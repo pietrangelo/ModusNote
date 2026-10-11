@@ -3,6 +3,7 @@ import 'package:meta/meta.dart';
 import 'field_value.dart';
 import 'list_equality.dart';
 import 'schema_exception.dart';
+import 'unsafe_text.dart';
 import 'violation.dart';
 
 final _optionKey = RegExp(r'^[a-z0-9][a-z0-9_]{0,63}$');
@@ -234,6 +235,8 @@ final class TagListFieldType extends FieldType {
       if (value.tags.length > maxTags) ViolationCode.tooManyTags,
       if (value.tags.any((t) => t.trim().isEmpty || _length(t) > maxTagLength))
         ViolationCode.tooLong,
+      if (value.tags.any(containsUnsafeCharacters))
+        ViolationCode.invalidCharacters,
     ];
   }
 

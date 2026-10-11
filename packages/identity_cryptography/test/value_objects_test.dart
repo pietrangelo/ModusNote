@@ -77,6 +77,34 @@ void main() {
       );
     });
 
+    group('adversary', () {
+      // Parameters travel in the synced vault header, so a malicious server
+      // could raise them until unlocking hangs or runs the phone out of RAM.
+      test('refuses a tampered header asking for absurd memory', () {
+        expect(
+          () => KdfParameters.custom(opsLimit: 3, memLimitBytes: 4 << 40),
+          throwsA(isA<ExcessiveKdfParametersException>()),
+        );
+      });
+
+      test('refuses a tampered header asking for absurd passes', () {
+        expect(
+          () => KdfParameters.custom(opsLimit: 1000, memLimitBytes: 64 << 20),
+          throwsA(isA<ExcessiveKdfParametersException>()),
+        );
+      });
+
+      test('the ceiling still admits the moderate preset with headroom', () {
+        expect(
+          KdfParameters.custom(
+            opsLimit: KdfParameters.maxOpsLimit,
+            memLimitBytes: KdfParameters.maxMemLimitBytes,
+          ).memLimitBytes,
+          greaterThan(KdfParameters.moderate.memLimitBytes),
+        );
+      });
+    });
+
     test('accepts stronger custom parameters', () {
       final params = KdfParameters.custom(opsLimit: 4, memLimitBytes: 1 << 30);
       expect(params.opsLimit, 4);
