@@ -84,6 +84,14 @@ final class SyncEngine {
     signature: _ledger.records.last.signature,
   );
 
+  /// The epoch new content is sealed under.
+  KeyEpoch get currentEpoch => _ledger.workspace.epoch;
+
+  /// The GroupKey of [epoch], as the parent of BlobKeys. It stays owned by
+  /// this engine's keyring: callers use it and never dispose it. Throws
+  /// [MissingGroupKeyException] for an epoch this device holds no key for.
+  SymmetricKey contentKeyFor(KeyEpoch epoch) => _keyring.keyFor(epoch);
+
   Future<RevisionBody?> read(RecordId id) async =>
       (await _loadLocal(id))?.current.revision.body;
 

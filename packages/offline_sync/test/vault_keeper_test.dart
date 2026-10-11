@@ -108,6 +108,33 @@ void main() {
     vault.lock();
   });
 
+  test('the vault lends its content key for blobs, by epoch', () async {
+    final vault = await keeper().create(password('correct horse'));
+    addTearDown(vault.lock);
+    final envelopes = SodiumEnvelopeEncryptor(sodium);
+
+    final epoch = vault.engine.currentEpoch;
+    final sealed = envelopes.seal(
+      bytes('audio'),
+      key: vault.engine.contentKeyFor(epoch),
+      associatedData: AssociatedData.empty,
+    );
+
+    expect(epoch, KeyEpoch.initial);
+    expect(
+      envelopes.open(
+        sealed,
+        key: vault.engine.contentKeyFor(epoch),
+        associatedData: AssociatedData.empty,
+      ),
+      bytes('audio'),
+    );
+    expect(
+      () => vault.engine.contentKeyFor(KeyEpoch(1)),
+      throwsA(isA<MissingGroupKeyException>()),
+    );
+  });
+
   test('creating a second vault on the same device is refused', () async {
     (await keeper().create(password('correct horse'))).lock();
 
