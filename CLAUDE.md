@@ -21,7 +21,8 @@ packages/offline_sync/               Bounded context (dominio puro): revisioni f
 packages/identity_cryptography_adapters/ Adapter libsodium (pacchetto `sodium`, variante sumo per Argon2id)
 packages/blob_storage_media_adapters/  Storage dei blob cifrati (filesystem tramite `package:file`), muxer Ogg Opus, encoder libopus (FFI + build hook)
 packages/blob_storage_media_recorder_adapters/ Microfono tramite il plugin `record` (pacchetto Flutter, test con `flutter test`)
-packages/<context>_adapters/         Altri petali esterni (SQLCipher, Opus, ...), creati quando servono
+packages/offline_sync_adapters/      Database locale SQLite (stessa API nativa e WASM): solo buste cifrate
+packages/<context>_adapters/         Altri petali esterni, creati quando servono
 tool/architecture_guard/             Verifica statica delle regole della rosetta
 ```
 
@@ -149,7 +150,7 @@ Ogni iterazione di codice eseguita da Claude CLI DEVE aderire rigorosamente a qu
 * **Piramide dei Test:**
   * *Unit Tests (Pure Domain):* Istantanei, 100% deterministici, zero mock esterni.
   * *Property-Based Tests (in Dart: `glados`):* Verifica di invarianti crittografiche e serializzazione schemi su migliaia di input casuali.
-  * *Integration Tests:* Persistence via SQLCipher e pipeline audio reale su mock filesystem.
+  * *Integration Tests:* Persistenza su SQLite reale (solo buste cifrate) e pipeline audio reale su mock filesystem.
 
 ### D. The Adversary (Proactive Red-Teaming)
 * Per ogni feature implementata, Claude CLI deve assumere il ruolo dell'**Avversario** ed eseguire un passaggio di stress test:
@@ -246,6 +247,7 @@ non sono costruibili (`InvalidSchemaException`); `SchemaCodec.decode` lancia sol
 * **Rollback e fork del registro:** ogni revisione cita l'ultimo record del registro visto dall'autore (`LedgerHead`: posizione + firma). Se il server non sa mostrare quel record, o ne mostra uno diverso, la sync si ferma con `LedgerRollbackException`.
 * **Offline first:** `SyncEngine.write` salva subito in locale e mette la riga già sigillata nella `Outbox`; `sync` spinge la coda nell'ordine di scrittura, aggiorna registro e chiavi, poi scarica le righe nuove. Senza rete restituisce `offline` e la coda resta intatta.
 * **Database locale:** contiene solo buste. I record sono sigillati con una chiave locale del dispositivo (derivata dalla MasterKey), con dati associati (workspace, record); la coda contiene solo righe già cifrate con la GroupKey.
+* **Niente SQLCipher (decisione del 2026-10-11):** mobile e web usano lo stesso SQLite (`package:sqlite3`, API comune nativa e WASM) con `PRAGMA secure_delete`. Il contenuto è già cifrato dal dominio; SQLCipher proteggerebbe solo id e conteggi, solo su mobile, e la sua chiave passerebbe da una stringa `PRAGMA`. Il binario nativo di SQLite è scaricato dal build hook di `sqlite3` con hash SHA-256 fissati nel pacchetto.
 * **Identità:** `IdentityService.sealIdentity` salva i due seed (Ed25519 e X-Wing) cifrati con la MasterKey; le chiavi pubbliche si ricavano dai seed.
 
 ---
@@ -285,7 +287,7 @@ non sono costruibili (`InvalidSchemaException`); `SchemaCodec.decode` lancia sol
    4. `Adversary Harness`: Un membro rimosso tenta di decifrare una revisione successiva della nota; il server malevolo tenta di iniettare una nuova chiave pubblica senza firma valida.
 
 ### Fase 5: Local Persistence & Offline Sync Engine
-* Obiettivo: Salvataggio su database cifrato locale (SQLCipher su mobile, SQLite WASM su web) e coda di sincronizzazione verso Supabase.
+* Obiettivo: Salvataggio su database locale di soli record cifrati (SQLite nativo su mobile, SQLite WASM su web) e coda di sincronizzazione verso Supabase.
 * Task TDD:
    1. Mapping tra aggregati di dominio ed entità persistenti cifrate.
    2. Risoluzione dei conflitti (CRDT-based o Last-Write-Wins con vector clocks) mantenendo i payload cifrati.
