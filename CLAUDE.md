@@ -18,6 +18,7 @@ packages/schema_dynamic_content/     Bounded context (dominio puro)
 packages/blob_storage_media/         Bounded context (dominio puro)
 packages/collaboration_access_control/ Bounded context (dominio puro)
 packages/identity_cryptography_adapters/ Adapter libsodium (pacchetto `sodium`, variante sumo per Argon2id)
+packages/blob_storage_media_adapters/  Adapter di storage dei blob cifrati (filesystem tramite `package:file`)
 packages/<context>_adapters/         Altri petali esterni (SQLCipher, Opus, ...), creati quando servono
 tool/architecture_guard/             Verifica statica delle regole della rosetta
 ```
@@ -35,6 +36,8 @@ Gli adapter **non** vivono in `lib/src/adapters/` del pacchetto di dominio: vann
 - `application` importa framework, I/O o pacchetti di terze parti;
 - un pacchetto di dominio dichiara dipendenze diverse da `meta` o da altri pacchetti di dominio;
 - un pacchetto importa i file `src/` di un altro pacchetto.
+
+`core` e `application` possono importare l'API pubblica (`lib/<context>.dart`) di un altro pacchetto di dominio dichiarato in `dependencies`, mai quella di un pacchetto `_adapters`.
 
 Comandi (dalla radice):
 
@@ -196,6 +199,12 @@ non sono costruibili (`InvalidSchemaException`); `SchemaCodec.decode` lancia sol
         ├── Cifra Record Metadata & Schema Data (XChaCha20-Poly1305)
         └── Deriva BlobKeys per cifrare blocchi Audio (.enc)
 ```
+
+### Formato dei blob cifrati (`.enc`)
+* **BlobKey:** una per blob, derivata dalla chiave dei contenuti con `crypto_kdf` (contesto `mn-blob1`, `SubkeyId` casuale di 8 byte salvato in chiaro nel `SealedBlob`). La sottochiave nasce direttamente in memoria nativa.
+* **Chunk:** il plaintext è diviso in chunk da 64 KiB; ogni chunk è una busta XChaCha20-Poly1305 indipendente, preceduta da una lunghezza `uint32`. I dati associati legano il blob, l'indice del chunk e il flag "ultimo" (costruzione STREAM): riordino, chunk presi da un altro blob e coda tagliata falliscono l'autenticazione o vengono segnalati come `TruncatedBlobException`. Ogni chunk si decifra da solo, quindi seek e download parziali da R2 restano possibili.
+* **Scrittura atomica:** si scrive in `<id>.enc.part` e si rinomina in `<id>.enc` al commit; un errore o un annullamento cancella il file parziale, e `discardIncomplete()` all'avvio rimuove quelli lasciati da un crash. Su disco e su R2 c'è solo ciphertext.
+* **`BlobMetadata`** (formato audio, durata, data, `SealedBlob`) viaggia solo dentro i payload cifrati delle note; il `DynamicEntry` contiene soltanto il `BlobId`.
 
 ---
 

@@ -66,3 +66,10 @@ final class DisposedKeyException extends CryptographyException {
   @override
   String get message => 'secret used after dispose';
 }
+
+final class InvalidKeyContextException extends CryptographyException {
+  const InvalidKeyContextException();
+
+  @override
+  String get message => 'key context must be 8 printable ASCII characters';
+}
