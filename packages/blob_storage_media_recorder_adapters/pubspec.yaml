@@ -1,0 +1,22 @@
+name: blob_storage_media_recorder_adapters
+description: "Microphone adapter (record plugin) for the Blob Storage & Media bounded context."
+publish_to: none
+resolution: workspace
+
+environment:
+  sdk: ^3.13.0
+  flutter: ">=3.44.0"
+
+dependencies:
+  blob_storage_media: any
+  blob_storage_media_adapters: any
+  flutter:
+    sdk: flutter
+  record: ^7.1.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  lints: ^6.0.0
+  plugin_platform_interface: ^2.1.8
+  record_platform_interface: ^2.1.0
