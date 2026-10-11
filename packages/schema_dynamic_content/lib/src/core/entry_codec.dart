@@ -18,7 +18,7 @@ import 'violation.dart';
 /// then validated against its schema again.
 abstract final class EntryCodec {
   static const maxDocumentLength = 1024 * 1024;
-  static const _maxNestingDepth = 4;
+  static const _maxNestingDepth = 5;
   static const _format = 1;
 
   static Uint8List encode(DynamicEntry entry) => Uint8List.fromList(
@@ -138,6 +138,12 @@ abstract final class EntryCodec {
       'value': [...tags],
     },
     AudioBlobValue(:final blob) => {'kind': 'audio', 'value': blob.value},
+    ChecklistValue(:final items) => {
+      'kind': 'checklist',
+      'value': [
+        for (final item in items) [item.text, item.done],
+      ],
+    },
   };
 
   static FieldValue _decodeValue(JsonObject json) {
@@ -161,6 +167,16 @@ abstract final class EntryCodec {
         _ => throw const EntryFormatException('duplicate tags'),
       },
       'audio' => AudioBlobValue(BlobId(json.string('value'))),
+      'checklist' => ChecklistValue([
+        for (final item in json.list('value'))
+          switch (item) {
+            [final String text, final bool done] => ChecklistItem(
+              text,
+              done: done,
+            ),
+            _ => throw const EntryFormatException('a task is [text, done]'),
+          },
+      ]),
       _ => throw const EntryFormatException('unknown value kind'),
     };
   }

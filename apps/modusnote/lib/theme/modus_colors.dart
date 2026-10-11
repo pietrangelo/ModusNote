@@ -14,4 +14,8 @@ abstract final class ModusColors {
   /// text; this 20 % tint (4.5:1) is for violet text and icons, while the
   /// original stays the fill colour under Pure Mist text.
   static const rhythmVioletText = Color(0xFFA265DE);
+
+  /// The fourth accent, for dream notes (2026-10-11): apart from gold,
+  /// violet and cyan, and above AA as text on both dark backgrounds.
+  static const lucidRose = Color(0xFFF07CA8);
 }

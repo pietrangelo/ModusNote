@@ -13,6 +13,8 @@ enum ViolationCode {
   invalidChoice,
   tooManyTags,
   invalidCharacters,
+  tooManyItems,
+  emptyItem,
 }
 
 /// One reason an entry does not satisfy its schema. [field] is null for

@@ -69,6 +69,15 @@ final class WidgetPlacement {
   int get hashCode => Object.hash(field, section, order);
 }
 
+/// The symbol that tells a note type apart at a glance. Names, not
+/// pictures: the app draws each one, and a name it does not know (from a
+/// newer device) is simply not shown.
+enum NoteIcon { note, music, moon, checklist, star, lightbulb, book, heart }
+
+/// The accent colour of a note type, as a palette role the app maps to
+/// its design tokens.
+enum NoteTint { gold, violet, cyan, rose }
+
 /// The meta-model of a note type, interpreted at runtime. Every instance
 /// satisfies its invariants; there is no way to hold a half-valid schema.
 @immutable
@@ -78,6 +87,8 @@ final class SchemaDefinition {
     required this.label,
     required List<FieldDefinition> fields,
     List<WidgetPlacement> uiHints = const [],
+    this.icon,
+    this.tint,
   }) : fields = List.unmodifiable(fields),
        uiHints = List.unmodifiable(uiHints),
        _byKey = {for (final f in fields) f.key: f} {
@@ -101,6 +112,8 @@ final class SchemaDefinition {
   final Label label;
   final List<FieldDefinition> fields;
   final List<WidgetPlacement> uiHints;
+  final NoteIcon? icon;
+  final NoteTint? tint;
   final Map<FieldKey, FieldDefinition> _byKey;
 
   FieldDefinition? fieldFor(FieldKey key) => _byKey[key];
@@ -122,9 +135,17 @@ final class SchemaDefinition {
       other.id == id &&
       other.label == label &&
       listEquals(other.fields, fields) &&
-      listEquals(other.uiHints, uiHints);
+      listEquals(other.uiHints, uiHints) &&
+      other.icon == icon &&
+      other.tint == tint;
 
   @override
-  int get hashCode =>
-      Object.hash(id, label, Object.hashAll(fields), Object.hashAll(uiHints));
+  int get hashCode => Object.hash(
+    id,
+    label,
+    Object.hashAll(fields),
+    Object.hashAll(uiHints),
+    icon,
+    tint,
+  );
 }

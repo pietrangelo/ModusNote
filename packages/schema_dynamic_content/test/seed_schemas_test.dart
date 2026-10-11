@@ -4,12 +4,12 @@ import 'package:test/test.dart';
 import 'fixtures.dart';
 
 void main() {
-  test('ships the four reference schemas at version 1', () {
-    expect(SeedSchemas.all.map((s) => s.id), [
-      SchemaId('song_sketch', 1),
-      SchemaId('dream_log', 1),
-      SchemaId('task', 1),
-      SchemaId('quick_note', 1),
+  test('ships the four reference types', () {
+    expect(SeedSchemas.all.map((s) => s.id.name), [
+      'song_sketch',
+      'dream_log',
+      'task',
+      'quick_note',
     ]);
   });
 
@@ -67,7 +67,7 @@ void main() {
   });
 
   test('every seed label is a localization key under its schema', () {
-    for (final schema in SeedSchemas.all) {
+    for (final schema in [...SeedSchemas.all, SeedSchemas.taskV1]) {
       final prefix = 'schema.${schema.id.name}.';
       expect(schema.label, LocalizedLabel('${prefix}label'));
       for (final f in schema.fields) {

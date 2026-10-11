@@ -15,21 +15,21 @@ import '../notes/note_store.dart';
 /// Decrypted notes live only in this object's memory while the vault is
 /// open; the screens never see a record that fails to decode or validate.
 final class VaultNoteStore extends ChangeNotifier implements NoteStore {
-  VaultNoteStore._(this._engine, this._schemas, this.recorder, this.playback);
+  VaultNoteStore._(this._engine, this._catalog, this.recorder, this.playback);
 
   static Future<VaultNoteStore> open(
     SyncEngine engine, {
-    required List<SchemaDefinition> schemas,
+    required SchemaCatalog catalog,
     NoteRecorder? recorder,
     NotePlayback? playback,
   }) async {
-    final store = VaultNoteStore._(engine, schemas, recorder, playback);
+    final store = VaultNoteStore._(engine, catalog, recorder, playback);
     await store._load();
     return store;
   }
 
   final SyncEngine _engine;
-  final List<SchemaDefinition> _schemas;
+  final SchemaCatalog _catalog;
   final _notes = <EntryId, RecordedNote>{};
 
   @override
@@ -40,7 +40,9 @@ final class VaultNoteStore extends ChangeNotifier implements NoteStore {
   var _unreadable = 0;
 
   /// Records that are not a valid note of a known schema: kept in the vault
-  /// (a newer app may read them) but not shown.
+  /// (a newer app may read them) but not shown. A note of an older version
+  /// of its type is shown as the current version, and written as such only
+  /// when it is next saved.
   int get unreadable => _unreadable;
 
   @override
@@ -109,20 +111,20 @@ final class VaultNoteStore extends ChangeNotifier implements NoteStore {
 
   RecordedNote? _decode(List<int> bytes) {
     try {
-      return switch (RecordedNoteCodec.decode(bytes, schemas: _schemaFor)) {
+      final note = switch (RecordedNoteCodec.decode(
+        bytes,
+        schemas: _catalog.schemaFor,
+      )) {
         Valid(:final value) => value,
         Invalid() => null,
       };
+      if (note == null) return null;
+      final current = _catalog.upgrade(note.entry);
+      if (current == null) return null;
+      return identical(current, note.entry) ? note : note.edited(current);
     } on MalformedBlobException {
       return null;
     }
-  }
-
-  SchemaDefinition? _schemaFor(SchemaId id) {
-    for (final schema in _schemas) {
-      if (schema.id == id) return schema;
-    }
-    return null;
   }
 
   static RecordId _recordOf(EntryId id) {

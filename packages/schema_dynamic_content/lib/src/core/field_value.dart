@@ -150,3 +150,50 @@ final class AudioBlobValue extends FieldValue {
   @override
   int get hashCode => blob.hashCode;
 }
+
+/// One task of a [ChecklistValue].
+@immutable
+final class ChecklistItem {
+  const ChecklistItem(this.text, {this.done = false});
+
+  final String text;
+  final bool done;
+
+  @override
+  bool operator ==(Object other) =>
+      other is ChecklistItem && other.text == text && other.done == done;
+
+  @override
+  int get hashCode => Object.hash(text, done);
+
+  @override
+  String toString() => 'ChecklistItem(${text.length} chars, done: $done)';
+}
+
+/// A list of tasks, in the order the user wrote them.
+final class ChecklistValue extends FieldValue {
+  ChecklistValue(List<ChecklistItem> items) : items = List.unmodifiable(items);
+
+  final List<ChecklistItem> items;
+
+  int get total => items.length;
+  int get done => items.where((item) => item.done).length;
+  bool get allDone => items.isNotEmpty && done == total;
+
+  @override
+  bool operator ==(Object other) {
+    if (other is! ChecklistValue || other.items.length != items.length) {
+      return false;
+    }
+    for (var i = 0; i < items.length; i++) {
+      if (other.items[i] != items[i]) return false;
+    }
+    return true;
+  }
+
+  @override
+  int get hashCode => Object.hashAll(items);
+
+  @override
+  String toString() => 'ChecklistValue($done/$total)';
+}

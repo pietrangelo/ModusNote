@@ -102,10 +102,10 @@ void main() {
     await open(tester, schema: SeedSchemas.quickNoteV1);
 
     await tester.enterText(textInput('content'), 'Comprare corde');
-    await tester.tap(find.widgetWithText(ChoiceChip, 'Attività'));
+    await tester.tap(find.widgetWithText(ChoiceChip, 'To-do'));
     await tester.pumpAndSettle();
 
-    expect(fieldFinder('description'), findsOneWidget);
+    expect(fieldFinder('items'), findsOneWidget);
     expect(fieldFinder('content'), findsNothing);
     expect(find.text('Comprare corde'), findsOneWidget);
   });
