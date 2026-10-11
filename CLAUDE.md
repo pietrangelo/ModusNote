@@ -54,6 +54,14 @@ Il pacchetto `sodium` compila libsodium dai sorgenti tramite build hook al primo
 - Il dominio non contiene testo localizzato. Gli schemi seed referenziano le etichette dei campi tramite **chiavi** (es. `schema.song_sketch.field.bpm`), che la UI risolve con `AppLocalizations`. Gli schemi creati dall'utente portano l'etichetta scritta dall'utente così com'è.
 - Una nuova lingua si aggiunge con un nuovo file ARB e, su iOS, una voce in `CFBundleLocalizations` di `ios/Runner/Info.plist`.
 
+### Interfaccia grafica: rapporto aureo (regola permanente)
+Tutta la UI si costruisce **sempre** sul rapporto aureo φ = 1,618…:
+- **Spaziature:** scala geometrica di ragione φ a partire da una base di 8 dp (≈ 3, 5, 8, 13, 21, 34, 55 dp). Nessun valore di padding o margine fuori scala.
+- **Tipografia:** scala modulare di ragione φ (es. corpo 16 sp → titolo 26 sp → display 42 sp; didascalia 10 sp).
+- **Layout:** le suddivisioni di schermo e colonne seguono 61,8 % / 38,2 %; contenitori e card usano proporzioni φ : 1 (orizzontali) o 1 : φ (verticali).
+- **Raggi, icone e larghezze di riga** prendono i valori dalla stessa scala.
+- I valori vivono in un unico set di design token (`apps/modusnote/lib/theme/`); i widget non scrivono numeri a mano. I test di componente verificano che le dimensioni usate appartengano alla scala.
+
 ---
 
 ## 1. PARADIGMI DI SVILUPPO VINCOLANTI
