@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import '../core/associated_data.dart';
+import '../core/encrypted_envelope.dart';
 import '../core/public_keys.dart';
 import 'secret.dart';
 
@@ -24,6 +25,23 @@ abstract interface class IdentityService {
     Uint8List message, {
     required Signature signature,
     required PublicSigningKey signer,
+  });
+
+  /// Seals the identity's private keys under [key] (the MasterKey) so the
+  /// device keeps its identity across restarts without ever storing it in
+  /// clear.
+  EncryptedEnvelope sealIdentity(
+    IdentityKeyPair identity, {
+    required SymmetricKey key,
+    required AssociatedData associatedData,
+  });
+
+  /// Throws [AuthenticationTagMismatchException] for a wrong key, a wrong
+  /// slot or any tampering.
+  IdentityKeyPair openIdentity(
+    EncryptedEnvelope sealed, {
+    required SymmetricKey key,
+    required AssociatedData associatedData,
   });
 }
 
