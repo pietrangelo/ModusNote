@@ -60,6 +60,95 @@ void main() {
     );
   });
 
+  group('storage under the MasterKey', () {
+    late SymmetricKey masterKey;
+    final slot = AssociatedData.forContext('identity', 'device-1');
+
+    setUp(() => masterKey = SodiumEnvelopeEncryptor(sodium).generateKey());
+    tearDown(() => masterKey.dispose());
+
+    test('a stored identity comes back with the same keys', () {
+      final sealed = identities.sealIdentity(
+        alice,
+        key: masterKey,
+        associatedData: slot,
+      );
+      final restored = identities.openIdentity(
+        EncryptedEnvelope.parse(sealed.toBytes()),
+        key: masterKey,
+        associatedData: slot,
+      );
+      addTearDown(restored.dispose);
+
+      expect(restored.publicIdentity, alice.publicIdentity);
+      final message = utf8Bytes('firmato dopo il riavvio');
+      identities.verify(
+        message,
+        signature: identities.sign(message, signer: restored),
+        signer: alice.publicIdentity.signingKey,
+      );
+      final kem = SodiumKeyEncapsulation(sodium);
+      final groupKey = SodiumEnvelopeEncryptor(sodium).generateKey();
+      addTearDown(groupKey.dispose);
+      final opened = kem.open(
+        kem.seal(
+          groupKey,
+          recipient: alice.publicIdentity.encryptionKey,
+          associatedData: slot,
+        ),
+        recipient: restored,
+        associatedData: slot,
+      );
+      opened.dispose();
+    });
+
+    test('the stored form is only seeds and tag: 64 + 16 bytes', () {
+      final sealed = identities.sealIdentity(
+        alice,
+        key: masterKey,
+        associatedData: slot,
+      );
+
+      expect(sealed.ciphertext, hasLength(64 + EncryptedEnvelope.tagLength));
+    });
+
+    test('a wrong MasterKey or slot does not open it', () {
+      final sealed = identities.sealIdentity(
+        alice,
+        key: masterKey,
+        associatedData: slot,
+      );
+      final other = SodiumEnvelopeEncryptor(sodium).generateKey();
+      addTearDown(other.dispose);
+
+      expect(
+        () => identities.openIdentity(sealed, key: other, associatedData: slot),
+        throwsA(isA<AuthenticationTagMismatchException>()),
+      );
+      expect(
+        () => identities.openIdentity(
+          sealed,
+          key: masterKey,
+          associatedData: AssociatedData.forContext('identity', 'device-2'),
+        ),
+        throwsA(isA<AuthenticationTagMismatchException>()),
+      );
+    });
+
+    test('a disposed identity cannot be stored', () {
+      final identity = identities.generateIdentity()..dispose();
+
+      expect(
+        () => identities.sealIdentity(
+          identity,
+          key: masterKey,
+          associatedData: slot,
+        ),
+        throwsA(isA<DisposedKeyException>()),
+      );
+    });
+  });
+
   group('adversary', () {
     test('flipping any single bit of the message breaks the signature', () {
       final message = utf8Bytes('MemberInvited bob editor');
