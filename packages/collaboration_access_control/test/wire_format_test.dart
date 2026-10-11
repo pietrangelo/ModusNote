@@ -296,4 +296,32 @@ void main() {
           });
     });
   });
+
+  group('Invitation and WorkspaceCiphertext', () {
+    test('a malformed invitation is refused', () {
+      final wire = Invitation(
+        workspace: workspaceId,
+        founder: memberOf(1),
+      ).toBytes();
+      for (final tampered in [
+        Uint8List.sublistView(wire, 0, wire.length - 1),
+        Uint8List.fromList([...wire, 0]),
+        Uint8List.fromList(wire)..[0] = 2,
+      ]) {
+        expect(
+          () => Invitation.parse(tampered),
+          throwsA(isA<MalformedWorkspaceDataException>()),
+        );
+      }
+    });
+
+    Glados(any.list(any.uint8))
+        .test('random bytes never crash the ciphertext parser', (bytes) {
+          try {
+            WorkspaceCiphertext.parse(Uint8List.fromList(bytes));
+          } on MalformedWorkspaceDataException {
+            // The only acceptable failure.
+          }
+        });
+  });
 }

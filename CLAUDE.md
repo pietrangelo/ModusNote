@@ -227,6 +227,16 @@ non sono costruibili (`InvalidSchemaException`); `SchemaCodec.decode` lancia sol
 * **Scrittura atomica:** si scrive in `<id>.enc.part` e si rinomina in `<id>.enc` al commit; un errore o un annullamento cancella il file parziale, e `discardIncomplete()` all'avvio rimuove quelli lasciati da un crash. Su disco e su R2 c'è solo ciphertext.
 * **`BlobMetadata`** (formato audio, durata, data, `SealedBlob`) viaggia solo dentro i payload cifrati delle note; il `DynamicEntry` contiene soltanto il `BlobId`.
 
+### Spazi condivisi e GroupKey (decisione del 2026-10-11)
+* **Identità di dispositivo:** ogni dispositivo (mobile o web) ha una `IdentityKeyPair` con chiave di firma Ed25519 e chiave di incapsulamento **X-Wing** (`crypto_kem` di libsodium, ML-KEM-768 + X25519, ibrida post-quantistica: una GroupKey sigillata oggi protegge note per anni). Il `MemberId` è la chiave di firma, quindi il server non può rimappare chi è chi.
+* **Incapsulamento:** `KeyEncapsulation` sigilla una `SymmetricKey` per un destinatario (`SealedKey` = ciphertext X-Wing + busta XChaCha20-Poly1305 con il segreto condiviso). I dati associati legano workspace, epoca e destinatario. L'incapsulamento è anonimo: chi ha emesso una chiave lo dice solo la firma del `KeyBundle`.
+* **Registro dei membri:** ogni modifica (`WorkspaceFounded`, `MemberInvited`, `MemberRevoked`, `RoleChanged`) è un `MembershipRecord` firmato dall'autore e concatenato alla firma del record precedente. Il client ricostruisce il `Workspace` solo dal registro verificato (`VerifiedLedger`), a partire dal fondatore fissato nell'`Invitation` ricevuta fuori banda (QR o link). Il server conserva byte opachi e non può inserire, alterare, riordinare o mescolare record.
+* **Ruoli:** solo gli `owner` gestiscono i membri ed emettono chiavi; `viewer` non scrive contenuti. Deve restare almeno un owner.
+* **Epoche e rotazione:** la `GroupKey` ha un'epoca (`KeyEpoch`). Una revoca da parte di un owner avanza l'epoca e genera subito una nuova chiave, sigillata solo a chi resta. Chi esce da solo (`leave`) non ruota, perché conoscerebbe la nuova chiave: lo fa un owner con `rotate`, e finché la chiave non c'è nessuno scrive. I nuovi membri ricevono tutte le epoche, così leggono lo storico.
+* **`KeyBundle`:** firmato da un owner, indica la posizione del registro in cui l'emittente agisce (`atSequence`). Si accetta solo se l'emittente era owner in quella posizione e se le epoche concesse esistevano già lì: un owner revocato non può usare una vecchia posizione per distribuire la chiave di un'epoca successiva. Per un'epoca già posseduta vale la prima chiave ricevuta.
+* **Contenuti:** `WorkspaceContentCipher` cifra con la chiave dell'epoca corrente; `WorkspaceCiphertext` = epoca in chiaro + busta, con dati associati `(workspace, epoca, recordId)`.
+* **Limiti noti, da chiudere in Fase 5:** il server può ancora nascondere i record più recenti (rollback o fork del registro: servono confronti tra dispositivi); un membro rimosso conosce le chiavi delle epoche passate, quindi la sync deve rifiutare revisioni nuove cifrate con epoche superate e autenticarne l'autore; la `IdentityKeyPair` va salvata cifrata con la MasterKey; i ruoli sui contenuti sono applicati da client e RLS, non dalla crittografia.
+
 ---
 
 ## 4. FASI DI SVILUPPO
