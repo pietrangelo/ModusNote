@@ -6,6 +6,7 @@
 library;
 
 export 'src/core/dynamic_entry.dart';
+export 'src/core/entry_search.dart';
 export 'src/core/field_type.dart';
 export 'src/core/field_value.dart';
 export 'src/core/identifiers.dart';
@@ -14,5 +15,6 @@ export 'src/core/schema_codec.dart';
 export 'src/core/schema_definition.dart';
 export 'src/core/schema_exception.dart';
 export 'src/core/schema_migration.dart';
+export 'src/core/schema_switch.dart';
 export 'src/core/seed_schemas.dart';
 export 'src/core/violation.dart';

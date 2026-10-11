@@ -41,3 +41,21 @@ abstract final class Radii {
 
   static const all = [small, card, sheet];
 }
+
+/// The spacing scale continued for content blocks: card widths, column
+/// widths and breakpoints.
+abstract final class Extents {
+  static const double s = 89;
+  static const double m = 144;
+  static const double l = 233;
+  static const double xl = 377;
+  static const double xxl = 610;
+  static const double xxxl = 987;
+
+  static const all = [s, m, l, xl, xxl, xxxl];
+}
+
+abstract final class IconSizes {
+  static const double inline = Spacing.l;
+  static const double prominent = Spacing.xl;
+}
