@@ -105,17 +105,25 @@ Le interfacce (Canzone, Sogno, To-do, Appunto) **non sono tabelle o view statich
 ```text
 [ SchemaDefinition (Meta-Model) ]
           │
-          ├── Fields: List<FieldDefinition>
-          │     ├── StringField, NumberField, DateField, AudioBlobField, StatusField
-          └── UIHints: List<WidgetPlacementDescriptor>
+          ├── Fields: List<FieldDefinition>   (key, label, required, type)
+          │     └── FieldType (sealed): TextFieldType, RichTextFieldType, MarkdownFieldType,
+          │           NumberFieldType, DateFieldType, DateTimeFieldType, BooleanFieldType,
+          │           RatingFieldType, ChoiceFieldType (select / enum / status),
+          │           TagListFieldType, AudioBlobFieldType
+          └── UIHints: List<WidgetPlacement>
 
 [ DynamicEntry (Aggregate Root) ]
           │
           ├── SchemaId (UUID + Version)
-          ├── Attributes: Map<FieldKey, ValueObject>
-          ├── EncryptedBlobs: List<BlobMetadata>
+          ├── Attributes: Map<FieldKey, FieldValue>   (FieldValue sealed, uno per tipo)
+          ├── AudioBlobValue → BlobId (i BlobMetadata vivono nel contesto Blob Storage)
           └── AuditTrail: CreatedAt, UpdatedAt, Revision
 ```
+
+Transizioni (`create`, `update`, `SchemaMigration.migrate`) restituiscono `Validated<DynamicEntry>`:
+`Valid` con la nuova istanza oppure `Invalid` con tutte le `Violation`. Gli schemi invalidi
+non sono costruibili (`InvalidSchemaException`); `SchemaCodec.decode` lancia solo
+`SchemaFormatException`.
 
 ### Schemi di Riferimento Predefiniti (Seed Data)
 1. `song_sketch_v1`: Titolo (Text), Bpm (Number), Chiave (Select), Testo (RichText), TracciaGuida (AudioBlob).
