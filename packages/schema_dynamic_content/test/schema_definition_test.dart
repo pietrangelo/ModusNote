@@ -62,6 +62,33 @@ void main() {
     });
   });
 
+  group('adversary', () {
+    // Schemas are shared between workspace members (Fase 4), so a label is
+    // input from another person and must not be able to spoof the UI.
+    test('a literal label may not carry bidi overrides or control chars', () {
+      for (final spoof in [
+        'Fattura\u202Efdp.exe',
+        'Titolo\u2066nascosto',
+        'riga\nnuova',
+        'nul\u0000',
+        'del\u007F',
+        'rlm\u200F',
+      ]) {
+        expect(
+          () => Label.literal(spoof),
+          breaks(SchemaInvariant.invalidLabel),
+          reason: spoof.runes.toString(),
+        );
+      }
+    });
+
+    test('ordinary non-Latin labels are still welcome', () {
+      for (final label in ['Città', 'Сон', '夢日記', 'حلم', 'Notizen 🎵']) {
+        expect(Label.literal(label), isA<LiteralLabel>(), reason: label);
+      }
+    });
+  });
+
   group('SchemaDefinition', () {
     test('keeps fields in declaration order', () {
       expect(song.fields.map((f) => f.key.value).take(3), [
