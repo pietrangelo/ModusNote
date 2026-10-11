@@ -70,9 +70,7 @@ final class VaultHeader {
     } on CryptographyException {
       throw const MalformedSyncDataException('vault KDF out of bounds');
     }
-    final workspace = WorkspaceId.parse(
-      _hex(reader.bytes(WorkspaceId.length)),
-    );
+    final workspace = WorkspaceId.parse(_hex(reader.bytes(WorkspaceId.length)));
     final founder = MemberId(
       PublicSigningKey.fromBytes(reader.bytes(PublicSigningKey.length)),
     );
@@ -139,12 +137,6 @@ final class VaultHeader {
       other.sealedIdentity == sealedIdentity;
 
   @override
-  int get hashCode => Object.hash(
-    salt,
-    kdf,
-    workspace,
-    founder,
-    localKeyId,
-    sealedIdentity,
-  );
+  int get hashCode =>
+      Object.hash(salt, kdf, workspace, founder, localKeyId, sealedIdentity);
 }

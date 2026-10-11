@@ -174,9 +174,8 @@ void main() {
     test('a membership log swapped on disk is refused', () async {
       (await keeper().create(password('correct horse'))).lock();
       final stranger = SodiumIdentityService(sodium).generateIdentity();
-      final forged = MembershipLedger(
-        SodiumIdentityService(sodium),
-      ).found(vaults.header!.workspace, founder: stranger);
+      final forged = MembershipLedger(SodiumIdentityService(sodium))
+          .found(vaults.header!.workspace, founder: stranger);
       vaults.membership
         ..clear()
         ..addAll(forged.records);
