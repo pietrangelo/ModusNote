@@ -123,7 +123,7 @@ void main() {
     }) async {
       store = await VaultNoteStore.open(
         vault.engine,
-        schemas: SeedSchemas.all,
+        catalog: SeedSchemas.catalog,
         recorder: recorder,
         playback: withPlayback ? playback : null,
       );

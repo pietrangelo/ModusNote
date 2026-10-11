@@ -32,7 +32,7 @@ void main() {
           .create(passphrase('frase lunga'));
       final store = await VaultNoteStore.open(
         created.engine,
-        schemas: SeedSchemas.all,
+        catalog: SeedSchemas.catalog,
       );
       await store.save(
         quickNote(
@@ -51,7 +51,7 @@ void main() {
       addTearDown(unlocked.lock);
       final reopened = await VaultNoteStore.open(
         unlocked.engine,
-        schemas: SeedSchemas.all,
+        catalog: SeedSchemas.catalog,
       );
 
       expect(reopened.entries.map((e) => e.id.value), [second, first]);
@@ -62,6 +62,46 @@ void main() {
     },
   );
 
+  test('a to-do saved by an older app opens as a list of tasks', () async {
+    final database = memoryDatabase();
+    addTearDown(database.close);
+    final vault = await keeperOn(database).create(passphrase('frase lunga'));
+    addTearDown(vault.lock);
+    final old = switch (DynamicEntry.create(
+      schema: SeedSchemas.taskV1,
+      id: EntryId(first),
+      attributes: {
+        FieldKey('description'): const TextValue('Accordare la chitarra'),
+        FieldKey('completed'): const BooleanValue(true),
+      },
+      at: DateTime.utc(2026, 10, 1),
+    )) {
+      Valid(:final value) => value,
+      Invalid(:final violations) => throw StateError('$violations'),
+    };
+    // Written as version 1, the way the previous app wrote it.
+    await (await VaultNoteStore.open(
+      vault.engine,
+      catalog: SchemaCatalog(current: [SeedSchemas.taskV1]),
+    )).save(old);
+
+    final store = await VaultNoteStore.open(
+      vault.engine,
+      catalog: SeedSchemas.catalog,
+    );
+
+    final entry = store.entries.single;
+    expect(entry.schemaId, SeedSchemas.taskV2.id);
+    expect(
+      entry.valueOf(FieldKey('items')),
+      ChecklistValue([
+        const ChecklistItem('Accordare la chitarra', done: true),
+      ]),
+    );
+    expect(entry.audit, old.audit);
+    expect(store.unreadable, 0);
+  });
+
   test('saving notifies the screens', () async {
     final database = memoryDatabase();
     addTearDown(database.close);
@@ -69,7 +109,7 @@ void main() {
     addTearDown(vault.lock);
     final store = await VaultNoteStore.open(
       vault.engine,
-      schemas: SeedSchemas.all,
+      catalog: SeedSchemas.catalog,
     );
     var notified = 0;
     store.addListener(() => notified++);
@@ -96,7 +136,7 @@ void main() {
 
         final store = await VaultNoteStore.open(
           vault.engine,
-          schemas: SeedSchemas.all,
+          catalog: SeedSchemas.catalog,
         );
 
         expect(store.entries, isEmpty);
@@ -111,7 +151,7 @@ void main() {
       addTearDown(vault.lock);
       final store = await VaultNoteStore.open(
         vault.engine,
-        schemas: SeedSchemas.all,
+        catalog: SeedSchemas.catalog,
       );
       await store.save(quickNote(first, 'mia', DateTime.utc(2026, 10, 11)));
       // A writer copying a note's bytes under another record id must not
@@ -123,7 +163,7 @@ void main() {
 
       final reopened = await VaultNoteStore.open(
         vault.engine,
-        schemas: SeedSchemas.all,
+        catalog: SeedSchemas.catalog,
       );
 
       expect(reopened.entries.map((e) => e.id.value), [first]);
@@ -137,7 +177,7 @@ void main() {
       addTearDown(vault.lock);
       final store = await VaultNoteStore.open(
         vault.engine,
-        schemas: SeedSchemas.all,
+        catalog: SeedSchemas.catalog,
       );
 
       await expectLater(

@@ -46,7 +46,7 @@
   "schemaDreamLogFieldLucidity": "Lucidità",
   "schemaDreamLogFieldTranscription": "Trascrizione",
   "schemaDreamLogFieldWakeAudio": "Audio al risveglio",
-  "schemaTaskLabel": "Attività",
+  "schemaTaskLabel": "To-do",
   "schemaTaskFieldDescription": "Descrizione",
   "schemaTaskFieldDue": "Scadenza",
   "schemaTaskFieldPriority": "Priorità",
@@ -102,5 +102,13 @@
   "markdownWrite": "Scrivi",
   "markdownPreview": "Anteprima",
   "markdownEmpty": "Niente da mostrare.",
-  "markdownImage": "Immagine non caricata"
+  "markdownImage": "Immagine non caricata",
+  "violationTooManyItems": "Troppi task",
+  "violationEmptyItem": "Un task è vuoto",
+  "schemaTaskFieldTitle": "Titolo",
+  "schemaTaskFieldItems": "Cose da fare",
+  "addTask": "Aggiungi un task",
+  "removeTask": "Rimuovi il task",
+  "taskHint": "Nuovo task",
+  "taskProgress": "{done}/{total}"
 }
