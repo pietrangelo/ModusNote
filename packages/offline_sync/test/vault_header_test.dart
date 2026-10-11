@@ -82,14 +82,13 @@ void main() {
       }
     });
 
-    Glados(any.list(any.uint8)).test('random bytes never crash the parser', (
-      bytes,
-    ) {
-      try {
-        VaultHeader.parse(Uint8List.fromList(bytes));
-      } on MalformedSyncDataException {
-        // The only acceptable failure.
-      }
-    });
+    Glados(any.list(any.uint8))
+        .test('random bytes never crash the parser', (bytes) {
+          try {
+            VaultHeader.parse(Uint8List.fromList(bytes));
+          } on MalformedSyncDataException {
+            // The only acceptable failure.
+          }
+        });
   });
 }
