@@ -1,0 +1,19 @@
+name: blob_storage_media_adapters
+description: "Storage adapters for the Blob Storage & Media bounded context."
+publish_to: none
+resolution: workspace
+
+environment:
+  sdk: ^3.13.0
+
+dependencies:
+  blob_storage_media: any
+  file: ^7.0.1
+  schema_dynamic_content: any
+
+dev_dependencies:
+  identity_cryptography: any
+  identity_cryptography_adapters: any
+  lints: ^6.0.0
+  sodium: ^4.1.1
+  test: ^1.26.0

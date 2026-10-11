@@ -118,7 +118,7 @@ final class ArchitectureGuard {
         );
       }
       for (final uri in _directives(file)) {
-        yield* _checkDirective(name, lib.path, file, ring, uri);
+        yield* _checkDirective(name, domainNames, lib.path, file, ring, uri);
       }
     }
   }
@@ -146,6 +146,7 @@ final class ArchitectureGuard {
 
   Iterable<Violation> _checkDirective(
     String packageName,
+    Set<String> domainNames,
     String libPath,
     File file,
     _Ring? ring,
@@ -166,7 +167,7 @@ final class ArchitectureGuard {
 
     if (ring == null) return;
 
-    if (!_isAllowed(packageName, libPath, file, ring, uri)) {
+    if (!_isAllowed(packageName, domainNames, libPath, file, ring, uri)) {
       yield Violation(
         ring == _Ring.core ? Rule.impureCore : Rule.impureApplication,
         location,
@@ -177,6 +178,7 @@ final class ArchitectureGuard {
 
   bool _isAllowed(
     String packageName,
+    Set<String> domainNames,
     String libPath,
     File file,
     _Ring ring,
@@ -198,7 +200,9 @@ final class ArchitectureGuard {
       final path = uri.substring('package:'.length);
       final target = path.split('/').first;
       if (_pureDependencies.contains(target)) return true;
-      if (target != packageName) return false;
+      // Another context's public library is itself pure domain; its `src/`
+      // files were already rejected as private imports above.
+      if (target != packageName) return domainNames.contains(target);
       return allowedRings.contains(
         _ringOf(libPath, p.join(libPath, path.substring(target.length + 1))),
       );
