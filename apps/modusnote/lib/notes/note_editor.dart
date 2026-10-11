@@ -8,6 +8,7 @@ import '../audio/recording_player_view.dart';
 import '../audio/recording_sheet.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../theme/golden_ratio.dart';
+import '../vault/auto_lock.dart';
 import 'dynamic_form_renderer.dart';
 import 'note_store.dart';
 import 'schema_text.dart';
@@ -201,7 +202,11 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
                 schema: _schema,
                 values: _draft.values,
                 violations: _violations,
-                onChanged: (draft) => _draft = draft,
+                onChanged: (draft) {
+                  _draft = draft;
+                  // Typing on a soft keyboard is not a pointer event.
+                  AutoLockScope.maybeOf(context)?.touch();
+                },
                 onRecordAudio: widget.store.recorder == null ? null : _record,
                 recordingLength: _lengthOf,
                 recordingPlayer: _playerOf,

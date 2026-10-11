@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../theme/golden_ratio.dart';
 import '../theme/modus_colors.dart';
+import '../vault/auto_lock.dart';
 import 'audio_diagnostics.dart';
 import 'note_recorder.dart';
 
@@ -17,15 +18,25 @@ class RecordingSheet extends StatefulWidget {
   final NoteRecorder recorder;
 
   /// The take, or null when it was discarded or could not be recorded.
+  ///
+  /// The vault stays open while the sheet is up: locking mid-take would
+  /// pull the key from under the encryption of the recording.
   static Future<KeyedRecording?> show(
     BuildContext context,
     NoteRecorder recorder,
-  ) => showModalBottomSheet<KeyedRecording>(
-    context: context,
-    isDismissible: false,
-    enableDrag: false,
-    builder: (_) => RecordingSheet(recorder: recorder),
-  );
+  ) async {
+    final release = AutoLockScope.maybeOf(context)?.hold();
+    try {
+      return await showModalBottomSheet<KeyedRecording>(
+        context: context,
+        isDismissible: false,
+        enableDrag: false,
+        builder: (_) => RecordingSheet(recorder: recorder),
+      );
+    } finally {
+      release?.call();
+    }
+  }
 
   @override
   State<RecordingSheet> createState() => _RecordingSheetState();
