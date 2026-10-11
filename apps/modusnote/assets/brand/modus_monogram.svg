@@ -1,0 +1,22 @@
+<!-- Modus Notes monogram: the M drawn as a music note (rhythm), a golden
+     spiral (measure) and a check mark (to-do). Palette: Aureo Gold, Rhythm
+     Violet, Cadence Cyan. Source for the app icons (tool/render_icons.py). -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="ink" x1="74" y1="0" x2="434" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#EBB448"/>
+      <stop offset="0.3" stop-color="#E7964F"/>
+      <stop offset="0.55" stop-color="#C25AB4"/>
+      <stop offset="0.75" stop-color="#8B3FD6"/>
+      <stop offset="1" stop-color="#00A3FF"/>
+    </linearGradient>
+  </defs>
+  <g transform="translate(-36 0)">
+    <g fill="none" stroke="url(#ink)" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M192 372 V118 L262 320 L330 170 L378 268 L462 118" stroke-width="30"/>
+      <path d="M378 268 A42 42 0 0 1 336 310 A26 26 0 0 1 310 284 A16 16 0 0 1 326 268 A10 10 0 0 1 336 278 A6 6 0 0 1 330 284" stroke-width="12"/>
+    </g>
+    <path d="M190 104 C238 110 270 140 262 190 C254 166 234 150 200 140 Z" fill="url(#ink)"/>
+    <ellipse cx="156" cy="378" rx="44" ry="32" transform="rotate(-24 156 378)" fill="url(#ink)"/>
+  </g>
+</svg>
