@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:offline_sync/offline_sync.dart';
 import 'package:schema_dynamic_content/schema_dynamic_content.dart';
 
+import '../audio/note_playback.dart';
 import '../audio/note_recorder.dart';
 import '../notes/note_store.dart';
 
@@ -14,14 +15,15 @@ import '../notes/note_store.dart';
 /// Decrypted notes live only in this object's memory while the vault is
 /// open; the screens never see a record that fails to decode or validate.
 final class VaultNoteStore extends ChangeNotifier implements NoteStore {
-  VaultNoteStore._(this._engine, this._schemas, this.recorder);
+  VaultNoteStore._(this._engine, this._schemas, this.recorder, this.playback);
 
   static Future<VaultNoteStore> open(
     SyncEngine engine, {
     required List<SchemaDefinition> schemas,
     NoteRecorder? recorder,
+    NotePlayback? playback,
   }) async {
-    final store = VaultNoteStore._(engine, schemas, recorder);
+    final store = VaultNoteStore._(engine, schemas, recorder, playback);
     await store._load();
     return store;
   }
@@ -32,6 +34,9 @@ final class VaultNoteStore extends ChangeNotifier implements NoteStore {
 
   @override
   final NoteRecorder? recorder;
+
+  @override
+  final NotePlayback? playback;
   var _unreadable = 0;
 
   /// Records that are not a valid note of a known schema: kept in the vault

@@ -91,5 +91,12 @@
   "microphoneDenied": "Accesso al microfono negato. Consentilo nelle impostazioni di sistema per registrare.",
   "recordingFailed": "Non è stato possibile salvare la registrazione.",
   "close": "Chiudi",
-  "recordingAttachedLength": "Registrazione allegata · {length}"
+  "recordingAttachedLength": "Registrazione allegata · {length}",
+  "playRecording": "Ascolta la registrazione",
+  "pauseRecording": "Pausa",
+  "playbackPosition": "{position} / {length}",
+  "recordingTooLong": "Le registrazioni oltre i 30 minuti non si possono ancora ascoltare qui.",
+  "recordingUnsupported": "Questo dispositivo non riproduce il formato di questa registrazione.",
+  "recordingMissing": "Questa registrazione non è ancora su questo dispositivo.",
+  "recordingDamaged": "La registrazione è danneggiata o è stata alterata, quindi non viene riprodotta."
 }
