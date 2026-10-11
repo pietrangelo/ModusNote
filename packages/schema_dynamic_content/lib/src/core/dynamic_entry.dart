@@ -62,6 +62,25 @@ final class DynamicEntry {
     ),
   );
 
+  /// Rebuilds an entry read back from storage or sync. It is validated
+  /// against [schema] again: decrypted bytes are trusted for confidentiality,
+  /// never for shape.
+  static Validated<DynamicEntry> restore({
+    required SchemaDefinition schema,
+    required EntryId id,
+    required Map<FieldKey, FieldValue> attributes,
+    required AuditTrail audit,
+  }) => _validated(
+    schema,
+    attributes,
+    (valid) => DynamicEntry._(
+      id: id,
+      schemaId: schema.id,
+      attributes: valid,
+      audit: audit,
+    ),
+  );
+
   final EntryId id;
   final SchemaId schemaId;
   final Map<FieldKey, FieldValue> attributes;
