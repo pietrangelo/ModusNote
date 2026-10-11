@@ -1,9 +1,9 @@
 # ModusNote
 
 ## MISSION
-Costruire un'applicazione mobile offline-first e crittografata end-to-end (E2EE) con motore a tipi dinamici (schemi estensibili per canzoni, sogni, to-do, note libere) e gestione di blob audio cifrati, sincronizzabile in gruppi a zero-knowledge.
+Costruire un'applicazione mobile e web offline-first e crittografata end-to-end (E2EE) con motore a tipi dinamici (schemi estensibili per canzoni, sogni, to-do, note libere) e gestione di blob audio cifrati, sincronizzabile in gruppi a zero-knowledge.
 
-- **Stack:** Flutter (Dart 3.13+), pub workspace.
+- **Stack:** Flutter (Dart 3.13+), pub workspace. Un'unica app per Android, iOS e **web** (Flutter Web, WebAssembly), che riusa gli stessi pacchetti di dominio.
 - **Dominio dell'app:** `modus.serv.run`. Identificativo Android/iOS: `run.serv.modus`.
 - **Lingue:** l'app è multi-lingua fin dal primo commit (italiano e inglese per iniziare).
 
@@ -12,7 +12,7 @@ Costruire un'applicazione mobile offline-first e crittografata end-to-end (E2EE)
 ## 0. STRUTTURA DEL REPOSITORY E COMANDI
 
 ```text
-apps/modusnote/                      Shell Flutter: UI, l10n, wiring degli adapter. Nessuna logica di dominio.
+apps/modusnote/                      Shell Flutter (Android, iOS, web): UI, l10n, wiring degli adapter. Nessuna logica di dominio.
 packages/identity_cryptography/      Bounded context (dominio puro)
 packages/schema_dynamic_content/     Bounded context (dominio puro)
 packages/blob_storage_media/         Bounded context (dominio puro)
@@ -61,6 +61,17 @@ Tutta la UI si costruisce **sempre** sul rapporto aureo φ = 1,618…:
 - **Layout:** le suddivisioni di schermo e colonne seguono 61,8 % / 38,2 %; contenitori e card usano proporzioni φ : 1 (orizzontali) o 1 : φ (verticali).
 - **Raggi, icone e larghezze di riga** prendono i valori dalla stessa scala.
 - I valori vivono in un unico set di design token (`apps/modusnote/lib/theme/`); i widget non scrivono numeri a mano. I test di componente verificano che le dimensioni usate appartengano alla scala.
+
+### Client web
+Il client web è un'alternativa completa all'app mobile e si sincronizza con essa: per il protocollo di sync è semplicemente un altro dispositivo del vault, con la propria coppia di chiavi di identità. Si compila con `flutter build web --wasm --no-web-resources-cdn` (nessuna risorsa caricata da CDN di terzi).
+
+Nel browser alcune garanzie cambiano, e il codice deve tenerne conto in modo esplicito:
+* **Memoria delle chiavi:** non esistono `sodium_malloc`/`mlock`. Su web `SecureKey` è un buffer JS che viene azzerato al `dispose()`, ma il motore JS può averne fatto copie. La regola "dispose il prima possibile" resta, ma la garanzia è più debole che su mobile.
+* **Fiducia nel codice:** il server che distribuisce l'app web potrebbe servire codice malevolo a ogni caricamento. Mitigazioni obbligatorie: Content-Security-Policy restrittiva (niente script inline o di terze parti, solo `wasm-unsafe-eval`), Subresource Integrity, nessuna dipendenza da CDN, hash delle build pubblicati.
+* **XSS ed estensioni:** qualunque script iniettato vede le chiavi in memoria. Niente HTML generato da contenuti utente (Markdown e testo arricchito sono renderizzati come widget, mai come HTML).
+* **Persistenza:** niente SQLCipher. Il database locale è SQLite WASM su OPFS/IndexedDB e contiene solo record già cifrati con le buste del dominio. Le chiavi non si salvano mai in `localStorage`/IndexedDB in chiaro.
+* **Sblocco:** niente biometria nativa. La MasterKey si ottiene con la passphrase a ogni sessione oppure tramite WebAuthn con estensione PRF, dove disponibile.
+* **Crypto:** libsodium arriva via WebAssembly (backend JS del pacchetto `sodium`, variante sumo per Argon2id). Non si usa WebCrypto, che non offre XChaCha20-Poly1305 né Argon2id.
 
 ---
 
@@ -203,6 +214,15 @@ Le interfacce (Canzone, Sogno, To-do, Appunto) **non sono tabelle o view statich
    1. `DynamicFormRenderer`: Generazione dinamica dei widget in base allo schema (Waveform player per tracce audio, editor testuale per testi, picker data/metadati).
    2. Generazione e testing dei 4 template iniziali (Canzone, Sogno, Task, Nota), con etichette localizzate.
    3. Modalità rapida per il passaggio da una tipologia di nota all'altra e ricerca su metadati locali indicizzati in chiaro (solo indici sicuri/tag anonimizzati).
+
+### Fase 7: Web Client
+* Obiettivo: Il client web come alternativa all'app mobile, sincronizzato con essa.
+* Task TDD:
+   1. Adapter crypto web: inizializzazione di libsodium WASM e stessi test dell'adapter nativo eseguiti con `dart test -p chrome`.
+   2. Persistenza web: SQLite WASM su OPFS con soli record cifrati; test che nessun plaintext raggiunga lo storage del browser.
+   3. Sblocco web: passphrase per sessione e WebAuthn PRF; blocco automatico alla chiusura o dopo inattività.
+   4. Hardening: CSP, SRI e build senza CDN, verificati in CI.
+   5. `Adversary Harness`: script iniettato che cerca chiavi in storage persistente, tab rimasta aperta dopo il blocco, risorsa servita senza integrità valida.
 
 ---
 
