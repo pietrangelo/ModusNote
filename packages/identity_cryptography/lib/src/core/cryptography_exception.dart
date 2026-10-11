@@ -73,3 +73,12 @@ final class InvalidKeyContextException extends CryptographyException {
   @override
   String get message => 'key context must be 8 printable ASCII characters';
 }
+
+/// An Ed25519 signature does not match the message and signer. Whatever it
+/// was attached to (a membership change, a KeyBundle) must be discarded.
+final class InvalidSignatureException extends CryptographyException {
+  const InvalidSignatureException();
+
+  @override
+  String get message => 'invalid signature';
+}
