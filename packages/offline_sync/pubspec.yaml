@@ -1,0 +1,19 @@
+name: offline_sync
+description: "Offline Sync: revisioni cifrate e firmate, risoluzione dei conflitti, coda offline."
+publish_to: none
+resolution: workspace
+
+environment:
+  sdk: ^3.13.0
+
+dependencies:
+  collaboration_access_control: any
+  identity_cryptography: any
+  meta: ^1.16.0
+
+dev_dependencies:
+  glados: ^1.1.7
+  identity_cryptography_adapters: any
+  lints: ^6.0.0
+  sodium: ^4.1.1
+  test: ^1.26.0
