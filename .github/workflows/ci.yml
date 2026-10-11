@@ -56,6 +56,16 @@ jobs:
       - name: Supabase schema and RLS tests
         run: bash supabase/tests/run.sh
 
+      - name: Supabase adapter against PostgREST
+        run: bash supabase/tests/e2e.sh
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.22.0
+
+      - name: Edge Function tests
+        run: node --test "supabase/functions/**/*_test.ts"
+
       - name: App tests
         working-directory: apps/modusnote
         run: flutter test
