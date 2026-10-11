@@ -19,3 +19,11 @@ workspace:
 
 dev_dependencies:
   lints: ^6.0.0
+
+hooks:
+  user_defines:
+    flutter_soloud:
+      # Recordings reach the player already decoded to WAV by our own
+      # libopus, so SoLoud needs no Xiph codecs; without this its build
+      # hook downloads prebuilt ones that no hash of ours pins.
+      no_xiph_libs: true

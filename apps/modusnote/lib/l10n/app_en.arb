@@ -400,5 +400,41 @@
         "type": "String"
       }
     }
+  },
+  "playRecording": "Play recording",
+  "@playRecording": {
+    "description": "Audio player in a note's audio field."
+  },
+  "pauseRecording": "Pause",
+  "@pauseRecording": {
+    "description": "Audio player in a note's audio field."
+  },
+  "playbackPosition": "{position} / {length}",
+  "@playbackPosition": {
+    "description": "Elapsed and total length of a recording, both m:ss.",
+    "placeholders": {
+      "position": {
+        "type": "String"
+      },
+      "length": {
+        "type": "String"
+      }
+    }
+  },
+  "recordingTooLong": "Recordings over 30 minutes can't be played here yet.",
+  "@recordingTooLong": {
+    "description": "Audio player in a note's audio field."
+  },
+  "recordingUnsupported": "This device can't play this recording's format.",
+  "@recordingUnsupported": {
+    "description": "Audio player in a note's audio field."
+  },
+  "recordingMissing": "This recording isn't on this device yet.",
+  "@recordingMissing": {
+    "description": "Audio player in a note's audio field."
+  },
+  "recordingDamaged": "The recording is damaged or was altered, so it won't be played.",
+  "@recordingDamaged": {
+    "description": "Audio player in a note's audio field."
   }
 }

@@ -7,6 +7,7 @@ import 'package:identity_cryptography/identity_cryptography.dart';
 import 'package:offline_sync/offline_sync.dart';
 import 'package:schema_dynamic_content/schema_dynamic_content.dart';
 
+import '../audio/note_playback.dart';
 import '../audio/note_recorder.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../notes/note_library.dart';
@@ -25,6 +26,7 @@ class VaultGate extends StatefulWidget {
     required this.passwordFrom,
     required this.schemas,
     this.recorderFor,
+    this.playbackFor,
     super.key,
   });
 
@@ -35,6 +37,10 @@ class VaultGate extends StatefulWidget {
   /// Builds the recorder for an unlocked vault; without it notes cannot
   /// hold recordings.
   final NoteRecorder Function(SyncEngine engine)? recorderFor;
+
+  /// Builds the player's opener for an unlocked vault; without it
+  /// recordings show their length but cannot be played.
+  final NotePlayback Function(SyncEngine engine)? playbackFor;
 
   @override
   State<VaultGate> createState() => _VaultGateState();
@@ -119,6 +125,7 @@ class _VaultGateState extends State<VaultGate> {
         vault.engine,
         schemas: widget.schemas,
         recorder: widget.recorderFor?.call(vault.engine),
+        playback: widget.playbackFor?.call(vault.engine),
       );
       if (!mounted) {
         vault.lock();
