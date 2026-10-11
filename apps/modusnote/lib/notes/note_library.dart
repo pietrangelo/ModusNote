@@ -4,6 +4,7 @@ import 'package:schema_dynamic_content/schema_dynamic_content.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../theme/golden_ratio.dart';
 import '../theme/modus_colors.dart';
+import '../vault/auto_lock.dart';
 import 'note_editor.dart';
 import 'note_store.dart';
 import 'schema_text.dart';
@@ -44,14 +45,20 @@ class _NoteLibraryScreenState extends State<NoteLibraryScreen> {
         ? _type ?? widget.schemas.last
         : _schemaOf(entry);
     if (schema == null) return;
+    // A pushed route sits beside the library, not under it: it gets the
+    // vault's auto-lock passed along explicitly.
+    final autoLock = AutoLockScope.maybeOf(context);
+    final editor = NoteEditorScreen(
+      schemas: widget.schemas,
+      store: widget.store,
+      initialSchema: schema,
+      entry: entry,
+    );
     Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => NoteEditorScreen(
-          schemas: widget.schemas,
-          store: widget.store,
-          initialSchema: schema,
-          entry: entry,
-        ),
+        builder: (_) => autoLock == null
+            ? editor
+            : AutoLockScope(autoLock: autoLock, child: editor),
       ),
     );
   }

@@ -1,8 +1,9 @@
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:collaboration_access_control/collaboration_access_control.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:identity_cryptography/identity_cryptography.dart';
 import 'package:offline_sync/offline_sync.dart';
 import 'package:schema_dynamic_content/schema_dynamic_content.dart';
@@ -13,6 +14,7 @@ import '../l10n/generated/app_localizations.dart';
 import '../notes/note_library.dart';
 import '../theme/golden_ratio.dart';
 import '../theme/modus_colors.dart';
+import 'auto_lock.dart';
 import 'vault_note_store.dart';
 
 /// Moves a UTF-8 passphrase into native memory and wipes the buffer.
@@ -27,6 +29,7 @@ class VaultGate extends StatefulWidget {
     required this.schemas,
     this.recorderFor,
     this.playbackFor,
+    this.autoLockFor,
     super.key,
   });
 
@@ -41,6 +44,9 @@ class VaultGate extends StatefulWidget {
   /// Builds the player's opener for an unlocked vault; without it
   /// recordings show their length but cannot be played.
   final NotePlayback Function(SyncEngine engine)? playbackFor;
+
+  /// Builds the auto-lock of an open vault; tests shorten its times.
+  final AutoLock Function(VoidCallback onLock)? autoLockFor;
 
   @override
   State<VaultGate> createState() => _VaultGateState();
@@ -61,15 +67,16 @@ final class _Locked extends _Stage {
 }
 
 final class _Open extends _Stage {
-  const _Open(this.vault, this.store);
+  const _Open(this.vault, this.store, this.autoLock);
 
   final UnlockedVault vault;
   final VaultNoteStore store;
+  final AutoLock autoLock;
 }
 
 enum _Problem { tooShort, mismatch, wrong, damaged }
 
-class _VaultGateState extends State<VaultGate> {
+class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
   _Stage _stage = const _Checking();
   _Problem? _problem;
   var _busy = false;
@@ -79,6 +86,7 @@ class _VaultGateState extends State<VaultGate> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     widget.keeper.exists.then((exists) {
       if (mounted) setState(() => _stage = _Locked(exists: exists));
     });
@@ -86,7 +94,12 @@ class _VaultGateState extends State<VaultGate> {
 
   @override
   void dispose() {
-    if (_stage case _Open(:final vault)) vault.lock();
+    WidgetsBinding.instance.removeObserver(this);
+    _stopWatching();
+    if (_stage case _Open(:final vault, :final autoLock)) {
+      autoLock.dispose();
+      vault.lock();
+    }
     _passphrase.dispose();
     _confirmation.dispose();
     super.dispose();
@@ -131,7 +144,11 @@ class _VaultGateState extends State<VaultGate> {
         vault.lock();
         return;
       }
-      setState(() => _stage = _Open(vault, store));
+      final autoLock =
+          widget.autoLockFor?.call(_autoLocked) ??
+          AutoLock(onLock: _autoLocked);
+      _watchActivity(autoLock);
+      setState(() => _stage = _Open(vault, store, autoLock));
     } on WrongPassphraseException {
       _fail(_Problem.wrong);
     } on TamperedWorkspaceDataException {
@@ -148,11 +165,62 @@ class _VaultGateState extends State<VaultGate> {
   }
 
   void _lock() {
-    if (_stage case _Open(:final vault, :final store)) {
+    if (_stage case _Open(:final vault, :final store, :final autoLock)) {
+      _stopWatching();
+      autoLock.dispose();
       vault.lock();
       store.dispose();
       setState(() => _stage = const _Locked(exists: true));
     }
+  }
+
+  /// Closes every screen opened over the notes first, so no decrypted
+  /// note stays on screen behind the passphrase prompt.
+  void _autoLocked() {
+    if (!mounted) return;
+    Navigator.of(context).popUntil((route) => route.isFirst);
+    _lock();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (_stage case _Open(:final autoLock)) {
+      switch (state) {
+        case AppLifecycleState.hidden || AppLifecycleState.paused:
+          autoLock.hidden();
+        case AppLifecycleState.resumed:
+          autoLock.shown();
+        case AppLifecycleState.inactive || AppLifecycleState.detached:
+          break;
+      }
+    }
+  }
+
+  // Taps and keys anywhere count as activity, on every route, so they are
+  // watched at the bindings rather than through one widget subtree.
+  AutoLock? _watched;
+
+  void _watchActivity(AutoLock autoLock) {
+    _stopWatching();
+    _watched = autoLock;
+    GestureBinding.instance.pointerRouter.addGlobalRoute(_onPointer);
+    HardwareKeyboard.instance.addHandler(_onKey);
+  }
+
+  void _stopWatching() {
+    if (_watched == null) return;
+    _watched = null;
+    GestureBinding.instance.pointerRouter.removeGlobalRoute(_onPointer);
+    HardwareKeyboard.instance.removeHandler(_onKey);
+  }
+
+  void _onPointer(PointerEvent event) {
+    if (event is PointerDownEvent) _watched?.touch();
+  }
+
+  bool _onKey(KeyEvent event) {
+    _watched?.touch();
+    return false;
   }
 
   @override
@@ -160,10 +228,13 @@ class _VaultGateState extends State<VaultGate> {
     _Checking() => const Scaffold(
       body: Center(child: CircularProgressIndicator()),
     ),
-    _Open(:final store) => NoteLibraryScreen(
-      schemas: widget.schemas,
-      store: store,
-      onLock: _lock,
+    _Open(:final store, :final autoLock) => AutoLockScope(
+      autoLock: autoLock,
+      child: NoteLibraryScreen(
+        schemas: widget.schemas,
+        store: store,
+        onLock: _lock,
+      ),
     ),
     _Locked(:final exists) => _form(context, creating: !exists),
   };
