@@ -45,6 +45,20 @@ final class WeakKdfParametersException extends CryptographyException {
   String get message => 'KDF parameters are below the interactive floor';
 }
 
+final class ExcessiveKdfParametersException extends CryptographyException {
+  const ExcessiveKdfParametersException();
+
+  @override
+  String get message => 'KDF parameters exceed what a device can afford';
+}
+
+final class WeakPassphraseException extends CryptographyException {
+  const WeakPassphraseException();
+
+  @override
+  String get message => 'passphrase shorter than the policy minimum';
+}
+
 /// A secret was used after `dispose()` released its native memory.
 final class DisposedKeyException extends CryptographyException {
   const DisposedKeyException();
