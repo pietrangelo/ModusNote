@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
-import 'package:blob_storage_media_adapters/blob_storage_media_adapters.dart';
+import 'package:blob_storage_media_adapters/audio_encoding.dart';
 import 'package:test/test.dart';
 
 import 'support/ogg_reader.dart';

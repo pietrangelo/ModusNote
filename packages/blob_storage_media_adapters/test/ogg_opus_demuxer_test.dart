@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:blob_storage_media/blob_storage_media.dart';
-import 'package:blob_storage_media_adapters/blob_storage_media_adapters.dart';
+import 'package:blob_storage_media_adapters/audio_encoding.dart';
 import 'package:glados/glados.dart';
 
 Uint8List packet(int length, [int fill = 0xA5]) =>
@@ -231,12 +231,16 @@ void main() {
           packet(10),
         ], m: muxer(packetsPerPage: 1));
         final pages = pageOffsets(stream);
-        ByteData.sublistView(stream).setInt64(pages[3] + 6, 1, Endian.little);
+        ByteData.sublistView(stream)
+          ..setUint32(pages[3] + 6, 1, Endian.little)
+          ..setUint32(pages[3] + 6 + 4, 0, Endian.little);
         await refuses(resealed(stream, pages[3]), 'granule went back');
 
         final hidden = mux([packet(10)], originalSamples: 0);
         final last = pageOffsets(hidden).last;
-        ByteData.sublistView(hidden).setInt64(last + 6, 100, Endian.little);
+        ByteData.sublistView(hidden)
+          ..setUint32(last + 6, 100, Endian.little)
+          ..setUint32(last + 6 + 4, 0, Endian.little);
         await refuses(resealed(hidden, last), 'final granule inside pre-skip');
       },
     );
@@ -277,6 +281,8 @@ void main() {
       await refuses(stream, 'head length');
     });
 
+    // glados draws its numbers with `1 << 32`, which is 0 in JavaScript:
+    // the property tests run on the VM, the cases above in the browser too.
     Glados(any.list(any.uint8))
         .test('random bytes are refused, never crash', (bytes) async {
           try {
@@ -285,7 +291,7 @@ void main() {
           } on MalformedBlobException {
             // The only acceptable outcome.
           }
-        });
+        }, testOn: 'vm');
 
     Glados2(any.intInRange(0, 2000), any.uint8).test(
       'a single corrupted byte is refused or harmless, never a crash',
@@ -299,6 +305,7 @@ void main() {
           // Refused.
         }
       },
+      testOn: 'vm',
     );
   });
 }

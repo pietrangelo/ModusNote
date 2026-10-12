@@ -27,6 +27,7 @@ dependencies:
   schema_dynamic_content: any
   sodium: ^4.1.1
   sqlite3: ^3.7.0
+  web: ^1.1.1
 
 dev_dependencies:
   crypto: ^3.0.7
@@ -46,3 +47,6 @@ flutter:
     - family: Inter
       fonts:
         - asset: assets/fonts/Inter-Variable.ttf
+    - family: NotoSansSymbols
+      fonts:
+        - asset: assets/fonts/NotoSansSymbols-Music.ttf

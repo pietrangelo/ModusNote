@@ -15,5 +15,6 @@ export 'src/core/blob_exception.dart';
 export 'src/core/blob_metadata.dart';
 export 'src/core/chunk_layout.dart';
 export 'src/core/decoded_audio.dart';
+export 'src/core/portable_int64.dart';
 export 'src/core/recorded_note.dart';
 export 'src/core/recording_state.dart';

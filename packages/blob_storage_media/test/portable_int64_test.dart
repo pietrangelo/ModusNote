@@ -35,6 +35,19 @@ void main() {
     });
   });
 
+  test('little-endian on request, like setInt64(..., Endian.little)', () {
+    vectors.forEach((value, bytes) {
+      final little = Uint8List(8);
+      setPortableInt64(ByteData.sublistView(little), 0, value, Endian.little);
+      expect(little, bytes.reversed, reason: '$value');
+      expect(
+        getPortableInt64(ByteData.sublistView(little), 0, Endian.little),
+        value,
+        reason: '$value',
+      );
+    });
+  });
+
   test('round-trips values around the 32-bit boundaries', () {
     for (final value in [
       2147483647,

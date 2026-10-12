@@ -1,6 +1,7 @@
 import 'package:blob_storage_media_adapters/audio_encoding.dart';
 
-/// Uncompressed until the WebCodecs Opus encoder lands (Fase 7): browsers
-/// cannot load the FFI build of libopus.
+/// Streaming WAV: works in every browser. The web app picks Opus through
+/// WebCodecs itself when the browser has it (`lib/bootstrap/home_web.dart`),
+/// because finding out is asynchronous.
 AudioStreamEncoder platformEncoder() =>
     const WavStreamEncoder(sampleRate: 48000);

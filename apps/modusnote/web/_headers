@@ -2,9 +2,12 @@
 # The page holds decrypted notes and keys in memory, so only code from this
 # origin may run: no inline scripts, no eval, no third-party hosts.
 # 'wasm-unsafe-eval' lets the browser compile our own WebAssembly
-# (Flutter, libsodium, SQLite). test/platform/web_headers_test.dart checks it.
+# (Flutter, libsodium, SQLite). The style hashes are the <style> elements
+# Flutter's engine inserts, plus the empty one SelectionArea (the Markdown
+# preview) creates and then fills through CSSOM. test/platform/
+# web_headers_test.dart checks it.
 /*
-  Content-Security-Policy: default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self' blob:; connect-src 'self'; img-src 'self' blob:; font-src 'self'; style-src 'self' 'sha256-quEZTjRzgvQYGviYWByjJgKZ/NbzuCmZuJz4oKH92lc=' 'sha256-yfIPOfm2j+95mdSFRKtHD+weGaJNlJyzgEhboQ4WsDA=' 'sha256-cgINIZw4iKgU7zccO2vPeZdQJIMlKEchLZG6hpkP+8k=' 'sha256-2hxujCU6WzSO6ycZznxFKlHE++BDsDuMYXT/O0zl8rM='; manifest-src 'self'; media-src 'self' blob:; base-uri 'self'; form-action 'none'; frame-ancestors 'none'; object-src 'none'; require-trusted-types-for 'script'; trusted-types flutter-js default
+  Content-Security-Policy: default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self' blob:; connect-src 'self'; img-src 'self' blob:; font-src 'self'; style-src 'self' 'sha256-quEZTjRzgvQYGviYWByjJgKZ/NbzuCmZuJz4oKH92lc=' 'sha256-yfIPOfm2j+95mdSFRKtHD+weGaJNlJyzgEhboQ4WsDA=' 'sha256-cgINIZw4iKgU7zccO2vPeZdQJIMlKEchLZG6hpkP+8k=' 'sha256-2hxujCU6WzSO6ycZznxFKlHE++BDsDuMYXT/O0zl8rM=' 'sha256-47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU='; manifest-src 'self'; media-src 'self' blob:; base-uri 'self'; form-action 'none'; frame-ancestors 'none'; object-src 'none'; require-trusted-types-for 'script'; trusted-types flutter-js default
   Cross-Origin-Opener-Policy: same-origin
   Cross-Origin-Embedder-Policy: require-corp
   Cross-Origin-Resource-Policy: same-origin
