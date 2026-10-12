@@ -9,6 +9,7 @@
 //
 // CHROME_PATH selects a Chrome binary; otherwise the installed Chrome is used.
 import { chromium } from 'playwright-core';
+import { mkdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { serve } from './serve.mjs';
 
@@ -45,6 +46,7 @@ async function scenario(browser, origin, mode) {
     if (forceJs) WebAssembly.validate = () => false;
   }, mode === 'js');
 
+  try {
   const settle = () => page.waitForTimeout(500);
   const semantics = async () => {
     await page.waitForSelector('flt-semantics-placeholder', { state: 'attached', timeout: 60000 });
@@ -184,8 +186,21 @@ async function scenario(browser, origin, mode) {
   check(outside.length === 0, `requests outside the origin: ${outside.join(', ')}`);
   const main = mode === 'js' ? '/main.dart.js' : '/main.dart.wasm';
   check(loaded.includes(main), `the ${mode} build did not load ${main}`);
-  await context.close();
   return leaks.bytes;
+  } catch (error) {
+    // CI uploads failures/ as an artifact: what the page showed, and what
+    // it logged, beat a bare timeout.
+    await mkdir('failures', { recursive: true });
+    await page.screenshot({ path: `failures/${mode}.png` }).catch(() => {});
+    const labels = await page
+      .evaluate(() => [...document.querySelectorAll('[aria-label]')].map((n) => n.getAttribute('aria-label')))
+      .catch(() => []);
+    error.message += `\non screen: ${JSON.stringify(labels)}`;
+    if (problems.length > 0) error.message += `\n${problems.join('\n')}`;
+    throw error;
+  } finally {
+    await context.close();
+  }
 }
 
 const fakeMicrophone = ['--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'];

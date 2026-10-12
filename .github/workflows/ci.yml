@@ -107,6 +107,13 @@ jobs:
           npm test
 
       - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: web-e2e-failures
+          path: apps/modusnote/tool/web_e2e/failures
+          if-no-files-found: ignore
+
+      - uses: actions/upload-artifact@v4
         with:
           name: web-bundle
           path: apps/modusnote/build/web
