@@ -80,4 +80,24 @@ jobs:
 
       - name: Web build
         working-directory: apps/modusnote
-        run: flutter build web --wasm --no-web-resources-cdn
+        run: |
+          flutter build web --wasm --csp --no-web-resources-cdn
+          dart run tool/finalize_web_build.dart > build/web-sha256sums.txt
+          {
+            echo '### Web bundle SHA-256'
+            echo '```'
+            cat build/web-sha256sums.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Web client in Chrome under its CSP (Wasm and JavaScript builds)
+        working-directory: apps/modusnote/tool/web_e2e
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm test
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web-bundle
+          path: apps/modusnote/build/web
+          if-no-files-found: error
