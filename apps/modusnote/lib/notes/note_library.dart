@@ -107,11 +107,6 @@ class _NoteLibraryScreenState extends State<NoteLibraryScreen> {
                 ),
                 sliver: SliverList.list(
                   children: [
-                    Text(
-                      l10n.previewNotSaved,
-                      style: theme.textTheme.bodySmall,
-                    ),
-                    const SizedBox(height: Spacing.m),
                     TextField(
                       decoration: InputDecoration(
                         hintText: l10n.searchHint,
