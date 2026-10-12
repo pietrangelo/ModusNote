@@ -53,6 +53,14 @@ jobs:
             fi
           done
 
+      - name: Wire formats compiled to JavaScript
+        # The web build falls back to dart2js on browsers without WasmGC,
+        # where 64-bit integers behave differently: these run in Chrome.
+        run: |
+          for dir in packages/offline_sync packages/blob_storage_media; do
+            (cd "$dir" && dart test -p chrome test/portable_int64_test.dart) || exit 1
+          done
+
       - name: Supabase schema and RLS tests
         run: bash supabase/tests/run.sh
 

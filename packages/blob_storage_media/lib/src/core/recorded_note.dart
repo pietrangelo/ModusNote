@@ -10,6 +10,7 @@ import 'audio_attachment.dart';
 import 'audio_format.dart';
 import 'blob_exception.dart';
 import 'blob_metadata.dart';
+import 'portable_int64.dart';
 
 /// A recording with the GroupKey epoch whose key it was sealed under: the
 /// note is re-sealed under newer epochs as it is edited, the blob is not,
@@ -231,7 +232,7 @@ abstract final class RecordedNoteCodec {
       case 4:
         data.setUint32(0, value);
       default:
-        data.setInt64(0, value);
+        setPortableInt64(data, 0, value);
     }
     return bytes;
   }
@@ -252,14 +253,16 @@ final class _Reader {
     return view;
   }
 
-  /// Unsigned; 8-byte values above 2^63 read as negative and are refused.
+  /// Unsigned; 8-byte values are refused when negative or beyond 2^53 − 1.
   int uint(int width) {
     final data = ByteData.sublistView(bytes(width));
     final value = switch (width) {
       1 => data.getUint8(0),
       2 => data.getUint16(0),
       4 => data.getUint32(0),
-      _ => data.getInt64(0),
+      _ =>
+        getPortableInt64(data, 0) ??
+            (throw const MalformedBlobException('value out of range')),
     };
     if (value < 0) throw const MalformedBlobException('negative value');
     return value;

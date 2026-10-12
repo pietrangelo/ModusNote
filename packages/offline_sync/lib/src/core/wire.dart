@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'portable_int64.dart';
 import 'sync_exception.dart';
 
 /// Big-endian writer for the signed wire formats of this context.
@@ -14,8 +15,11 @@ final class WireWriter {
   void uint32(int value) =>
       _bytes.add(Uint8List(4)..buffer.asByteData().setUint32(0, value));
 
-  void int64(int value) =>
-      _bytes.add(Uint8List(8)..buffer.asByteData().setInt64(0, value));
+  void int64(int value) {
+    final bytes = Uint8List(8);
+    setPortableInt64(ByteData.sublistView(bytes), 0, value);
+    _bytes.add(bytes);
+  }
 
   void bytes(List<int> value) => _bytes.add(value);
 
@@ -44,7 +48,10 @@ final class WireReader {
 
   int uint32() => ByteData.sublistView(_take(4)).getUint32(0);
 
-  int int64() => ByteData.sublistView(_take(8)).getInt64(0);
+  /// Values a browser cannot hold exactly (beyond ±(2^53 − 1)) are malformed.
+  int int64() =>
+      getPortableInt64(ByteData.sublistView(_take(8)), 0) ??
+      (throw const MalformedSyncDataException('integer out of range'));
 
   Uint8List bytes(int length) => _take(length);
 
