@@ -76,10 +76,6 @@
   "@notSet": {
     "description": "Choice field with no option picked."
   },
-  "previewNotSaved": "Preview: notes are kept only until you close the app.",
-  "@previewNotSaved": {
-    "description": "Banner shown until notes are stored in the encrypted vault."
-  },
   "removeTag": "Remove {tag}",
   "@removeTag": {
     "description": "Accessibility label of a tag's delete button.",
