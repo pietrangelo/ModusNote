@@ -1,0 +1,12 @@
+{
+  "name": "modusnote-web-e2e",
+  "private": true,
+  "description": "Drives the built web client in Chrome under its real headers.",
+  "type": "module",
+  "scripts": {
+    "test": "node e2e.mjs"
+  },
+  "devDependencies": {
+    "playwright-core": "1.56.1"
+  }
+}
