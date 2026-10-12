@@ -96,6 +96,24 @@ void main() {
       expect(text, contains('ModusNote'));
     });
 
+    test('every take length makes a stream our demuxer accepts', () async {
+      // The silence after the last sample must never reach a page before
+      // the final one, whatever the take's length: that page's granule
+      // would then exceed the final, trimming one.
+      for (var packets = 44; packets <= 52; packets++) {
+        final samples = packets * 960 - 312 + 100;
+        final pcm = Uint8List(samples * 2);
+        final recording = await const OggOpusDemuxer().read(
+          Stream.value(await encode(sliced(pcm, 4096))),
+        );
+        expect(
+          recording.finalGranule - recording.preSkip,
+          samples,
+          reason: '$packets packets',
+        );
+      }
+    });
+
     test('an empty take is a valid, empty Ogg Opus file', () async {
       final recording = await const OggOpusDemuxer().read(
         Stream.value(await encode(const Stream.empty())),

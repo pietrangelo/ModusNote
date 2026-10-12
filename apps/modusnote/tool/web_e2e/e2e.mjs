@@ -107,12 +107,16 @@ async function scenario(browser, origin, mode) {
   await page.getByText('Unlock your notes').waitFor({ timeout: 60000 });
   await type(0, 'not the passphrase');
   await page.getByRole('button', { name: 'Unlock' }).click();
-  await page.waitForTimeout(4000);
+  // Argon2id runs on the UI thread and the form is disabled meanwhile:
+  // typing before the verdict would be lost on a slow machine.
+  await page.getByText('Wrong passphrase.').waitFor({ timeout: 120000 });
+  await settle();
   check(await page.getByText('Unlock your notes').count() > 0, 'a wrong passphrase opened the vault');
   check(await page.getByText(noteText).count() === 0, 'a note showed behind a wrong passphrase');
-  await page.getByRole('textbox').nth(0).click();
-  await page.keyboard.press('Control+A');
-  await page.keyboard.type(passphrase);
+  // The field was emptied by the failed attempt; typing right after the
+  // click loses keys while Flutter moves focus, so go through type().
+  await type(0, passphrase);
+  await settle();
   await page.getByRole('button', { name: 'Unlock' }).click();
   await page.getByText(noteText).first().waitFor({ timeout: 120000 });
 

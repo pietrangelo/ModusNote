@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:collection';
 import 'dart:js_interop';
 import 'dart:math';
 import 'dart:typed_data';
@@ -32,6 +33,9 @@ final class WebCodecsOpusEncoder implements AudioStreamEncoder {
   /// RFC 7845 suggests), so the last real samples are always encoded. The
   /// final granule trims it away again.
   static const _tailSamples = 3840;
+
+  /// The longest Opus packet, 120 ms.
+  static const _maxPacketSamples = 5760;
 
   static const _frameMicroseconds = 20000;
 
@@ -68,8 +72,22 @@ final class WebCodecsOpusEncoder implements AudioStreamEncoder {
   ) async {
     OggOpusMuxer? muxer;
     Object? failure;
-    var encodedSamples = 0;
+    var muxedSamples = 0;
     var preSkip = 0;
+    // The newest packets wait here until more audio proves they are not
+    // the silence tail: padding must never reach a page before the last,
+    // whose granule would then exceed the final, trimming one.
+    final held = Queue<(Uint8List, int)>();
+    var heldSamples = 0;
+
+    void mux(OggOpusMuxer muxing, (Uint8List, int) packet) {
+      final (bytes, samples) = packet;
+      heldSamples -= samples;
+      muxedSamples += samples;
+      if (muxing.addPacket(bytes, samples: samples) case final page?) {
+        pages.add(page);
+      }
+    }
 
     OggOpusMuxer open(int lookahead) {
       preSkip = lookahead;
@@ -99,10 +117,11 @@ final class WebCodecsOpusEncoder implements AudioStreamEncoder {
                     (chunk.duration ?? _frameMicroseconds) *
                     _sampleRate ~/
                     Duration.microsecondsPerSecond;
-                encodedSamples += samples;
-                if (muxing.addPacket(packet, samples: samples)
-                    case final page?) {
-                  pages.add(page);
+                held.addLast((packet, samples));
+                heldSamples += samples;
+                while (heldSamples - held.first.$2 >=
+                    _tailSamples + _maxPacketSamples) {
+                  mux(muxing, held.removeFirst());
                 }
               } on Object catch (error) {
                 failure = error;
@@ -127,7 +146,12 @@ final class WebCodecsOpusEncoder implements AudioStreamEncoder {
       if (failure != null) throw failure!;
       if (cancelled()) return;
       final muxing = muxer ??= open(0);
-      if (original > 0 && encodedSamples < original + preSkip) {
+      // Only as much of the tail as the decoder needs to emit every real
+      // sample past the lookahead, as on the phones; the rest is dropped.
+      while (held.isNotEmpty && muxedSamples < original + preSkip) {
+        mux(muxing, held.removeFirst());
+      }
+      if (original > 0 && muxedSamples < original + preSkip) {
         throw StateError('WebCodecs Opus encoder dropped audio');
       }
       pages.add(muxing.finish(originalSamples: original));
