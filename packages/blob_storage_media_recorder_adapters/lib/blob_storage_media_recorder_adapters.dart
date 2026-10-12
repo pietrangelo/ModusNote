@@ -12,7 +12,7 @@ import 'src/record_pcm_microphone.dart';
 export 'src/record_pcm_microphone.dart';
 
 /// The [AudioCapture] for the running platform: Ogg Opus via libopus on
-/// Android and iOS, streaming WAV in the browser for now.
+/// Android and iOS, streaming WAV in the browser (see `platformEncoder`).
 AudioCapture createPlatformAudioCapture() => StreamingAudioCapture(
   microphone: RecordPcmMicrophone(),
   encoder: platformEncoder(),
