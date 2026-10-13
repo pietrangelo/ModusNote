@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:schema_dynamic_content/schema_dynamic_content.dart';
 
+import '../theme/golden_ratio.dart';
 import '../theme/modus_colors.dart';
 
 /// How a note type is told apart at a glance: the icon and accent colour
@@ -27,4 +28,16 @@ abstract final class NoteAppearance {
     NoteTint.rose => ModusColors.lucidRose,
     null => ModusColors.dustSilver,
   };
+
+  /// How much of the tint colours a card: 1/φ⁴, the most that keeps every
+  /// text colour on the card at AA.
+  static const washStrength =
+      1 /
+      (GoldenRatio.phi * GoldenRatio.phi * GoldenRatio.phi * GoldenRatio.phi);
+
+  /// The background of a note's card: Abyssal Slate washed with its tint.
+  static Color wash(NoteTint? tint) => Color.alphaBlend(
+    NoteAppearance.tint(tint).withValues(alpha: washStrength),
+    ModusColors.abyssalSlate,
+  );
 }

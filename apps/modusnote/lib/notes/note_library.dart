@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:schema_dynamic_content/schema_dynamic_content.dart';
 
 import '../l10n/generated/app_localizations.dart';
@@ -179,11 +180,9 @@ class _NoteLibraryScreenState extends State<NoteLibraryScreen> {
                     Spacing.xxl,
                   ),
                   sliver: SliverGrid.builder(
-                    gridDelegate:
-                        const SliverGridDelegateWithMaxCrossAxisExtent(
-                          maxCrossAxisExtent: Extents.xl,
-                          childAspectRatio: GoldenRatio.phi,
-                        ),
+                    gridDelegate: _CardGridDelegate(
+                      minHeight: _NoteCard.minHeight(context),
+                    ),
                     itemCount: shown.length,
                     itemBuilder: (context, index) {
                       final entry = shown[index];
@@ -204,6 +203,33 @@ class _NoteLibraryScreenState extends State<NoteLibraryScreen> {
   }
 }
 
+/// Cards in φ : 1, unless the system text size needs them taller to show
+/// the type, one line of the title and the date.
+class _CardGridDelegate extends SliverGridDelegateWithMaxCrossAxisExtent {
+  const _CardGridDelegate({required this.minHeight})
+    : super(maxCrossAxisExtent: Extents.xl, childAspectRatio: GoldenRatio.phi);
+
+  final double minHeight;
+
+  @override
+  SliverGridLayout getLayout(SliverConstraints constraints) {
+    final golden = super.getLayout(constraints) as SliverGridRegularTileLayout;
+    if (golden.childMainAxisExtent >= minHeight) return golden;
+    return SliverGridRegularTileLayout(
+      crossAxisCount: golden.crossAxisCount,
+      mainAxisStride: minHeight,
+      crossAxisStride: golden.crossAxisStride,
+      childMainAxisExtent: minHeight,
+      childCrossAxisExtent: golden.childCrossAxisExtent,
+      reverseCrossAxis: golden.reverseCrossAxis,
+    );
+  }
+
+  @override
+  bool shouldRelayout(_CardGridDelegate oldDelegate) =>
+      oldDelegate.minHeight != minHeight || super.shouldRelayout(oldDelegate);
+}
+
 class _NoteCard extends StatelessWidget {
   const _NoteCard({
     required this.entry,
@@ -216,6 +242,32 @@ class _NoteCard extends StatelessWidget {
   final SchemaDefinition? schema;
   final SchemaText text;
   final VoidCallback onTap;
+
+  /// The least height that shows a card's type, a title line and its date
+  /// at the current text size, margins included.
+  static double minHeight(BuildContext context) {
+    final theme = Theme.of(context);
+    final scaler = MediaQuery.textScalerOf(context);
+    double line(TextStyle? style) {
+      final painter = TextPainter(
+        text: TextSpan(text: 'M', style: style),
+        textDirection: TextDirection.ltr,
+        textScaler: scaler,
+      )..layout();
+      final height = painter.height;
+      painter.dispose();
+      return height;
+    }
+
+    final label = line(theme.textTheme.labelSmall);
+    final margin = theme.cardTheme.margin?.vertical ?? 0;
+    return margin +
+        2 * Spacing.m +
+        (label > IconSizes.inline ? label : IconSizes.inline) +
+        Spacing.xs +
+        line(theme.textTheme.titleMedium) +
+        line(theme.textTheme.bodySmall);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -244,6 +296,7 @@ class _NoteCard extends StatelessWidget {
         : tasks.every((list) => list.allDone);
     final tint = NoteAppearance.tint(schema?.tint);
     return Card(
+      color: NoteAppearance.wash(schema?.tint),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
@@ -263,7 +316,11 @@ class _NoteCard extends StatelessWidget {
                   Expanded(
                     child: Text(
                       schema == null ? '' : text.label(schema!.label),
-                      style: theme.textTheme.labelSmall?.copyWith(color: tint),
+                      // Muted, not tinted: violet on a violet card is
+                      // below AA, and the card already says the type.
+                      style: theme.textTheme.labelSmall,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
                   if (tasks.isNotEmpty && !done)
@@ -284,17 +341,17 @@ class _NoteCard extends StatelessWidget {
               ),
               const SizedBox(height: Spacing.xs),
               Expanded(
-                child: Text(
+                child: _WholeLines(
                   title.isEmpty ? l10n.untitled : title,
                   style: theme.textTheme.titleMedium,
-                  maxLines: 3,
-                  overflow: TextOverflow.ellipsis,
                 ),
               ),
               Text(
                 MaterialLocalizations.of(context)
                     .formatMediumDate(entry.audit.updatedAt.toLocal()),
                 style: theme.textTheme.bodySmall,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
             ],
           ),
@@ -302,4 +359,37 @@ class _NoteCard extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Text that shows only the lines its box can hold, ending in an ellipsis,
+/// instead of a last line cut in half: how many fit depends on the card's
+/// width and on the system text size.
+class _WholeLines extends StatelessWidget {
+  const _WholeLines(this.text, {this.style});
+
+  final String text;
+  final TextStyle? style;
+
+  static const maxLines = 3;
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) {
+      final line = TextPainter(
+        text: TextSpan(text: text, style: style),
+        textDirection: Directionality.of(context),
+        textScaler: MediaQuery.textScalerOf(context),
+        maxLines: 1,
+      )..layout(maxWidth: constraints.maxWidth);
+      final fit = (constraints.maxHeight / line.height).floor();
+      line.dispose();
+      if (fit < 1) return const SizedBox.shrink();
+      return Text(
+        text,
+        style: style,
+        maxLines: fit < maxLines ? fit : maxLines,
+        overflow: TextOverflow.ellipsis,
+      );
+    },
+  );
 }
