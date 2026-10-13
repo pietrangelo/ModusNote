@@ -11,8 +11,11 @@ import '../l10n/generated/app_localizations.dart';
 import '../theme/golden_ratio.dart';
 import '../vault/auto_lock.dart';
 import 'dynamic_form_renderer.dart';
+import 'editor/markdown_commands.dart';
 import 'editor/markdown_controller.dart';
 import 'editor/markdown_toolbar.dart';
+import 'links/note_links_section.dart';
+import 'links/note_picker.dart';
 import 'note_appearance.dart';
 import 'note_store.dart';
 import 'schema_text.dart';
@@ -321,6 +324,67 @@ class NoteEditorScreenState extends State<NoteEditorScreen>
     return take.id;
   }
 
+  SchemaDefinition? _schemaOf(DynamicEntry entry) {
+    for (final schema in widget.schemas) {
+      if (schema.id == entry.schemaId) return schema;
+    }
+    return null;
+  }
+
+  DynamicEntry? _find(EntryId id) {
+    for (final entry in widget.store.entries) {
+      if (entry.id == id) return entry;
+    }
+    return null;
+  }
+
+  /// Picks another note and links to it where the cursor is.
+  Future<void> _linkNote() async {
+    final controller = _markdown.value;
+    if (controller == null) return;
+    final picked = await showNotePicker(
+      context,
+      notes: [
+        for (final entry in widget.store.entries)
+          if (entry.id != _id) entry,
+      ],
+      schemaOf: _schemaOf,
+    );
+    if (picked == null || !mounted || _markdown.value != controller) return;
+    controller.apply(
+      (value) => MarkdownCommands.noteLink(
+        value,
+        title: picked.title,
+        target: picked.id,
+      ),
+    );
+  }
+
+  /// Opens a linked note over this one, once this one is saved.
+  Future<void> _openLinked(DynamicEntry entry) async {
+    final navigator = Navigator.of(context);
+    final autoLock = AutoLockScope.maybeOf(context);
+    await _flush();
+    final schema = _schemaOf(entry);
+    if (!mounted || schema == null) return;
+    final screen = NoteEditorScreen(
+      schemas: widget.schemas,
+      store: widget.store,
+      initialSchema: schema,
+      entry: entry,
+      clock: widget.clock,
+    );
+    // A pushed route sits beside the library, not under it: it gets the
+    // vault's auto-lock passed along explicitly.
+    await navigator.push(
+      MaterialPageRoute<void>(
+        builder: (_) => autoLock == null
+            ? screen
+            : AutoLockScope(autoLock: autoLock, child: screen),
+      ),
+    );
+  }
+
   Duration? _lengthOf(BlobId blob) =>
       (_takes[blob] ?? widget.store.recordingOf(blob))?.metadata.duration;
 
@@ -448,6 +512,22 @@ class NoteEditorScreenState extends State<NoteEditorScreen>
                         recordingLength: _lengthOf,
                         recordingPlayer: _playerOf,
                       ),
+                      ListenableBuilder(
+                        listenable: widget.store,
+                        builder: (context, _) => NoteLinksSection(
+                          links: NoteLinks.targets(_draft.values.values),
+                          backlinks: [
+                            for (final entry in widget.store.entries)
+                              if (entry.id != _id &&
+                                  NoteLinks.targets(entry.attributes.values)
+                                      .contains(_id))
+                                entry,
+                          ],
+                          find: _find,
+                          schemaOf: _schemaOf,
+                          onOpen: _openLinked,
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -468,7 +548,10 @@ class NoteEditorScreenState extends State<NoteEditorScreen>
                               top: BorderSide(color: theme.dividerColor),
                             ),
                           ),
-                          child: MarkdownToolbar(controller: controller),
+                          child: MarkdownToolbar(
+                            controller: controller,
+                            onLinkNote: _linkNote,
+                          ),
                         ),
                       ),
                     ),
