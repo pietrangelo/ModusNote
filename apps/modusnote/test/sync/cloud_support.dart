@@ -11,6 +11,16 @@ import 'package:offline_sync_adapters/offline_sync_adapters.dart';
 const issuedToken = 'access-token-7f3a9c';
 const goodCode = '123456';
 
+/// The token hash in [goodLink], which also signs in: the link a default
+/// Supabase email carries in place of the code.
+/// The account [goodLink] was sent to.
+const linkEmail = 'pietro@example.com';
+
+const goodLinkHash = '9d3a5f0b7c1e2d4f6a8b0c2e4f6a8b0c2e4f6a8b0c2e4f6a8b0c2e4f';
+const goodLink =
+    'https://project.supabase.co/auth/v1/verify?token=$goodLinkHash'
+    '&type=magiclink&redirect_to=http://localhost:3000';
+
 /// Supabase Auth over a fake HTTP client: any address gets a code, only
 /// [goodCode] signs in.
 final class FakeAuthServer {
@@ -27,15 +37,19 @@ final class FakeAuthServer {
         : jsonDecode(request.body) as Map<String, Object?>;
     return switch (request.url.path) {
       '/auth/v1/otp' => http.Response('{}', 200),
-      '/auth/v1/verify' when body['token'] == goodCode => http.Response(
-        jsonEncode({
-          'access_token': issuedToken,
-          'refresh_token': 'refresh-token-2b8e',
-          'expires_in': 3600,
-          'user': {'id': 'user-1', 'email': body['email']},
-        }),
-        200,
-      ),
+      '/auth/v1/verify'
+          when body['token'] == goodCode ||
+              body['token_hash'] == goodLinkHash =>
+        http.Response(
+          jsonEncode({
+            'access_token': issuedToken,
+            'refresh_token': 'refresh-token-2b8e',
+            'expires_in': 3600,
+            // A link carries no email: the server knows whose it is.
+            'user': {'id': 'user-1', 'email': body['email'] ?? linkEmail},
+          }),
+          200,
+        ),
       '/auth/v1/verify' => http.Response('{}', 403),
       '/auth/v1/logout' => http.Response('', 204),
       _ => http.Response('', 404),
