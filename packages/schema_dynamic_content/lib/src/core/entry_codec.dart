@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'attachment.dart';
 import 'dynamic_entry.dart';
 import 'field_value.dart';
 import 'identifiers.dart';
@@ -144,6 +145,20 @@ abstract final class EntryCodec {
         for (final item in items) [item.text, item.done],
       ],
     },
+    AttachmentsValue(:final items) => {
+      'kind': 'attachments',
+      'value': [
+        for (final item in items)
+          switch (item) {
+            ImageAttachment(:final blob, :final caption) => [
+              'image',
+              blob.value,
+              caption,
+            ],
+            WebLink(:final url, :final title) => ['link', url, title],
+          },
+      ],
+    },
   };
 
   static FieldValue _decodeValue(JsonObject json) {
@@ -175,6 +190,20 @@ abstract final class EntryCodec {
               done: done,
             ),
             _ => throw const EntryFormatException('a task is [text, done]'),
+          },
+      ]),
+      'attachments' => AttachmentsValue([
+        for (final item in json.list('value'))
+          switch (item) {
+            ['image', final String blob, final String caption] =>
+              ImageAttachment(BlobId(blob), caption: caption),
+            ['link', final String url, final String title] => WebLink(
+              url,
+              title: title,
+            ),
+            _ => throw const EntryFormatException(
+              'an attachment is [kind, target, text]',
+            ),
           },
       ]),
       _ => throw const EntryFormatException('unknown value kind'),

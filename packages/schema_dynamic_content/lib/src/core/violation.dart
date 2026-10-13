@@ -15,6 +15,7 @@ enum ViolationCode {
   invalidCharacters,
   tooManyItems,
   emptyItem,
+  duplicateItem,
 }
 
 /// One reason an entry does not satisfy its schema. [field] is null for
