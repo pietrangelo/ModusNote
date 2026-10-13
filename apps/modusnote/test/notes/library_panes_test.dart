@@ -182,6 +182,47 @@ void main() {
     expect(find.byType(NoteEditorScreen), findsNothing);
   });
 
+  testWidgets('the categories show as a tree in the side column', (
+    tester,
+  ) async {
+    final novels = CategoryId('n' * 32);
+    final crime = CategoryId('c' * 32);
+    await store.saveCategory(
+      NoteCategory(id: novels, name: CategoryName('Romanzi')),
+    );
+    await store.saveCategory(
+      NoteCategory(id: crime, name: CategoryName('Gialli'), parent: novels),
+    );
+    await store.file(EntryId(riff), crime);
+    await openWide(tester);
+
+    final top = find.byKey(ValueKey('nav-category-${novels.value}'));
+    final inner = find.byKey(ValueKey('nav-category-${crime.value}'));
+    expect(top, findsOneWidget);
+    expect(
+      tester.getTopLeft(find.text('Gialli')).dx,
+      greaterThan(tester.getTopLeft(find.text('Romanzi')).dx),
+      reason: 'a subcategory sits inside its parent',
+    );
+
+    await select(tester, top);
+    expect(row(riff), findsOneWidget, reason: 'subcategories count too');
+    expect(row(song), findsNothing);
+
+    await select(tester, find.text('Nuova nota'));
+    await tester.enterText(textInput('content'), 'Un altro giallo');
+    await select(tester, inner);
+    await tester.pump(NoteEditorScreen.autosaveDelay);
+    await tester.pumpAndSettle();
+    final added = store.entries.firstWhere(
+      (e) => e.id.value != riff && e.id.value != song,
+    );
+    expect(store.categoryOf(added.id), novels);
+
+    await select(tester, nav('all'));
+    expect(row(song), findsOneWidget);
+  });
+
   testWidgets('the trash opens in place of the notes', (tester) async {
     await openWide(tester);
     await select(tester, row(riff));

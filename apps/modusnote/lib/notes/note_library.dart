@@ -7,6 +7,8 @@ import 'package:schema_dynamic_content/schema_dynamic_content.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../theme/golden_ratio.dart';
 import '../vault/auto_lock.dart';
+import 'categories/categories_screen.dart';
+import 'categories/category_picker.dart';
 import 'note_appearance.dart';
 import 'note_editor.dart';
 import 'note_store.dart';
@@ -14,10 +16,11 @@ import 'note_title.dart';
 import 'schema_text.dart';
 import 'trash_screen.dart';
 
-/// Every note at a glance: search, a chip per note type, a card per note,
-/// each opening on a page of its own. A window at least [wideFrom] wide
-/// shows three columns instead, as a desktop notes app does: note types
-/// and the trash, the list of notes, and the open note beside it.
+/// Every note at a glance: search, categories, a chip per note type, a
+/// card per note, each opening on a page of its own. A window at least
+/// [wideFrom] wide shows three columns instead, as a desktop notes app
+/// does: note types, categories and the trash; the list of notes; and the
+/// open note beside it.
 class NoteLibraryScreen extends StatefulWidget {
   const NoteLibraryScreen({
     required this.schemas,
@@ -52,37 +55,51 @@ class _NoteLibraryScreenState extends State<NoteLibraryScreen> {
   var _search = EntrySearch('');
   SchemaDefinition? _type;
 
+  /// The category being looked at; null for every note. It may name one
+  /// that is gone, which shows every note.
+  CategoryId? _category;
+
+  CategoryId? get _selected => widget.store.categories.resolve(_category);
+
   /// Three columns only: the open note, as its id or a [_NewNote].
-  Object? _selected;
+  Object? _opened;
   var _editor = GlobalKey<NoteEditorScreenState>();
   var _showTrash = false;
+
+  /// The notes the filters let through: type, category and its
+  /// subcategories, search.
+  List<DynamicEntry> _shown() {
+    final store = widget.store;
+    final selected = _selected;
+    final within = selected == null ? null : store.categories.subtree(selected);
+    return [
+      for (final entry in store.entries)
+        if ((_type == null || entry.schemaId == _type!.id) &&
+            (within == null || within.contains(store.categoryOf(entry.id))) &&
+            _search.matches(entry))
+          entry,
+    ];
+  }
+
+  /// Shows [opened] beside the list, once the open note is saved; a note
+  /// that cannot be saved, kept by the user, stays.
+  Future<void> _openBeside(Object? opened, {bool trash = false}) async {
+    if (opened != null && opened == _opened) return;
+    if (_editor.currentState case final editor?) {
+      if (!await editor.settle() || !mounted) return;
+    }
+    setState(() {
+      _opened = opened;
+      _showTrash = trash;
+      _editor = GlobalKey();
+    });
+  }
 
   SchemaDefinition? _schemaOf(DynamicEntry entry) {
     for (final schema in widget.schemas) {
       if (schema.id == entry.schemaId) return schema;
     }
     return null;
-  }
-
-  List<DynamicEntry> _shown() => [
-    for (final entry in widget.store.entries)
-      if ((_type == null || entry.schemaId == _type!.id) &&
-          _search.matches(entry))
-        entry,
-  ];
-
-  /// Shows [selected] beside the list, once the open note is saved; a note
-  /// that cannot be saved, kept by the user, stays.
-  Future<void> _select(Object? selected, {bool trash = false}) async {
-    if (selected != null && selected == _selected) return;
-    if (_editor.currentState case final editor?) {
-      if (!await editor.settle() || !mounted) return;
-    }
-    setState(() {
-      _selected = selected;
-      _showTrash = trash;
-      _editor = GlobalKey();
-    });
   }
 
   void _open({DynamicEntry? entry}) {
@@ -96,8 +113,35 @@ class _NoteLibraryScreenState extends State<NoteLibraryScreen> {
         store: widget.store,
         initialSchema: schema,
         entry: entry,
+        category: _selected,
       ),
     );
+  }
+
+  void _openCategories() => _push(CategoriesScreen(store: widget.store));
+
+  Future<void> _file(DynamicEntry entry) async {
+    final store = widget.store;
+    final messenger = ScaffoldMessenger.of(context);
+    final l10n = AppLocalizations.of(context);
+    final choice = await showCategoryPicker(
+      context,
+      tree: store.categories,
+      current: store.categoryOf(entry.id),
+    );
+    if (choice == null) return;
+    await store.file(entry.id, choice.id);
+    final name = switch (choice.id) {
+      final id? => store.categories[id]?.name.value,
+      null => null,
+    };
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(name == null ? l10n.noteUnfiled : l10n.noteFiled(name)),
+        ),
+      );
   }
 
   void _openTrash() =>
@@ -126,6 +170,11 @@ class _NoteLibraryScreenState extends State<NoteLibraryScreen> {
 
   List<Widget> _actions(AppLocalizations l10n, {bool trash = true}) => [
     ?widget.cloud,
+    IconButton(
+      onPressed: _openCategories,
+      tooltip: l10n.categories,
+      icon: const Icon(Icons.folder_outlined),
+    ),
     if (trash)
       IconButton(
         onPressed: _openTrash,
@@ -154,6 +203,13 @@ class _NoteLibraryScreenState extends State<NoteLibraryScreen> {
     onChanged: (query) => setState(() => _search = EntrySearch(query)),
   );
 
+  /// A filter picked in the side column; the trash, if open, gives way to
+  /// the notes.
+  void _filter(void Function() change) {
+    setState(change);
+    if (_showTrash) unawaited(_openBeside(null));
+  }
+
   Widget _wide(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final text = SchemaText(l10n);
@@ -170,17 +226,24 @@ class _NoteLibraryScreenState extends State<NoteLibraryScreen> {
               shape: divider,
               child: SizedBox(
                 width: Extents.l,
-                child: _TypeColumn(
-                  schemas: widget.schemas,
-                  text: text,
-                  type: _type,
-                  trash: _showTrash,
-                  onType: (type) {
-                    setState(() => _type = type);
-                    if (_showTrash) unawaited(_select(null));
-                  },
-                  onTrash: () => unawaited(_select(null, trash: true)),
-                  actions: _actions(l10n, trash: false),
+                child: ListenableBuilder(
+                  listenable: widget.store,
+                  builder: (context, _) => _SideColumn(
+                    schemas: widget.schemas,
+                    tree: widget.store.categories,
+                    text: text,
+                    type: _type,
+                    category: _selected,
+                    trash: _showTrash,
+                    onAll: () => _filter(() {
+                      _type = null;
+                      _category = null;
+                    }),
+                    onType: (type) => _filter(() => _type = type),
+                    onCategory: (id) => _filter(() => _category = id),
+                    onTrash: () => unawaited(_openBeside(null, trash: true)),
+                    actions: _actions(l10n, trash: false),
+                  ),
                 ),
               ),
             ),
@@ -223,7 +286,7 @@ class _NoteLibraryScreenState extends State<NoteLibraryScreen> {
       Padding(
         padding: const EdgeInsets.symmetric(horizontal: Spacing.m),
         child: FilledButton.icon(
-          onPressed: () => unawaited(_select(_NewNote())),
+          onPressed: () => unawaited(_openBeside(_NewNote())),
           icon: const Icon(Icons.add),
           label: Text(l10n.newNote),
         ),
@@ -255,8 +318,9 @@ class _NoteLibraryScreenState extends State<NoteLibraryScreen> {
                   key: ValueKey('note-row-${entry.id.value}'),
                   entry: entry,
                   schema: _schemaOf(entry),
-                  selected: entry.id == _selected,
-                  onTap: () => unawaited(_select(entry.id)),
+                  selected: entry.id == _opened,
+                  onTap: () => unawaited(_openBeside(entry.id)),
+                  onLongPress: () => _file(entry),
                 );
               },
             );
@@ -270,15 +334,15 @@ class _NoteLibraryScreenState extends State<NoteLibraryScreen> {
   Widget _openNote(AppLocalizations l10n) => ListenableBuilder(
     listenable: widget.store,
     builder: (context, _) {
-      final selected = _selected;
+      final opened = _opened;
       DynamicEntry? entry;
       SchemaDefinition? schema;
-      if (selected is EntryId) {
+      if (opened is EntryId) {
         entry = widget.store.entries
-            .where((entry) => entry.id == selected)
+            .where((entry) => entry.id == opened)
             .firstOrNull;
         schema = entry == null ? null : _schemaOf(entry);
-      } else if (selected is _NewNote) {
+      } else if (opened is _NewNote) {
         schema = _type ?? widget.schemas.last;
       }
       if (schema == null) {
@@ -296,8 +360,9 @@ class _NoteLibraryScreenState extends State<NoteLibraryScreen> {
         store: widget.store,
         initialSchema: schema,
         entry: entry,
+        category: _selected,
         onClose: () => setState(() {
-          _selected = null;
+          _opened = null;
           _editor = GlobalKey();
         }),
       );
@@ -318,7 +383,10 @@ class _NoteLibraryScreenState extends State<NoteLibraryScreen> {
       body: ListenableBuilder(
         listenable: widget.store,
         builder: (context, _) {
-          final all = widget.store.entries;
+          final store = widget.store;
+          final all = store.entries;
+          final tree = store.categories;
+          final selected = _selected;
           final shown = _shown();
           return CustomScrollView(
             slivers: [
@@ -332,6 +400,14 @@ class _NoteLibraryScreenState extends State<NoteLibraryScreen> {
                 sliver: SliverList.list(
                   children: [
                     _searchField(l10n),
+                    if (!tree.isEmpty) ...[
+                      const SizedBox(height: Spacing.s),
+                      _CategoryBar(
+                        tree: tree,
+                        selected: selected,
+                        onSelect: (id) => setState(() => _category = id),
+                      ),
+                    ],
                     const SizedBox(height: Spacing.m),
                     Wrap(
                       spacing: Spacing.s,
@@ -392,6 +468,7 @@ class _NoteLibraryScreenState extends State<NoteLibraryScreen> {
                         schema: _schemaOf(entry),
                         text: text,
                         onTap: () => _open(entry: entry),
+                        onLongPress: () => _file(entry),
                       );
                     },
                   ),
@@ -400,6 +477,79 @@ class _NoteLibraryScreenState extends State<NoteLibraryScreen> {
           );
         },
       ),
+    );
+  }
+}
+
+/// Where the library is looking: the path from every note down to the
+/// selected category, each step a way back up, then the categories inside
+/// it, one tap to go in.
+class _CategoryBar extends StatelessWidget {
+  const _CategoryBar({
+    required this.tree,
+    required this.selected,
+    required this.onSelect,
+  });
+
+  final CategoryTree tree;
+  final CategoryId? selected;
+  final ValueChanged<CategoryId?> onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final theme = Theme.of(context);
+    final path = selected == null
+        ? const <NoteCategory>[]
+        : tree.pathTo(selected!);
+    final inside = selected == null ? tree.roots : tree.childrenOf(selected!);
+    Widget step(CategoryId? id, String label, {required bool last}) =>
+        TextButton(
+          key: ValueKey('path-${id?.value ?? 'all'}'),
+          onPressed: last ? null : () => onSelect(id),
+          child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
+        );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Wrapped, not scrolled: every step stays in sight and in reach.
+        Wrap(
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            step(null, l10n.allNotes, last: path.isEmpty),
+            for (final (index, category) in path.indexed) ...[
+              Icon(
+                Icons.chevron_right,
+                size: IconSizes.inline,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+              step(
+                category.id,
+                category.name.value,
+                last: index == path.length - 1,
+              ),
+            ],
+          ],
+        ),
+        if (inside.isNotEmpty)
+          Wrap(
+            spacing: Spacing.s,
+            runSpacing: Spacing.s,
+            children: [
+              for (final category in inside)
+                ActionChip(
+                  key: ValueKey('category-${category.id.value}'),
+                  avatar: Icon(
+                    CategoryAppearance.icon(category.icon),
+                    size: IconSizes.inline,
+                    color: CategoryAppearance.tint(category.tint),
+                  ),
+                  label: Text(category.name.value),
+                  onPressed: () => onSelect(category.id),
+                ),
+            ],
+          ),
+      ],
     );
   }
 }
@@ -437,12 +587,16 @@ class _NoteCard extends StatelessWidget {
     required this.schema,
     required this.text,
     required this.onTap,
+    required this.onLongPress,
   });
 
   final DynamicEntry entry;
   final SchemaDefinition? schema;
   final SchemaText text;
   final VoidCallback onTap;
+
+  /// Files the note in a category.
+  final VoidCallback onLongPress;
 
   /// The least height that shows a card's type, a title line and its date
   /// at the current text size, margins included.
@@ -487,6 +641,7 @@ class _NoteCard extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
+        onLongPress: onLongPress,
         child: Padding(
           padding: const EdgeInsets.all(Spacing.m),
           child: Column(
@@ -584,24 +739,32 @@ class _WholeLines extends StatelessWidget {
 /// A new note not saved yet, open beside the list.
 final class _NewNote {}
 
-/// The first column: every note, each type, the trash, and the vault's
-/// buttons at the foot.
-class _TypeColumn extends StatelessWidget {
-  const _TypeColumn({
+/// The first column: every note, each type, the categories as a tree, the
+/// trash, and the vault's buttons at the foot.
+class _SideColumn extends StatelessWidget {
+  const _SideColumn({
     required this.schemas,
+    required this.tree,
     required this.text,
     required this.type,
+    required this.category,
     required this.trash,
+    required this.onAll,
     required this.onType,
+    required this.onCategory,
     required this.onTrash,
     required this.actions,
   });
 
   final List<SchemaDefinition> schemas;
+  final CategoryTree tree;
   final SchemaText text;
   final SchemaDefinition? type;
+  final CategoryId? category;
   final bool trash;
-  final ValueChanged<SchemaDefinition?> onType;
+  final VoidCallback onAll;
+  final ValueChanged<SchemaDefinition> onType;
+  final ValueChanged<CategoryId> onCategory;
   final VoidCallback onTrash;
   final List<Widget> actions;
 
@@ -609,6 +772,18 @@ class _TypeColumn extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
+    Widget heading(String label) => Padding(
+      padding: const EdgeInsets.fromLTRB(
+        Spacing.l,
+        Spacing.m,
+        Spacing.l,
+        Spacing.xs,
+      ),
+      child: Semantics(
+        header: true,
+        child: Text(label, style: theme.textTheme.labelSmall),
+      ),
+    );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -630,10 +805,11 @@ class _TypeColumn extends StatelessWidget {
               ListTile(
                 key: const ValueKey('nav-all'),
                 leading: const Icon(Icons.notes),
-                title: Text(l10n.allNoteTypes),
-                selected: !trash && type == null,
-                onTap: () => onType(null),
+                title: Text(l10n.allNotes),
+                selected: !trash && type == null && category == null,
+                onTap: onAll,
               ),
+              heading(l10n.noteType),
               for (final schema in schemas)
                 ListTile(
                   key: ValueKey('nav-${schema.id.name}'),
@@ -645,6 +821,28 @@ class _TypeColumn extends StatelessWidget {
                   selected: !trash && type?.id == schema.id,
                   onTap: () => onType(schema),
                 ),
+              if (!tree.isEmpty) ...[
+                heading(l10n.categories),
+                for (final node in tree.ordered)
+                  ListTile(
+                    key: ValueKey('nav-category-${node.id.value}'),
+                    contentPadding: EdgeInsetsDirectional.only(
+                      start: Spacing.m * tree.depthOf(node.id),
+                      end: Spacing.m,
+                    ),
+                    leading: Icon(
+                      CategoryAppearance.icon(node.icon),
+                      color: CategoryAppearance.tint(node.tint),
+                    ),
+                    title: Text(
+                      node.name.value,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    selected: !trash && category == node.id,
+                    onTap: () => onCategory(node.id),
+                  ),
+              ],
               const Divider(),
               ListTile(
                 key: const ValueKey('nav-trash'),
@@ -665,13 +863,15 @@ class _TypeColumn extends StatelessWidget {
   }
 }
 
-/// A note in the middle column: its type, title and date.
+/// A note in the middle column: its type, title and date. A long press
+/// files it in a category, as on a card.
 class _NoteRow extends StatelessWidget {
   const _NoteRow({
     required this.entry,
     required this.schema,
     required this.selected,
     required this.onTap,
+    required this.onLongPress,
     super.key,
   });
 
@@ -679,6 +879,7 @@ class _NoteRow extends StatelessWidget {
   final SchemaDefinition? schema;
   final bool selected;
   final VoidCallback onTap;
+  final VoidCallback onLongPress;
 
   @override
   Widget build(BuildContext context) {
@@ -701,6 +902,7 @@ class _NoteRow extends StatelessWidget {
       ),
       selected: selected,
       onTap: onTap,
+      onLongPress: onLongPress,
     );
   }
 }
