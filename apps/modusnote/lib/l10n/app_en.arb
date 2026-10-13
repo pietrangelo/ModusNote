@@ -865,5 +865,156 @@
   "editorDiscard": "Discard",
   "@editorDiscard": {
     "description": "Leaving a note with fields missing: drops the unsaved changes."
+  },
+  "categories": "Categories",
+  "@categories": {
+    "description": "Library: opens the categories, folders that notes are filed in."
+  },
+  "allNotes": "All notes",
+  "@allNotes": {
+    "description": "Library: the top of the category path, showing every note."
+  },
+  "newCategory": "New category",
+  "@newCategory": {
+    "description": "Categories: creates a category at the top level."
+  },
+  "newSubcategory": "New subcategory",
+  "@newSubcategory": {
+    "description": "Categories: creates a category inside this one."
+  },
+  "editCategory": "Edit category",
+  "@editCategory": {
+    "description": "Categories: changes name, icon and colour."
+  },
+  "moveCategory": "Move",
+  "@moveCategory": {
+    "description": "Categories: puts a category inside another one."
+  },
+  "categoryName": "Name",
+  "@categoryName": {
+    "description": "Category dialog: the name field."
+  },
+  "categoryNameInvalid": "Write a name of up to 80 characters, on one line.",
+  "@categoryNameInvalid": {
+    "description": "Category dialog: the name is empty, too long or has hidden characters."
+  },
+  "categoryIcon": "Icon",
+  "@categoryIcon": {
+    "description": "Category dialog: the icon choices."
+  },
+  "categoryColour": "Colour",
+  "@categoryColour": {
+    "description": "Category dialog: the colour choices."
+  },
+  "categoriesEmpty": "No categories yet. Create one to file your notes in.",
+  "@categoriesEmpty": {
+    "description": "Categories screen with none."
+  },
+  "deleteCategoryTitle": "Delete “{name}”?",
+  "@deleteCategoryTitle": {
+    "description": "Confirmation before deleting a category.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "deleteCategoryInto": "Its notes and subcategories move to “{parent}”. No note is deleted.",
+  "@deleteCategoryInto": {
+    "description": "Confirmation before deleting a category inside another one.",
+    "placeholders": {
+      "parent": {
+        "type": "String"
+      }
+    }
+  },
+  "deleteCategoryToTop": "Its notes and subcategories move to the top level. No note is deleted.",
+  "@deleteCategoryToTop": {
+    "description": "Confirmation before deleting a top-level category."
+  },
+  "fileNote": "Move to category",
+  "@fileNote": {
+    "description": "Library: files a note (long press on its card)."
+  },
+  "noCategory": "No category",
+  "@noCategory": {
+    "description": "Category picker: takes the note out of every category."
+  },
+  "topLevel": "Top level",
+  "@topLevel": {
+    "description": "Category picker: puts a category at the top, inside none."
+  },
+  "noteFiled": "Note moved to “{name}”.",
+  "@noteFiled": {
+    "description": "Snackbar after filing a note.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "noteUnfiled": "Note taken out of its category.",
+  "@noteUnfiled": {
+    "description": "Snackbar after a note leaves every category."
+  },
+  "iconFolder": "Folder",
+  "@iconFolder": {
+    "description": "Icon choice."
+  },
+  "iconNote": "Note",
+  "@iconNote": {
+    "description": "Icon choice."
+  },
+  "iconMusic": "Music",
+  "@iconMusic": {
+    "description": "Icon choice."
+  },
+  "iconMoon": "Moon",
+  "@iconMoon": {
+    "description": "Icon choice."
+  },
+  "iconChecklist": "Checklist",
+  "@iconChecklist": {
+    "description": "Icon choice."
+  },
+  "iconStar": "Star",
+  "@iconStar": {
+    "description": "Icon choice."
+  },
+  "iconLightbulb": "Idea",
+  "@iconLightbulb": {
+    "description": "Icon choice."
+  },
+  "iconBook": "Book",
+  "@iconBook": {
+    "description": "Icon choice."
+  },
+  "iconHeart": "Heart",
+  "@iconHeart": {
+    "description": "Icon choice."
+  },
+  "tintNone": "No colour",
+  "@tintNone": {
+    "description": "Colour choice: muted silver."
+  },
+  "tintGold": "Gold",
+  "@tintGold": {
+    "description": "Colour choice."
+  },
+  "tintViolet": "Violet",
+  "@tintViolet": {
+    "description": "Colour choice."
+  },
+  "tintCyan": "Cyan",
+  "@tintCyan": {
+    "description": "Colour choice."
+  },
+  "tintRose": "Rose",
+  "@tintRose": {
+    "description": "Colour choice."
+  },
+  "categorySave": "Save",
+  "@categorySave": {
+    "description": "Category dialog: keeps the name, icon and colour."
   }
 }
