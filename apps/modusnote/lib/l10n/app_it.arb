@@ -233,5 +233,8 @@
   "tintViolet": "Viola",
   "tintCyan": "Ciano",
   "tintRose": "Rosa",
-  "categorySave": "Salva"
+  "categorySave": "Salva",
+  "commandPalette": "Cerca e comandi",
+  "paletteHint": "Cerca note o comandi…",
+  "paletteNewNote": "Nuova nota: {type}"
 }
