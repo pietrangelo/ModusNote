@@ -4,10 +4,12 @@
 # 'wasm-unsafe-eval' lets the browser compile our own WebAssembly
 # (Flutter, libsodium, SQLite). The style hashes are the <style> elements
 # Flutter's engine inserts, plus the empty one SelectionArea (the Markdown
-# preview) creates and then fills through CSSOM. test/platform/
-# web_headers_test.dart checks it.
+# preview) creates and then fills through CSSOM. The page talks to two
+# other hosts only: the Supabase project (sync, sign-in, presigned URLs) and
+# the R2 endpoint of the account holding the encrypted recordings; both see
+# ciphertext only. test/platform/web_headers_test.dart checks it.
 /*
-  Content-Security-Policy: default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self' blob:; connect-src 'self'; img-src 'self' blob:; font-src 'self'; style-src 'self' 'sha256-quEZTjRzgvQYGviYWByjJgKZ/NbzuCmZuJz4oKH92lc=' 'sha256-yfIPOfm2j+95mdSFRKtHD+weGaJNlJyzgEhboQ4WsDA=' 'sha256-cgINIZw4iKgU7zccO2vPeZdQJIMlKEchLZG6hpkP+8k=' 'sha256-2hxujCU6WzSO6ycZznxFKlHE++BDsDuMYXT/O0zl8rM=' 'sha256-47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU='; manifest-src 'self'; media-src 'self' blob:; base-uri 'self'; form-action 'none'; frame-ancestors 'none'; object-src 'none'; require-trusted-types-for 'script'; trusted-types flutter-js default
+  Content-Security-Policy: default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self' blob:; connect-src 'self' https://oobxqzjzauhmurvxvhuo.supabase.co https://9bc65f198cf14dc51e892d6657550260.r2.cloudflarestorage.com; img-src 'self' blob:; font-src 'self'; style-src 'self' 'sha256-quEZTjRzgvQYGviYWByjJgKZ/NbzuCmZuJz4oKH92lc=' 'sha256-yfIPOfm2j+95mdSFRKtHD+weGaJNlJyzgEhboQ4WsDA=' 'sha256-cgINIZw4iKgU7zccO2vPeZdQJIMlKEchLZG6hpkP+8k=' 'sha256-2hxujCU6WzSO6ycZznxFKlHE++BDsDuMYXT/O0zl8rM=' 'sha256-47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU='; manifest-src 'self'; media-src 'self' blob:; base-uri 'self'; form-action 'none'; frame-ancestors 'none'; object-src 'none'; require-trusted-types-for 'script'; trusted-types flutter-js default
   Cross-Origin-Opener-Policy: same-origin
   Cross-Origin-Embedder-Policy: require-corp
   Cross-Origin-Resource-Policy: same-origin

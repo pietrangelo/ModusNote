@@ -5,6 +5,11 @@ import 'package:flutter_test/flutter_test.dart';
 /// The CSP is the web client's main defence: the page holds decrypted notes
 /// and keys, so only our own code may run in it. These checks keep a
 /// well-meant edit of `web/_headers` from opening it up.
+/// The sync project and the R2 endpoint of the account that stores the
+/// encrypted recordings: full origins, never a wildcard over other tenants.
+const supabase = 'https://oobxqzjzauhmurvxvhuo.supabase.co';
+const r2 = 'https://9bc65f198cf14dc51e892d6657550260.r2.cloudflarestorage.com';
+
 void main() {
   final headers = <String, String>{};
   for (final line in File('web/_headers').readAsLinesSync()) {
@@ -38,6 +43,10 @@ void main() {
     expect(csp['worker-src'], ["'self'", 'blob:']);
   });
 
+  test('the page connects only to its origin, Supabase and R2', () {
+    expect(csp['connect-src'], ["'self'", supabase, r2]);
+  });
+
   test('DOM sinks need Trusted Types: Flutter\'s policy and our default', () {
     expect(csp['require-trusted-types-for'], ["'script'"]);
     expect(csp['trusted-types'], ['flutter-js', 'default']);
@@ -60,12 +69,18 @@ void main() {
       expect(values, isNot(contains("'unsafe-inline'")));
       expect(values, isNot(contains("'unsafe-eval'")));
       expect(values, isNot(contains('*')));
-      for (final source in values) {
-        expect(
-          source,
-          isNot(matches(RegExp(r'^(https?:|wss?:|data:$)'))),
-          reason: source,
-        );
+      for (final MapEntry(key: directive, value: sources) in csp.entries) {
+        for (final source in sources) {
+          // The two sync hosts, exactly, and only for fetches.
+          if (directive == 'connect-src' && [supabase, r2].contains(source)) {
+            continue;
+          }
+          expect(
+            source,
+            isNot(matches(RegExp(r'^(https?:|wss?:|data:$)'))),
+            reason: '$directive $source',
+          );
+        }
       }
     });
 
