@@ -75,6 +75,70 @@ void main() {
       expect(session.expiresAt, now.add(const Duration(hours: 1)));
     });
 
+    group('the sign-in link from the email, pasted whole', () {
+      // SHA-224 in hex, as GoTrue puts it in the email's link.
+      const hash = '2f1b0c8e5d4a39768f2e1d0c9b8a79685f4e3d2c1b0a998877665544';
+      String link({
+        String host = 'example.supabase.co',
+        String path = '/auth/v1/verify',
+        String token = hash,
+        String type = 'magiclink',
+      }) =>
+          'https://$host$path?token=$token&type=$type'
+          '&redirect_to=http://localhost:3000';
+
+      test('signs in with its token hash, never opening it', () async {
+        final session = await auth().verifyCode('pietro@example.com', link());
+
+        expect(
+          requests.single.url.toString(),
+          'https://example.supabase.co/auth/v1/verify',
+        );
+        expect(jsonDecode(requests.single.body), {
+          'type': 'magiclink',
+          'token_hash': hash,
+        });
+        expect(session.accessToken, 'access-1');
+      });
+
+      test('a new account\'s confirmation link signs in too', () async {
+        await auth().verifyCode(
+          'pietro@example.com',
+          '  ${link(type: 'signup')}\n',
+        );
+
+        expect(jsonDecode(requests.single.body), {
+          'type': 'signup',
+          'token_hash': hash,
+        });
+      });
+
+      group('adversary', () {
+        for (final (name, text) in [
+          ('another host', link(host: 'evil.example')),
+          ('a look-alike host', link(host: 'example.supabase.co.evil.example')),
+          ('another path', link(path: '/auth/v1/token')),
+          ('a recovery link', link(type: 'recovery')),
+          ('an invite', link(type: 'invite')),
+          ('a token that is not a hash', link(token: 'x' * 56)),
+          ('a short token', link(token: hash.substring(1))),
+          ('plain http', link().replaceFirst('https:', 'http:')),
+          (
+            'credentials in the link',
+            link().replaceFirst('https://', 'https://user:pw@'),
+          ),
+        ]) {
+          test('$name is refused before any request', () async {
+            await expectLater(
+              auth().verifyCode('pietro@example.com', text),
+              throwsA(isA<SupabaseAuthRejectedException>()),
+            );
+            expect(requests, isEmpty);
+          });
+        }
+      });
+    });
+
     test('a session is refreshed with its refresh token', () async {
       respond = (_) => http.Response(
         jsonEncode(sessionJson(access: 'access-2', refresh: 'refresh-2')),
