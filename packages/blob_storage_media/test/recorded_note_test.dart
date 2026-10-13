@@ -157,6 +157,74 @@ void main() {
     expect(back.recordings, note.recordings);
   });
 
+  group('trash', () {
+    test('a note starts outside the trash', () {
+      expect(RecordedNote.of(song()).trashedAt, isNull);
+    });
+
+    test('trashing keeps the note and its recordings, restoring undoes it', () {
+      final note = valid(
+        RecordedNote.of(song())
+            .attach(take('take_1'), field: guideTrack, schema: schema, at: at),
+      );
+
+      final trashed = note.trashed(at: later);
+      final restored = trashed.restored();
+
+      expect(trashed.trashedAt, later);
+      expect(trashed.entry, same(note.entry));
+      expect(trashed.recordings, note.recordings);
+      expect(restored.trashedAt, isNull);
+      expect(restored.recordings, note.recordings);
+    });
+
+    test('the trash time is kept in UTC', () {
+      final trashed = RecordedNote.of(song()).trashed(at: later.toLocal());
+
+      expect(trashed.trashedAt!.isUtc, isTrue);
+      expect(trashed.trashedAt, later);
+    });
+
+    test('an edit keeps the note where it is', () {
+      final trashed = RecordedNote.of(song()).trashed(at: later);
+
+      expect(trashed.edited(song()).trashedAt, later);
+    });
+
+    test('a note outside the trash is written as version 1, unchanged', () {
+      // Apps that predate the trash read version 1 only: they keep seeing
+      // every note that is not in the trash.
+      final note = RecordedNote.of(song());
+
+      final wire = RecordedNoteCodec.encode(note);
+
+      expect(wire[0], 1);
+      expect(
+        wire,
+        RecordedNoteCodec.encode(note.trashed(at: later).restored()),
+      );
+    });
+
+    test('a trashed note round-trips with the time it was trashed', () {
+      final note = valid(
+        RecordedNote.of(song())
+            .attach(take('take_1'), field: guideTrack, schema: schema, at: at),
+      ).trashed(at: later);
+
+      final back = valid(
+        RecordedNoteCodec.decode(
+          RecordedNoteCodec.encode(note),
+          schemas: resolve,
+        ),
+      );
+
+      expect(back.trashedAt, later);
+      expect(back.trashedAt!.isUtc, isTrue);
+      expect(back.recordings, note.recordings);
+      expect(back.entry.attributes, note.entry.attributes);
+    });
+  });
+
   group('adversary', () {
     Uint8List encoded() => RecordedNoteCodec.encode(
       valid(
@@ -205,6 +273,41 @@ void main() {
         ).attach(take('take_1'), field: guideTrack, schema: schema, at: later),
       );
       final wire = RecordedNoteCodec.encodeUnchecked(recorded.entry, const {});
+
+      expect(
+        () => RecordedNoteCodec.decode(wire, schemas: resolve),
+        throwsA(isA<MalformedBlobException>()),
+      );
+    });
+
+    test('every truncation of a trashed note is a format error', () {
+      final wire = RecordedNoteCodec.encode(
+        RecordedNote.of(song()).trashed(at: later),
+      );
+      for (var length = 0; length < wire.length; length++) {
+        expect(
+          () => RecordedNoteCodec.decode(
+            Uint8List.sublistView(wire, 0, length),
+            schemas: resolve,
+          ),
+          throwsA(isA<MalformedBlobException>()),
+          reason: '$length bytes',
+        );
+      }
+      expect(
+        () => RecordedNoteCodec.decode([...wire, 0], schemas: resolve),
+        throwsA(isA<MalformedBlobException>()),
+      );
+    });
+
+    test('a trash time past 2^53 − 1 microseconds is refused', () {
+      final wire = RecordedNoteCodec.encode(
+        RecordedNote.of(song()).trashed(at: later),
+      );
+      // The last 8 bytes are the time; on the web no larger integer is
+      // exact, so every platform must refuse it alike.
+      final end = wire.length;
+      wire.setRange(end - 8, end, [0, 0x20, 0, 0, 0, 0, 0, 0]);
 
       expect(
         () => RecordedNoteCodec.decode(wire, schemas: resolve),
