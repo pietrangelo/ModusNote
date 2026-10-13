@@ -124,6 +124,84 @@ void main() {
     expect(encFiles(storage.files), isEmpty);
   });
 
+  group('deletion', () {
+    late VaultNoteStore store;
+    late KeyedRecording take;
+
+    setUp(() async {
+      store = await VaultNoteStore.open(
+        vault.engine,
+        catalog: SeedSchemas.catalog,
+        recorder: recorder,
+      );
+      take = await recordTake();
+      await store.save(song(track: take.id), takes: [take]);
+    });
+
+    test('a trashed note keeps its recording, to be restored', () async {
+      await store.moveToTrash(EntryId(songId));
+
+      expect(encFiles(storage.files), ['${take.id.value}.enc']);
+      expect(store.recordingOf(take.id), take);
+    });
+
+    test('deleting a note for good deletes its recordings', () async {
+      await store.moveToTrash(EntryId(songId));
+
+      await store.deleteForever(EntryId(songId));
+
+      expect(encFiles(storage.files), isEmpty);
+      expect(store.recordingOf(take.id), isNull);
+    });
+
+    test('a note deleted on another device takes its recordings', () async {
+      await vault.engine.write(RecordId.parse(songId), const RevisionDeleted());
+
+      await store.reload();
+
+      expect(encFiles(storage.files), isEmpty);
+    });
+
+    test('a recording another note also claims is kept', () async {
+      // A member can write a note that points at someone else's take;
+      // deleting that note must not take the other note's audio with it.
+      const otherId = 'fedcba9876543210fedcba9876543210';
+      final other = switch (DynamicEntry.create(
+        schema: SeedSchemas.songSketchV1,
+        id: EntryId(otherId),
+        attributes: {
+          FieldKey('title'): const TextValue('Copia'),
+          guideTrack: AudioBlobValue(take.id),
+        },
+        at: at,
+      )) {
+        Valid(:final value) => value,
+        Invalid(:final violations) => throw StateError('$violations'),
+      };
+      await store.save(other, takes: [take]);
+      await store.moveToTrash(EntryId(otherId));
+
+      await store.deleteForever(EntryId(otherId));
+
+      expect(encFiles(storage.files), ['${take.id.value}.enc']);
+      expect(store.recordingOf(take.id), take);
+    });
+
+    test('a note that only stopped decoding keeps its recordings', () async {
+      // A newer app may have rewritten it in a format this one cannot
+      // read: the note still exists, so its audio must stay.
+      await vault.engine.write(
+        RecordId.parse(songId),
+        RevisionContents(utf8.encode('{"from": "a newer app"}')),
+      );
+
+      await store.reload();
+
+      expect(store.entries, isEmpty);
+      expect(encFiles(storage.files), ['${take.id.value}.enc']);
+    });
+  });
+
   group('adversary', () {
     test('neither the take nor its metadata reach storage in clear', () async {
       final store = await VaultNoteStore.open(

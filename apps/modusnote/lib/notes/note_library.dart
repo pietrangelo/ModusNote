@@ -5,11 +5,12 @@ import 'package:schema_dynamic_content/schema_dynamic_content.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../theme/golden_ratio.dart';
 import '../vault/auto_lock.dart';
-import 'markdown/markdown_document.dart';
 import 'note_appearance.dart';
 import 'note_editor.dart';
 import 'note_store.dart';
+import 'note_title.dart';
 import 'schema_text.dart';
+import 'trash_screen.dart';
 
 /// Every note at a glance: search, a chip per note type, a card per note.
 class NoteLibraryScreen extends StatefulWidget {
@@ -55,20 +56,28 @@ class _NoteLibraryScreenState extends State<NoteLibraryScreen> {
         ? _type ?? widget.schemas.last
         : _schemaOf(entry);
     if (schema == null) return;
+    _push(
+      NoteEditorScreen(
+        schemas: widget.schemas,
+        store: widget.store,
+        initialSchema: schema,
+        entry: entry,
+      ),
+    );
+  }
+
+  void _openTrash() =>
+      _push(TrashScreen(schemas: widget.schemas, store: widget.store));
+
+  void _push(Widget screen) {
     // A pushed route sits beside the library, not under it: it gets the
     // vault's auto-lock passed along explicitly.
     final autoLock = AutoLockScope.maybeOf(context);
-    final editor = NoteEditorScreen(
-      schemas: widget.schemas,
-      store: widget.store,
-      initialSchema: schema,
-      entry: entry,
-    );
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => autoLock == null
-            ? editor
-            : AutoLockScope(autoLock: autoLock, child: editor),
+            ? screen
+            : AutoLockScope(autoLock: autoLock, child: screen),
       ),
     );
   }
@@ -83,6 +92,11 @@ class _NoteLibraryScreenState extends State<NoteLibraryScreen> {
         title: Text(l10n.notesTitle),
         actions: [
           ?widget.cloud,
+          IconButton(
+            onPressed: _openTrash,
+            tooltip: l10n.trash,
+            icon: const Icon(Icons.delete_outline),
+          ),
           if (widget.onPasskey case final onPasskey?)
             IconButton(
               onPressed: onPasskey,
@@ -273,22 +287,8 @@ class _NoteCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final l10n = AppLocalizations.of(context);
-    final primary = schema?.primaryTextField;
     final tasks = entry.attributes.values.whereType<ChecklistValue>().toList();
-    final named = switch (primary == null ? null : entry.valueOf(primary.key)) {
-      // A Markdown title shows its words, not its markup.
-      TextValue(:final text) when primary!.type is MarkdownFieldType =>
-        MarkdownDocument.parse(text).plainText,
-      TextValue(:final text) => text.trim(),
-      _ => '',
-    };
-    // An untitled list is named by the tasks still to do.
-    final title = named.isNotEmpty || tasks.isEmpty
-        ? named
-        : [
-            for (final item in tasks.first.items)
-              if (!item.done) item.text,
-          ].join(', ');
+    final title = NoteTitle.of(entry, schema);
     final done = tasks.isEmpty
         ? entry.attributes.values.any(
             (value) => value == const BooleanValue(true),

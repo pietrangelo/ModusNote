@@ -102,6 +102,30 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
     }
   }
 
+  /// Moves the note to the trash, with a way back in the snackbar. Takes
+  /// recorded in this edit are discarded with it, like any unsaved edit.
+  Future<void> _trash() async {
+    final entry = widget.entry;
+    if (entry == null) return;
+    final l10n = AppLocalizations.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    final store = widget.store;
+    await store.moveToTrash(entry.id);
+    // The undo must show now, not queued behind an older message.
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(l10n.noteTrashed),
+          action: SnackBarAction(
+            label: l10n.undo,
+            onPressed: () => store.restore(entry.id),
+          ),
+        ),
+      );
+    if (mounted) Navigator.of(context).maybePop();
+  }
+
   Future<BlobId?> _record(FieldDefinition field) async {
     final recorder = widget.store.recorder;
     if (recorder == null) return null;
@@ -166,6 +190,12 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
       appBar: AppBar(
         title: Text(text.label(_schema.label)),
         actions: [
+          if (!_isNew)
+            IconButton(
+              onPressed: _trash,
+              tooltip: l10n.moveToTrash,
+              icon: const Icon(Icons.delete_outline),
+            ),
           TextButton(onPressed: _save, child: Text(l10n.save)),
           const SizedBox(width: Spacing.s),
         ],

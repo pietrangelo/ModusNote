@@ -15,21 +15,29 @@ import '../notes/note_store.dart';
 /// Decrypted notes live only in this object's memory while the vault is
 /// open; the screens never see a record that fails to decode or validate.
 final class VaultNoteStore extends ChangeNotifier implements NoteStore {
-  VaultNoteStore._(this._engine, this._catalog, this.recorder, this.playback);
+  VaultNoteStore._(
+    this._engine,
+    this._catalog,
+    this.recorder,
+    this.playback,
+    this._clock,
+  );
 
   static Future<VaultNoteStore> open(
     SyncEngine engine, {
     required SchemaCatalog catalog,
     NoteRecorder? recorder,
     NotePlayback? playback,
+    DateTime Function() clock = DateTime.now,
   }) async {
-    final store = VaultNoteStore._(engine, catalog, recorder, playback);
+    final store = VaultNoteStore._(engine, catalog, recorder, playback, clock);
     await store._load();
     return store;
   }
 
   final SyncEngine _engine;
   final SchemaCatalog _catalog;
+  final DateTime Function() _clock;
   final _notes = <EntryId, RecordedNote>{};
 
   @override
@@ -39,7 +47,7 @@ final class VaultNoteStore extends ChangeNotifier implements NoteStore {
   final NotePlayback? playback;
   var _unreadable = 0;
 
-  /// Called after each saved edit, once it is queued for the server.
+  /// Called after each saved change, once it is queued for the server.
   VoidCallback? onWrite;
 
   /// Records that are not a valid note of a known schema: kept in the vault
@@ -49,11 +57,12 @@ final class VaultNoteStore extends ChangeNotifier implements NoteStore {
   int get unreadable => _unreadable;
 
   @override
-  List<DynamicEntry> get entries =>
-      [for (final note in _notes.values) note.entry]
-        ..sort((a, b) => b.audit.updatedAt.compareTo(a.audit.updatedAt));
+  List<DynamicEntry> get entries => NoteOrder.library(_notes.values);
 
-  /// Every recording the notes reference.
+  @override
+  List<RecordedNote> get trash => NoteOrder.trash(_notes.values);
+
+  /// Every recording the notes reference, in the trash or not.
   Iterable<KeyedRecording> get recordings => [
     for (final note in _notes.values) ...note.recordings.values,
   ];
@@ -71,18 +80,13 @@ final class VaultNoteStore extends ChangeNotifier implements NoteStore {
     DynamicEntry entry, {
     Iterable<KeyedRecording> takes = const [],
   }) async {
-    final record = _recordOf(entry.id);
     final before = _notes[entry.id];
+    // Saving is keeping: an edit of a note another device has since put in
+    // the trash brings it back.
     final after = before == null
         ? RecordedNote.compose(entry, known: takes)
-        : before.edited(entry, takes: takes);
-    await _engine.write(
-      record,
-      RevisionContents(RecordedNoteCodec.encode(after)),
-    );
-    _notes[entry.id] = after;
-    notifyListeners();
-    onWrite?.call();
+        : before.edited(entry, takes: takes).restored();
+    await _put(after);
     // Only once the note no longer points at them.
     await _delete({
       if (before != null)
@@ -96,6 +100,62 @@ final class VaultNoteStore extends ChangeNotifier implements NoteStore {
   Future<void> discardTakes(Iterable<KeyedRecording> takes) =>
       _delete({for (final take in takes) take.id});
 
+  @override
+  Future<void> moveToTrash(EntryId id) async {
+    if (_notes[id] case final note? when !note.isTrashed) {
+      await _put(note.trashed(at: _clock()));
+    }
+  }
+
+  @override
+  Future<void> restore(EntryId id) async {
+    if (_notes[id] case final note? when note.isTrashed) {
+      await _put(note.restored());
+    }
+  }
+
+  @override
+  Future<void> deleteForever(EntryId id) async {
+    final note = _notes[id];
+    if (note == null || !note.isTrashed) {
+      throw StateError('only a note in the trash can be deleted for good');
+    }
+    // A deletion is a signed revision like an edit: it reaches the other
+    // devices sealed, and no stale copy of the note can bring it back.
+    await _engine.write(_recordOf(id), const RevisionDeleted());
+    _notes.remove(id);
+    notifyListeners();
+    onWrite?.call();
+    await _delete(_orphaned([note]));
+  }
+
+  @override
+  Future<void> emptyTrash() async {
+    for (final note in trash) {
+      await deleteForever(note.entry.id);
+    }
+  }
+
+  Future<void> _put(RecordedNote note) async {
+    await _engine.write(
+      _recordOf(note.entry.id),
+      RevisionContents(RecordedNoteCodec.encode(note)),
+    );
+    _notes[note.entry.id] = note;
+    notifyListeners();
+    onWrite?.call();
+  }
+
+  /// Recordings of [gone] that no remaining note references.
+  Set<BlobId> _orphaned(Iterable<RecordedNote> gone) {
+    final kept = {for (final take in recordings) take.id};
+    return {
+      for (final note in gone)
+        for (final id in note.recordings.keys)
+          if (!kept.contains(id)) id,
+    };
+  }
+
   Future<void> _delete(Set<BlobId> ids) async {
     final blobs = recorder?.blobs;
     if (blobs == null) return;
@@ -104,13 +164,24 @@ final class VaultNoteStore extends ChangeNotifier implements NoteStore {
     }
   }
 
-  /// Reads every note again: a sync merged edits from the server.
+  /// Reads every note again: a sync merged edits from the server. The
+  /// recordings of notes another device deleted for good are deleted here
+  /// too; a note that merely stopped decoding (a newer app may have
+  /// rewritten it) keeps them.
   Future<void> reload() async {
     final records = await _engine.records();
+    final before = Map.of(_notes);
     _notes.clear();
     _unreadable = 0;
     _take(records);
     notifyListeners();
+    final deleted = [
+      for (final MapEntry(key: id, value: note) in before.entries)
+        if (!_notes.containsKey(id) &&
+            await _engine.read(_recordOf(id)) is RevisionDeleted)
+          note,
+    ];
+    await _delete(_orphaned(deleted));
   }
 
   Future<void> _load() async => _take(await _engine.records());
