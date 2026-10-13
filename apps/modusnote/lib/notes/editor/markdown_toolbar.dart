@@ -132,10 +132,13 @@ final class MarkdownAction {
 
 /// The formatting buttons of a Markdown field, in one scrolling row.
 class MarkdownToolbar extends StatelessWidget {
-  const MarkdownToolbar({required this.controller, super.key});
+  const MarkdownToolbar({required this.controller, this.onLinkNote, super.key});
 
   /// The field the buttons edit; it reports the change like typing.
   final MarkdownEditingController controller;
+
+  /// Picks a note and links to it; null where there are no notes to link.
+  final VoidCallback? onLinkNote;
 
   @override
   Widget build(BuildContext context) {
@@ -145,6 +148,13 @@ class MarkdownToolbar extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: Spacing.s),
       child: Row(
         children: [
+          if (onLinkNote case final onLinkNote?)
+            IconButton(
+              key: const ValueKey('link-note'),
+              tooltip: l10n.linkNote,
+              icon: const Icon(Icons.add_link, size: IconSizes.inline),
+              onPressed: onLinkNote,
+            ),
           for (final action in MarkdownAction.all)
             IconButton(
               tooltip: action.tooltip(l10n),
