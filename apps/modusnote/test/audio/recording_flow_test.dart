@@ -116,7 +116,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Registrazione allegata · 0:42'), findsOneWidget);
-    await tester.tap(find.text('Salva'));
+    await tester.pump();
+    await tester.tap(find.byType(BackButton));
     await tester.pumpAndSettle();
 
     final entry = store.entries.single;
@@ -167,9 +168,7 @@ void main() {
       autoLock.dispose();
     });
 
-    testWidgets('leaving the editor without saving deletes the take', (
-      tester,
-    ) async {
+    testWidgets('a take in a discarded edit is deleted', (tester) async {
       await openStore();
       await startEditing(tester);
       await tapRecord(tester);
@@ -177,7 +176,12 @@ void main() {
       await tester.pumpAndSettle();
       expect(encFiles(files), hasLength(1));
 
-      Navigator.of(tester.element(find.byType(NoteEditorScreen))).pop();
+      // Without its title the song cannot be saved: leaving discards it.
+      await tester.enterText(textInput('title'), '');
+      await tester.pump();
+      await tester.tap(find.byType(BackButton));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Scarta'));
       await tester.pumpAndSettle();
       await settleFiles(tester);
 

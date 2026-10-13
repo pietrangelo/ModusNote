@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:modusnote/notes/dynamic_form_renderer.dart';
+import 'package:modusnote/notes/editor/markdown_controller.dart';
 import 'package:modusnote/notes/markdown/markdown_view.dart';
 import 'package:schema_dynamic_content/schema_dynamic_content.dart';
 
@@ -163,6 +164,10 @@ void main() {
     );
 
     expect(find.text('Chiamare Ada'), findsOneWidget);
+    // A written note keeps its details folded under the title.
+    expect(find.text('Alta'), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('details-toggle')));
+    await tester.pumpAndSettle();
     expect(find.text('Alta'), findsOneWidget);
   });
 
@@ -227,53 +232,32 @@ void main() {
   });
 
   group('Markdown', () {
-    testWidgets('a new note opens on the text, a written one on the preview', (
+    testWidgets('a written note opens in its one field, source and all', (
       tester,
     ) async {
-      await render(tester, SeedSchemas.quickNoteV1);
-      expect(textInput('content'), findsOneWidget);
-      expect(find.byKey(const ValueKey('markdown-preview')), findsNothing);
-
-      await tester.pumpWidget(const SizedBox()); // A new editor.
       await render(
         tester,
         SeedSchemas.quickNoteV1,
         values: {k('content'): const TextValue('# Spesa\n\n- [x] pane')},
       );
-      expect(textInput('content'), findsNothing);
-      expect(find.text('Spesa'), findsOneWidget);
-      expect(find.byKey(const ValueKey('task-done')), findsOneWidget);
+
+      final field = tester.widget<EditableText>(textInput('content'));
+      expect(field.controller, isA<MarkdownEditingController>());
+      expect(field.controller.text, '# Spesa\n\n- [x] pane');
+      expect(find.byType(MarkdownView), findsNothing);
     });
 
-    testWidgets('the preview shows what was just typed, and back', (
-      tester,
-    ) async {
+    testWidgets('what is typed is reported as typed', (tester) async {
       await render(tester, SeedSchemas.quickNoteV1);
 
       await tester.enterText(textInput('content'), '**forte**');
-      await tester.tap(find.text('Anteprima'));
-      await tester.pumpAndSettle();
-      expect(find.text('forte'), findsOneWidget);
-      expect(textInput('content'), findsNothing);
 
-      await tester.tap(find.text('Scrivi'));
-      await tester.pumpAndSettle();
-      expect(find.text('**forte**'), findsOneWidget);
       expect(drafts.last.values[k('content')], const TextValue('**forte**'));
-    });
-
-    testWidgets('an empty preview says so', (tester) async {
-      await render(tester, SeedSchemas.quickNoteV1);
-
-      await tester.tap(find.text('Anteprima'));
-      await tester.pumpAndSettle();
-
-      expect(find.text('Niente da mostrare.'), findsOneWidget);
     });
   });
 
   group('adversary', () {
-    testWidgets('hostile text is shown as plain text, never interpreted', (
+    testWidgets('hostile text stays text in the field, never interpreted', (
       tester,
     ) async {
       const hostile =
@@ -285,22 +269,16 @@ void main() {
       );
 
       expect(tester.takeException(), isNull);
-      // The preview shows the tags as text and the link with its address.
-      final preview = tester.widget<RichText>(
-        find.descendant(
-          of: find.byType(MarkdownView),
-          matching: find.byType(RichText),
-        ),
-      );
+      final field = tester.widget<EditableText>(textInput('content'));
+      expect(field.controller.text, hostile);
+      // The link is only coloured: nothing in the field can be tapped open.
       expect(
-        preview.text.toPlainText(),
-        '<script>alert(1)</script> x (javascript:alert(1)) b \u202Egnp.exe',
+        find.descendant(
+          of: fieldFinder('content'),
+          matching: find.byType(InkWell),
+        ),
+        findsNothing,
       );
-      expect(find.byType(InkWell), findsNWidgets(2)); // The two tabs only.
-
-      await tester.tap(find.text('Scrivi'));
-      await tester.pumpAndSettle();
-      expect(find.text(hostile), findsOneWidget);
     });
 
     testWidgets('a very long text renders without overflow', (tester) async {

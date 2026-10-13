@@ -96,17 +96,21 @@ async function scenario(browser, origin, mode) {
 
   await page.getByText('New note').first().click();
   await settle();
-  await type(0, noteText);
+  // A quick note: its tags come first, folded open while empty, then the
+  // Markdown body, styled as it is typed. Leaving the page saves it.
+  await type(1, noteText);
   await page.keyboard.press('Enter');
   await page.keyboard.type('With `code` in the Markdown.');
-  await page.getByRole('button', { name: 'Save' }).click();
+  await page.getByText('Saved').waitFor({ timeout: 30000 });
+  await page.getByRole('button', { name: 'Back' }).click();
   await page.getByText(noteText).first().waitFor({ timeout: 30000 });
   await settle();
 
   // A song with a guide track recorded from the microphone.
   await page.getByText('New note').first().click();
   await settle();
-  await page.getByRole('checkbox', { name: 'Song' }).click();
+  await page.getByRole('button', { name: /Note type/ }).click();
+  await page.getByLabel('Song', { exact: true }).click();
   await settle();
   await type(0, songTitle);
   await page.getByRole('button', { name: 'Record' }).first().click();
@@ -114,7 +118,8 @@ async function scenario(browser, origin, mode) {
   await page.waitForTimeout(3000);
   await page.getByRole('button', { name: 'Stop and attach' }).click();
   await labelled(/Recording attached · 0:0[2-4]/, 30000);
-  await page.getByRole('button', { name: 'Save' }).click();
+  await page.getByText('Saved').waitFor({ timeout: 30000 });
+  await page.getByRole('button', { name: 'Back' }).click();
   await page.getByText(songTitle).first().waitFor({ timeout: 30000 });
   await settle();
 
@@ -136,10 +141,10 @@ async function scenario(browser, origin, mode) {
   await page.getByRole('button', { name: 'Unlock' }).click();
   await page.getByText(noteText).first().waitFor({ timeout: 120000 });
 
-  // A saved note opens on its Markdown preview.
+  // A saved note opens in the editor, with the formatting toolbar.
   await page.getByText(noteText).first().click();
-  await page.getByRole('button', { name: 'Preview' }).waitFor({ timeout: 30000 });
-  await labelled(/With code in the Markdown/, 10000);
+  await page.getByRole('button', { name: /^Bold/ }).waitFor({ timeout: 30000 });
+  await page.getByText('Saved').waitFor({ timeout: 10000 });
   await page.getByRole('button', { name: 'Back' }).click();
   await settle();
 
