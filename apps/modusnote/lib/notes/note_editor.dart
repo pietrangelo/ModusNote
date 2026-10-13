@@ -28,12 +28,17 @@ enum SaveState { saved, saving, incomplete, failed }
 ///
 /// Until a new note is first saved its type can be switched from the app
 /// bar, keeping whatever still fits the new type.
+///
+/// On a page of its own it goes back when left. Beside the list on a wide
+/// screen it is closed by [onClose] instead, and whoever shows another
+/// note in its place asks it to [NoteEditorScreenState.settle] first.
 class NoteEditorScreen extends StatefulWidget {
   const NoteEditorScreen({
     required this.schemas,
     required this.store,
     required this.initialSchema,
     this.entry,
+    this.onClose,
     this.clock = DateTime.now,
     super.key,
   });
@@ -44,16 +49,20 @@ class NoteEditorScreen extends StatefulWidget {
 
   /// The note being edited, or null for a new one.
   final DynamicEntry? entry;
+
+  /// Closes the note when it is shown beside the list; null on a page of
+  /// its own, which goes back instead.
+  final VoidCallback? onClose;
   final DateTime Function() clock;
 
   /// How long typing must pause before the note is saved.
   static const autosaveDelay = Duration(seconds: 1);
 
   @override
-  State<NoteEditorScreen> createState() => _NoteEditorScreenState();
+  State<NoteEditorScreen> createState() => NoteEditorScreenState();
 }
 
-class _NoteEditorScreenState extends State<NoteEditorScreen>
+class NoteEditorScreenState extends State<NoteEditorScreen>
     with WidgetsBindingObserver {
   late SchemaDefinition _schema = widget.initialSchema;
   late FormDraft _draft = FormDraft(widget.entry?.attributes ?? const {}, {});
@@ -206,15 +215,28 @@ class _NoteEditorScreenState extends State<NoteEditorScreen>
     return state;
   }
 
-  /// Back: saves first; a note that cannot be saved asks what to do.
+  /// Back, or close: saves first; a note that cannot be saved asks what
+  /// to do.
   Future<void> _leave() async {
-    final navigator = Navigator.of(context);
+    if (await settle() && mounted) _close();
+  }
+
+  void _close() {
+    if (widget.onClose case final onClose?) {
+      onClose();
+    } else {
+      Navigator.of(context).pop();
+    }
+  }
+
+  /// Saves what is pending and says whether the note may go: false when it
+  /// cannot be saved and the user chose to keep writing.
+  Future<bool> settle() async {
     final state = await _flush();
-    if (!mounted) return;
+    if (!mounted) return true;
     if (state == SaveState.saved || !_dirty) {
       _dirty = false;
-      navigator.pop();
-      return;
+      return true;
     }
     setState(() => _violations = _pendingViolations);
     final l10n = AppLocalizations.of(context);
@@ -239,10 +261,9 @@ class _NoteEditorScreenState extends State<NoteEditorScreen>
         ],
       ),
     );
-    if (discard == true && mounted) {
-      setState(() => _dirty = false);
-      navigator.pop();
-    }
+    if (discard != true) return false;
+    if (mounted) setState(() => _dirty = false);
+    return true;
   }
 
   /// Moves the note to the trash, with a way back in the snackbar. A new
@@ -251,11 +272,11 @@ class _NoteEditorScreenState extends State<NoteEditorScreen>
     _timer?.cancel();
     final l10n = AppLocalizations.of(context);
     final messenger = ScaffoldMessenger.of(context);
-    final navigator = Navigator.of(context);
     final store = widget.store;
     if (await _flush() != SaveState.saved || _saved == null) {
+      if (!mounted) return;
       setState(() => _dirty = false);
-      if (mounted) navigator.pop();
+      _close();
       return;
     }
     await store.moveToTrash(_id);
@@ -274,7 +295,7 @@ class _NoteEditorScreenState extends State<NoteEditorScreen>
       );
     if (mounted) {
       setState(() => _dirty = false);
-      navigator.pop();
+      _close();
     }
   }
 
@@ -342,13 +363,23 @@ class _NoteEditorScreenState extends State<NoteEditorScreen>
       SaveState.incomplete => l10n.editorIncomplete,
       SaveState.failed => l10n.editorSaveFailed,
     };
+    final embedded = widget.onClose != null;
     return PopScope(
-      canPop: !_dirty,
+      // Beside the list there is nothing to go back to.
+      canPop: embedded || !_dirty,
       onPopInvokedWithResult: (didPop, _) {
         if (!didPop) _leave();
       },
       child: Scaffold(
         appBar: AppBar(
+          automaticallyImplyLeading: !embedded,
+          leading: embedded
+              ? IconButton(
+                  onPressed: _leave,
+                  tooltip: MaterialLocalizations.of(context).closeButtonTooltip,
+                  icon: const Icon(Icons.close),
+                )
+              : null,
           title: _TypeTitle(
             schema: _schema,
             schemas: _saved == null ? widget.schemas : const [],
