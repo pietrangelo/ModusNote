@@ -15,6 +15,8 @@ import '../vault/auto_lock.dart';
 import 'attachments/attachments_input.dart';
 import 'books/book_outline.dart';
 import 'books/book_section.dart';
+import 'documents/page_index.dart';
+import 'documents/page_index_section.dart';
 import 'dynamic_form_renderer.dart';
 import 'editor/markdown_commands.dart';
 import 'editor/markdown_controller.dart';
@@ -636,6 +638,25 @@ class NoteEditorScreenState extends State<NoteEditorScreen>
                               onOpen: _openLinked,
                               onAdd: (schema) =>
                                   _openOver(schema, category: category),
+                            );
+                          },
+                        ),
+                      if (_schema.id.name == PageIndex.document)
+                        ListenableBuilder(
+                          listenable: widget.store,
+                          builder: (context, _) {
+                            final category = _category;
+                            return PageIndexSection(
+                              sections: PageIndex.of(
+                                category: category,
+                                store: widget.store,
+                                schemaOf: _schemaOf,
+                              ),
+                              current: _id,
+                              schemaOf: _schemaOf,
+                              onOpen: _openLinked,
+                              onAdd: () =>
+                                  _openOver(_schema, category: category),
                             );
                           },
                         ),

@@ -330,5 +330,8 @@
   "bookNotFiled": "Metti il libro in una categoria: capitoli, personaggi e luoghi che contiene compariranno qui.",
   "commandPalette": "Cerca e comandi",
   "paletteHint": "Cerca note o comandi…",
-  "paletteNewNote": "Nuova nota: {type}"
+  "paletteNewNote": "Nuova nota: {type}",
+  "pageIndex": "Indice",
+  "addPage": "Nuova pagina",
+  "pageIndexNotFiled": "Metti la pagina in una categoria: le altre pagine che contiene formeranno l'indice."
 }
