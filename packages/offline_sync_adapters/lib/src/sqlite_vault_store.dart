@@ -71,6 +71,32 @@ final class SqliteVaultStore implements VaultStore {
   ];
 
   @override
+  Future<void> appendMembership(List<MembershipRecord> records) async {
+    transaction(_database, () {
+      for (final record in records) {
+        _database.execute(
+          'INSERT OR IGNORE INTO vault_membership (sequence, record) '
+          'VALUES (?, ?)',
+          [record.sequence, record.toBytes()],
+        );
+      }
+    });
+  }
+
+  @override
+  Future<void> appendKeyBundles(List<KeyBundle> bundles) async {
+    transaction(_database, () {
+      for (final bundle in bundles) {
+        _database.execute(
+          'INSERT INTO vault_key_bundles (position, bundle) VALUES '
+          '((SELECT coalesce(max(position), -1) + 1 FROM vault_key_bundles), ?)',
+          [bundle.toBytes()],
+        );
+      }
+    });
+  }
+
+  @override
   Future<PasskeySlot?> loadPasskey() async {
     final rows = _database.select(
       'SELECT passkey FROM vault_passkey WHERE slot = 0',

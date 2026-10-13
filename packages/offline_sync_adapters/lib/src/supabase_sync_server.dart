@@ -26,7 +26,11 @@ final class SyncServerRejectedException implements Exception {
 /// tables, their append-only privileges and Row Level Security are in
 /// `supabase/migrations`. Responses are checked as strictly as any other
 /// input from the server.
-final class SupabaseSyncServer implements SyncServer {
+///
+/// It is also where two devices of the same account meet to link
+/// ([DeviceLinkChannel]): `device_links` holds the two sealed messages for a
+/// few minutes, readable only by the account that posted them.
+final class SupabaseSyncServer implements SyncServer, DeviceLinkChannel {
   SupabaseSyncServer({
     required Uri projectUrl,
     required this._anonKey,
@@ -140,9 +144,84 @@ final class SupabaseSyncServer implements SyncServer {
         },
       ]);
 
+  @override
   Future<void> appendKeyBundle(KeyBundle bundle) => _insert('key_bundles', [
     {'workspace_id': bundle.workspace.hex, 'bundle': _bytea(bundle.toBytes())},
   ]);
+
+  @override
+  Future<void> postOffer(LinkOffer offer) => _insert('device_links', [
+    {
+      'link_id': offer.id.hex,
+      'kind': 'offer',
+      'payload': _bytea(offer.toBytes()),
+    },
+  ]);
+
+  @override
+  Future<void> postAnswer(LinkAnswer answer) => _insert('device_links', [
+    {
+      'link_id': answer.id.hex,
+      'kind': 'answer',
+      'payload': _bytea(answer.toBytes()),
+    },
+  ]);
+
+  /// Row Level Security already limits the rows to this account's recent
+  /// ones; a payload that does not parse, or names another link than its
+  /// row, is no offer at all.
+  @override
+  Future<LinkOffer?> latestOffer() async {
+    final rows = await _select('device_links', {
+      'select': 'link_id,payload',
+      'kind': 'eq.offer',
+      'order': 'id.desc',
+      'limit': '1',
+    });
+    if (rows.isEmpty) return null;
+    final offer = _link(rows.single, LinkOffer.parse);
+    return offer != null && offer.id.hex == rows.single['link_id']
+        ? offer
+        : null;
+  }
+
+  @override
+  Future<List<LinkAnswer>> answers(LinkId link) async {
+    final rows = await _select('device_links', {
+      'select': 'link_id,payload',
+      'link_id': 'eq.${link.hex}',
+      'kind': 'eq.answer',
+      'order': 'id.asc',
+      'limit': '$_maxAnswers',
+    });
+    return [
+      for (final row in rows)
+        if (_link(row, LinkAnswer.parse) case final answer?
+            when answer.id == link)
+          answer,
+    ];
+  }
+
+  @override
+  Future<void> close(LinkId link) => _send(
+    http.Request(
+      'DELETE',
+      _rest
+          .resolve('device_links')
+          .replace(queryParameters: {'link_id': 'eq.${link.hex}'}),
+    ),
+  );
+
+  /// More answers than a person could have typed are not read.
+  static const _maxAnswers = 20;
+
+  static T? _link<T>(Map<String, Object?> row, T Function(List<int>) parse) {
+    try {
+      return parse(_fromBytea(row['payload']));
+    } on SyncException {
+      return null;
+    }
+  }
 
   /// Lets another Supabase account read and append (managers only, by RLS).
   Future<void> addAccount(

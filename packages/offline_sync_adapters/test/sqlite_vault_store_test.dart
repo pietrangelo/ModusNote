@@ -123,6 +123,39 @@ void main() {
     );
   });
 
+  test('membership and bundles learned later are kept, once each', () async {
+    await store.create(
+      header(me()),
+      membership: [founded.record],
+      bundles: [founded.bundle!],
+    );
+    final device = SodiumIdentityService(sodium).generateIdentity();
+    addTearDown(device.dispose);
+    final invited =
+        WorkspaceAdministration(
+          identities: SodiumIdentityService(sodium),
+          encapsulation: SodiumKeyEncapsulation(sodium),
+          envelopes: SodiumEnvelopeEncryptor(sodium),
+        ).invite(
+          founded.ledger,
+          founded.keyring,
+          owner: founder,
+          invitee: device.publicIdentity,
+          role: Role.owner,
+        );
+
+    await store.appendMembership([founded.record, invited.record]);
+    await store.appendMembership([invited.record]);
+    await store.appendKeyBundles([invited.bundle!]);
+
+    final reopened = reopen();
+    expect(await reopened.loadMembership(), [founded.record, invited.record]);
+    expect((await reopened.loadKeyBundles()).map((b) => b.toBytes()), [
+      founded.bundle!.toBytes(),
+      invited.bundle!.toBytes(),
+    ]);
+  });
+
   test('a second vault cannot be written over the first', () async {
     await store.create(header(me()), membership: const [], bundles: const []);
 

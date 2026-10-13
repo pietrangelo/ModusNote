@@ -53,8 +53,9 @@ final class FakeAuthServer {
 
 /// The zero-knowledge server in memory, shared by every device of a test.
 /// Each call first asks for the account's token, as PostgREST would, so a
-/// signed-out device sees it as unreachable.
-final class MemorySyncServer implements SyncServer {
+/// signed-out device sees it as unreachable. Like Supabase, it also relays
+/// device links (one account in these tests).
+final class MemorySyncServer implements SyncServer, DeviceLinkChannel {
   MemorySyncServer(this.token);
 
   final Future<String> Function() token;
@@ -67,6 +68,8 @@ final class MemorySyncServer implements SyncServer {
   final rows = <SealedRow>[];
   final membershipLog = <MembershipRecord>[];
   final bundles = <KeyBundle>[];
+  final offers = <LinkOffer>[];
+  final answered = <LinkAnswer>[];
 
   Future<void> _check() async {
     if (!online) throw const ServerUnavailableException();
@@ -127,5 +130,42 @@ final class MemorySyncServer implements SyncServer {
   }) async {
     await _check();
     return [for (var i = after; i < bundles.length; i++) (i + 1, bundles[i])];
+  }
+
+  @override
+  Future<void> appendKeyBundle(KeyBundle bundle) async {
+    await _check();
+    bundles.add(bundle);
+  }
+
+  @override
+  Future<void> postOffer(LinkOffer offer) async {
+    await _check();
+    offers.add(offer);
+  }
+
+  @override
+  Future<LinkOffer?> latestOffer() async {
+    await _check();
+    return offers.lastOrNull;
+  }
+
+  @override
+  Future<void> postAnswer(LinkAnswer answer) async {
+    await _check();
+    answered.add(answer);
+  }
+
+  @override
+  Future<List<LinkAnswer>> answers(LinkId link) async {
+    await _check();
+    return [...answered.where((answer) => answer.id == link)];
+  }
+
+  @override
+  Future<void> close(LinkId link) async {
+    await _check();
+    offers.removeWhere((offer) => offer.id == link);
+    answered.removeWhere((answer) => answer.id == link);
   }
 }

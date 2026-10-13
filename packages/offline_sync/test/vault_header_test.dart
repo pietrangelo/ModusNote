@@ -5,9 +5,14 @@ import 'package:glados/glados.dart';
 import 'package:identity_cryptography/identity_cryptography.dart';
 import 'package:offline_sync/offline_sync.dart';
 
+MemberId memberOf(int fill) => MemberId(
+  PublicSigningKey.fromBytes(List.filled(PublicSigningKey.length, fill)),
+);
+
 VaultHeader header({
   KdfParameters kdf = KdfParameters.moderate,
   int fill = 1,
+  MemberId? member,
 }) => VaultHeader(
   salt: Salt.fromBytes(List.filled(Salt.length, fill)),
   kdf: kdf,
@@ -15,6 +20,7 @@ VaultHeader header({
   founder: MemberId(
     PublicSigningKey.fromBytes(List.filled(PublicSigningKey.length, 7)),
   ),
+  member: member,
   localKeyId: SubkeyId.fromBytes(List.filled(SubkeyId.length, 9)),
   sealedIdentity: EncryptedEnvelope(
     nonce: Nonce.fromBytes(List.filled(Nonce.length, 3)),
@@ -41,6 +47,34 @@ void main() {
     );
   });
 
+  group('linked device', () {
+    test('a founder\'s header names the founder as its member', () {
+      expect(header().member, header().founder);
+    });
+
+    test('a device that joined keeps its own member and round-trips', () {
+      final linked = header(member: memberOf(8));
+
+      expect(VaultHeader.parse(linked.toBytes()), linked);
+      expect(VaultHeader.parse(linked.toBytes()).member, memberOf(8));
+    });
+
+    test('a founder\'s header keeps the bytes it always had', () {
+      // Vaults created before linking existed must still open.
+      final wire = header().toBytes();
+
+      expect(wire[0], 1);
+      expect(header(member: memberOf(7)).toBytes(), wire);
+    });
+
+    test('the member is bound into the identity\'s slot', () {
+      expect(
+        header(member: memberOf(8)).identitySlot,
+        isNot(header(member: memberOf(9)).identitySlot),
+      );
+    });
+  });
+
   group('adversary', () {
     test('every truncation and trailing byte is refused as malformed', () {
       final wire = header().toBytes();
@@ -58,7 +92,7 @@ void main() {
     });
 
     test('an unknown version is refused', () {
-      final wire = header().toBytes()..[0] = 2;
+      final wire = header().toBytes()..[0] = 3;
 
       expect(
         () => VaultHeader.parse(wire),
@@ -80,6 +114,23 @@ void main() {
           reason: 'ops $ops, mem $mem',
         );
       }
+    });
+
+    test('a member header that names the founder twice is refused', () {
+      final linked = header(member: memberOf(8)).toBytes();
+      // version | salt(16) | ops(4) | mem(4) | workspace(16) | founder(32) |
+      // member(32): copy the founder over the member.
+      const founderAt = 1 + 16 + 4 + 4 + 16;
+      linked.setRange(
+        founderAt + 32,
+        founderAt + 64,
+        linked.sublist(founderAt, founderAt + 32),
+      );
+
+      expect(
+        () => VaultHeader.parse(linked),
+        throwsA(isA<MalformedSyncDataException>()),
+      );
     });
 
     Glados(any.list(any.uint8))
