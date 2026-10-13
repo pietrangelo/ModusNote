@@ -198,5 +198,6 @@
   "editorLeaveTitle": "Questa nota non si può ancora salvare",
   "editorLeaveBody": "Completa i campi evidenziati, oppure scarta le modifiche.",
   "editorKeepWriting": "Continua a scrivere",
-  "editorDiscard": "Scarta"
+  "editorDiscard": "Scarta",
+  "pickANote": "Scegli una nota o creane una nuova."
 }
