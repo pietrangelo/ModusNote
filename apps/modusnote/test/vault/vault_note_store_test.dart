@@ -243,6 +243,150 @@ void main() {
     });
   });
 
+  group('categories', () {
+    late UnlockedVault vault;
+    late VaultNoteStore store;
+    const shelf = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+    const crime = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
+
+    NoteCategory category(String id, String name, {String? parent}) =>
+        NoteCategory(
+          id: CategoryId(id),
+          name: CategoryName(name),
+          parent: parent == null ? null : CategoryId(parent),
+          tint: NoteTint.rose,
+        );
+
+    setUp(() async {
+      final database = memoryDatabase();
+      addTearDown(database.close);
+      vault = await keeperOn(database).create(passphrase('frase lunga'));
+      addTearDown(vault.lock);
+      store = await VaultNoteStore.open(
+        vault.engine,
+        catalog: SeedSchemas.catalog,
+        clock: () => DateTime.utc(2026, 10, 13, 15),
+      );
+      await store.saveCategory(category(shelf, 'Romanzi'));
+      await store.saveCategory(category(crime, 'Gialli', parent: shelf));
+      await store.save(
+        quickNote(first, 'uno', DateTime.utc(2026, 10, 11)),
+        newIn: CategoryId(crime),
+      );
+      await store.save(quickNote(second, 'due', DateTime.utc(2026, 10, 12)));
+    });
+
+    Future<VaultNoteStore> reopen() =>
+        VaultNoteStore.open(vault.engine, catalog: SeedSchemas.catalog);
+
+    test('the tree and where each note is filed survive a reopen', () async {
+      final reopened = await reopen();
+
+      expect(reopened.categories.ordered.map((c) => c.name.value), [
+        'Romanzi',
+        'Gialli',
+      ]);
+      expect(reopened.categories[CategoryId(crime)]!.tint, NoteTint.rose);
+      expect(reopened.categoryOf(EntryId(first)), CategoryId(crime));
+      expect(reopened.categoryOf(EntryId(second)), isNull);
+      expect(reopened.entries, hasLength(2));
+      expect(reopened.unreadable, 0);
+    });
+
+    test('a category is a sealed record, like a note', () async {
+      final stored = await vault.engine.read(RecordId.parse(crime));
+
+      expect(stored, isA<RevisionContents>());
+      expect(
+        CategoryCodec.decode((stored! as RevisionContents).bytes).name.value,
+        'Gialli',
+      );
+    });
+
+    test('saving an existing note keeps its category', () async {
+      await store.save(quickNote(first, 'uno bis', DateTime.utc(2026, 10, 13)));
+
+      expect(store.categoryOf(EntryId(first)), CategoryId(crime));
+    });
+
+    test('filing moves a note, in the trash too', () async {
+      await store.file(EntryId(second), CategoryId(shelf));
+      await store.moveToTrash(EntryId(first));
+      await store.file(EntryId(first), null);
+      await store.restore(EntryId(first));
+
+      final reopened = await reopen();
+      expect(reopened.categoryOf(EntryId(second)), CategoryId(shelf));
+      expect(reopened.categoryOf(EntryId(first)), isNull);
+    });
+
+    test('deleting a category moves its notes and children up', () async {
+      await store.deleteCategory(CategoryId(shelf));
+
+      expect(
+        await vault.engine.read(RecordId.parse(shelf)),
+        isA<RevisionDeleted>(),
+      );
+      final reopened = await reopen();
+      expect(reopened.categories.roots.single.id, CategoryId(crime));
+      expect(reopened.categoryOf(EntryId(first)), CategoryId(crime));
+
+      await reopened.deleteCategory(CategoryId(crime));
+      final again = await reopen();
+      expect(again.categories.isEmpty, isTrue);
+      expect(again.categoryOf(EntryId(first)), isNull);
+      expect(again.entries, hasLength(2));
+      expect(again.unreadable, 0);
+    });
+
+    test('a loop or a fifth level is refused', () async {
+      await expectLater(
+        store.saveCategory(category(shelf, 'Romanzi', parent: crime)),
+        throwsArgumentError,
+      );
+      var parent = crime;
+      for (final id in ['c' * 32, 'd' * 32]) {
+        await store.saveCategory(category(id, id, parent: parent));
+        parent = id;
+      }
+      await expectLater(
+        store.saveCategory(category('e' * 32, 'troppo', parent: parent)),
+        throwsArgumentError,
+      );
+    });
+
+    test('each change is queued for the server', () async {
+      var writes = 0;
+      store.onWrite = () => writes++;
+
+      await store.saveCategory(category(shelf, 'Libri'));
+      await store.file(EntryId(second), CategoryId(shelf));
+
+      expect(writes, 2);
+    });
+
+    test('a category stored under another record id is refused', () async {
+      await vault.engine.write(
+        RecordId.parse('f' * 32),
+        (await vault.engine.read(RecordId.parse(crime)))!,
+      );
+
+      final reopened = await reopen();
+
+      expect(reopened.categories.length, 2);
+      expect(reopened.unreadable, 1);
+    });
+
+    test('a category deleted on another device leaves on reload', () async {
+      await vault.engine.write(RecordId.parse(crime), const RevisionDeleted());
+
+      await store.reload();
+
+      expect(store.categories.length, 1);
+      expect(store.categoryOf(EntryId(first)), isNull);
+    });
+  });
+
   group('adversary', () {
     test(
       'a record that is not a readable note is counted, never shown',

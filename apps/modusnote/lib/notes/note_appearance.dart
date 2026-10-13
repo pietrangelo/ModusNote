@@ -41,3 +41,12 @@ abstract final class NoteAppearance {
     ModusColors.abyssalSlate,
   );
 }
+
+/// How a category is told apart: the icon and tint it names, a folder in
+/// muted silver when it names none.
+abstract final class CategoryAppearance {
+  static IconData icon(NoteIcon? icon) =>
+      icon == null ? Icons.folder_outlined : NoteAppearance.icon(icon);
+
+  static Color tint(NoteTint? tint) => NoteAppearance.tint(tint);
+}

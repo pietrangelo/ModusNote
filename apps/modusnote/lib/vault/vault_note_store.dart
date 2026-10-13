@@ -12,6 +12,10 @@ import '../notes/note_store.dart';
 /// the [SyncEngine], one record per note. Recordings themselves are
 /// encrypted blobs beside it, deleted when no note references them.
 ///
+/// Categories are records of their own ([CategoryCodec], told apart by
+/// their first byte), sealed the same way; which category a note is in
+/// travels inside the note.
+///
 /// Decrypted notes live only in this object's memory while the vault is
 /// open; the screens never see a record that fails to decode or validate.
 final class VaultNoteStore extends ChangeNotifier implements NoteStore {
@@ -39,6 +43,8 @@ final class VaultNoteStore extends ChangeNotifier implements NoteStore {
   final SchemaCatalog _catalog;
   final DateTime Function() _clock;
   final _notes = <EntryId, RecordedNote>{};
+  final _categories = <CategoryId, NoteCategory>{};
+  CategoryTree? _tree;
 
   @override
   final NoteRecorder? recorder;
@@ -76,15 +82,23 @@ final class VaultNoteStore extends ChangeNotifier implements NoteStore {
   }
 
   @override
+  CategoryTree get categories => _tree ??= CategoryTree(_categories.values);
+
+  @override
+  CategoryId? categoryOf(EntryId id) =>
+      categories.resolve(_notes[id]?.category);
+
+  @override
   Future<void> save(
     DynamicEntry entry, {
     Iterable<KeyedRecording> takes = const [],
+    CategoryId? newIn,
   }) async {
     final before = _notes[entry.id];
     // Saving is keeping: an edit of a note another device has since put in
     // the trash brings it back.
     final after = before == null
-        ? RecordedNote.compose(entry, known: takes)
+        ? RecordedNote.compose(entry, known: takes, category: newIn)
         : before.edited(entry, takes: takes).restored();
     await _put(after);
     // Only once the note no longer points at them.
@@ -136,6 +150,50 @@ final class VaultNoteStore extends ChangeNotifier implements NoteStore {
     }
   }
 
+  @override
+  Future<void> file(EntryId id, CategoryId? category) async {
+    if (_notes[id] case final note? when note.category != category) {
+      await _put(note.filedIn(category));
+    }
+  }
+
+  @override
+  Future<void> saveCategory(NoteCategory category) async {
+    Filing.checkPlacement(categories, category);
+    await _writeCategory(category);
+  }
+
+  Future<void> _writeCategory(NoteCategory category) async {
+    await _engine.write(
+      _recordOfCategory(category.id),
+      RevisionContents(CategoryCodec.encode(category)),
+    );
+    _categories[category.id] = category;
+    _tree = null;
+    notifyListeners();
+    onWrite?.call();
+  }
+
+  @override
+  Future<void> deleteCategory(CategoryId id) async {
+    final tree = categories;
+    if (tree[id] == null) return;
+    final up = tree.parentOf(id);
+    // Everything moves out first, so an interrupted deletion leaves at
+    // worst an empty category, never notes filed in a missing one.
+    for (final child in Filing.inside(tree, _categories.values, id)) {
+      await _writeCategory(child.movedTo(up));
+    }
+    for (final note in [..._notes.values]) {
+      if (note.category == id) await _put(note.filedIn(up));
+    }
+    await _engine.write(_recordOfCategory(id), const RevisionDeleted());
+    _categories.remove(id);
+    _tree = null;
+    notifyListeners();
+    onWrite?.call();
+  }
+
   Future<void> _put(RecordedNote note) async {
     await _engine.write(
       _recordOf(note.entry.id),
@@ -172,6 +230,8 @@ final class VaultNoteStore extends ChangeNotifier implements NoteStore {
     final records = await _engine.records();
     final before = Map.of(_notes);
     _notes.clear();
+    _categories.clear();
+    _tree = null;
     _unreadable = 0;
     _take(records);
     notifyListeners();
@@ -188,6 +248,16 @@ final class VaultNoteStore extends ChangeNotifier implements NoteStore {
 
   void _take(Map<RecordId, RevisionContents> records) {
     for (final MapEntry(key: record, value: contents) in records.entries) {
+      if (CategoryCodec.isCategory(contents.bytes)) {
+        final category = _decodeCategory(contents.bytes);
+        // As for notes: the id inside must name the record it is in.
+        if (category == null || category.id.value != record.hex) {
+          _unreadable++;
+        } else {
+          _categories[category.id] = category;
+        }
+        continue;
+      }
       final note = _decode(contents.bytes);
       // The id inside the note must name the record it is stored in, so a
       // note's bytes copied onto another record cannot surface twice.
@@ -214,6 +284,22 @@ final class VaultNoteStore extends ChangeNotifier implements NoteStore {
       return identical(current, note.entry) ? note : note.edited(current);
     } on MalformedBlobException {
       return null;
+    }
+  }
+
+  static NoteCategory? _decodeCategory(List<int> bytes) {
+    try {
+      return CategoryCodec.decode(bytes);
+    } on CategoryFormatException {
+      return null;
+    }
+  }
+
+  static RecordId _recordOfCategory(CategoryId id) {
+    try {
+      return RecordId.parse(id.value);
+    } on MalformedSyncDataException {
+      throw ArgumentError.value(id.value, 'id', 'not a record id');
     }
   }
 

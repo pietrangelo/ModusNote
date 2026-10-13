@@ -5,6 +5,8 @@ import 'package:schema_dynamic_content/schema_dynamic_content.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../theme/golden_ratio.dart';
 import '../vault/auto_lock.dart';
+import 'categories/categories_screen.dart';
+import 'categories/category_picker.dart';
 import 'note_appearance.dart';
 import 'note_editor.dart';
 import 'note_store.dart';
@@ -44,6 +46,12 @@ class _NoteLibraryScreenState extends State<NoteLibraryScreen> {
   var _search = EntrySearch('');
   SchemaDefinition? _type;
 
+  /// The category being looked at; null for every note. It may name one
+  /// that is gone, which shows every note.
+  CategoryId? _category;
+
+  CategoryId? get _selected => widget.store.categories.resolve(_category);
+
   SchemaDefinition? _schemaOf(DynamicEntry entry) {
     for (final schema in widget.schemas) {
       if (schema.id == entry.schemaId) return schema;
@@ -62,8 +70,35 @@ class _NoteLibraryScreenState extends State<NoteLibraryScreen> {
         store: widget.store,
         initialSchema: schema,
         entry: entry,
+        category: _selected,
       ),
     );
+  }
+
+  void _openCategories() => _push(CategoriesScreen(store: widget.store));
+
+  Future<void> _file(DynamicEntry entry) async {
+    final store = widget.store;
+    final messenger = ScaffoldMessenger.of(context);
+    final l10n = AppLocalizations.of(context);
+    final choice = await showCategoryPicker(
+      context,
+      tree: store.categories,
+      current: store.categoryOf(entry.id),
+    );
+    if (choice == null) return;
+    await store.file(entry.id, choice.id);
+    final name = switch (choice.id) {
+      final id? => store.categories[id]?.name.value,
+      null => null,
+    };
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(name == null ? l10n.noteUnfiled : l10n.noteFiled(name)),
+        ),
+      );
   }
 
   void _openTrash() =>
@@ -93,6 +128,11 @@ class _NoteLibraryScreenState extends State<NoteLibraryScreen> {
         actions: [
           ?widget.cloud,
           IconButton(
+            onPressed: _openCategories,
+            tooltip: l10n.categories,
+            icon: const Icon(Icons.folder_outlined),
+          ),
+          IconButton(
             onPressed: _openTrash,
             tooltip: l10n.trash,
             icon: const Icon(Icons.delete_outline),
@@ -119,10 +159,16 @@ class _NoteLibraryScreenState extends State<NoteLibraryScreen> {
       body: ListenableBuilder(
         listenable: widget.store,
         builder: (context, _) {
-          final all = widget.store.entries;
+          final store = widget.store;
+          final all = store.entries;
+          final tree = store.categories;
+          final selected = _selected;
+          final within = selected == null ? null : tree.subtree(selected);
           final shown = [
             for (final entry in all)
               if ((_type == null || entry.schemaId == _type!.id) &&
+                  (within == null ||
+                      within.contains(store.categoryOf(entry.id))) &&
                   _search.matches(entry))
                 entry,
           ];
@@ -145,6 +191,14 @@ class _NoteLibraryScreenState extends State<NoteLibraryScreen> {
                       onChanged: (query) =>
                           setState(() => _search = EntrySearch(query)),
                     ),
+                    if (!tree.isEmpty) ...[
+                      const SizedBox(height: Spacing.s),
+                      _CategoryBar(
+                        tree: tree,
+                        selected: selected,
+                        onSelect: (id) => setState(() => _category = id),
+                      ),
+                    ],
                     const SizedBox(height: Spacing.m),
                     Wrap(
                       spacing: Spacing.s,
@@ -205,6 +259,7 @@ class _NoteLibraryScreenState extends State<NoteLibraryScreen> {
                         schema: _schemaOf(entry),
                         text: text,
                         onTap: () => _open(entry: entry),
+                        onLongPress: () => _file(entry),
                       );
                     },
                   ),
@@ -213,6 +268,79 @@ class _NoteLibraryScreenState extends State<NoteLibraryScreen> {
           );
         },
       ),
+    );
+  }
+}
+
+/// Where the library is looking: the path from every note down to the
+/// selected category, each step a way back up, then the categories inside
+/// it, one tap to go in.
+class _CategoryBar extends StatelessWidget {
+  const _CategoryBar({
+    required this.tree,
+    required this.selected,
+    required this.onSelect,
+  });
+
+  final CategoryTree tree;
+  final CategoryId? selected;
+  final ValueChanged<CategoryId?> onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final theme = Theme.of(context);
+    final path = selected == null
+        ? const <NoteCategory>[]
+        : tree.pathTo(selected!);
+    final inside = selected == null ? tree.roots : tree.childrenOf(selected!);
+    Widget step(CategoryId? id, String label, {required bool last}) =>
+        TextButton(
+          key: ValueKey('path-${id?.value ?? 'all'}'),
+          onPressed: last ? null : () => onSelect(id),
+          child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
+        );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Wrapped, not scrolled: every step stays in sight and in reach.
+        Wrap(
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            step(null, l10n.allNotes, last: path.isEmpty),
+            for (final (index, category) in path.indexed) ...[
+              Icon(
+                Icons.chevron_right,
+                size: IconSizes.inline,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+              step(
+                category.id,
+                category.name.value,
+                last: index == path.length - 1,
+              ),
+            ],
+          ],
+        ),
+        if (inside.isNotEmpty)
+          Wrap(
+            spacing: Spacing.s,
+            runSpacing: Spacing.s,
+            children: [
+              for (final category in inside)
+                ActionChip(
+                  key: ValueKey('category-${category.id.value}'),
+                  avatar: Icon(
+                    CategoryAppearance.icon(category.icon),
+                    size: IconSizes.inline,
+                    color: CategoryAppearance.tint(category.tint),
+                  ),
+                  label: Text(category.name.value),
+                  onPressed: () => onSelect(category.id),
+                ),
+            ],
+          ),
+      ],
     );
   }
 }
@@ -250,12 +378,16 @@ class _NoteCard extends StatelessWidget {
     required this.schema,
     required this.text,
     required this.onTap,
+    required this.onLongPress,
   });
 
   final DynamicEntry entry;
   final SchemaDefinition? schema;
   final SchemaText text;
   final VoidCallback onTap;
+
+  /// Files the note in a category.
+  final VoidCallback onLongPress;
 
   /// The least height that shows a card's type, a title line and its date
   /// at the current text size, margins included.
@@ -300,6 +432,7 @@ class _NoteCard extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
+        onLongPress: onLongPress,
         child: Padding(
           padding: const EdgeInsets.all(Spacing.m),
           child: Column(
