@@ -125,7 +125,11 @@ class _CategoryDialogState extends State<_CategoryDialog> {
               spacing: Spacing.xxs,
               runSpacing: Spacing.xxs,
               children: [
-                for (final choice in <NoteTint?>[null, ...NoteTint.values])
+                // Silver is what no colour looks like already.
+                for (final choice in <NoteTint?>[
+                  null,
+                  ...NoteTint.values.where((t) => t != NoteTint.silver),
+                ])
                   IconButton(
                     isSelected: choice == _tint,
                     tooltip: _tintName(l10n, choice),
@@ -161,11 +165,12 @@ class _CategoryDialogState extends State<_CategoryDialog> {
         NoteIcon.lightbulb => l10n.iconLightbulb,
         NoteIcon.book => l10n.iconBook,
         NoteIcon.heart => l10n.iconHeart,
+        NoteIcon.page => l10n.iconPage,
       };
 
   static String _tintName(AppLocalizations l10n, NoteTint? tint) =>
       switch (tint) {
-        null => l10n.tintNone,
+        NoteTint.silver || null => l10n.tintNone,
         NoteTint.gold => l10n.tintGold,
         NoteTint.violet => l10n.tintViolet,
         NoteTint.cyan => l10n.tintCyan,

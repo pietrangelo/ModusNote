@@ -10,6 +10,7 @@ import 'package:offline_sync/offline_sync.dart';
 import 'package:offline_sync_adapters/offline_sync_adapters.dart';
 import 'package:schema_dynamic_content/schema_dynamic_content.dart';
 
+import '../attachments/note_images.dart';
 import '../audio/note_playback.dart';
 import '../audio/note_recorder.dart';
 import '../l10n/generated/app_localizations.dart';
@@ -38,6 +39,7 @@ class VaultGate extends StatefulWidget {
     required this.catalog,
     this.recorderFor,
     this.playbackFor,
+    this.imagesFor,
     this.replicationFor,
     this.autoLockFor,
     this.account,
@@ -62,9 +64,17 @@ class VaultGate extends StatefulWidget {
   /// without one.
   final NotePlayback Function(
     SyncEngine engine,
-    Future<void> Function(KeyedRecording take)? ensureLocal,
+    Future<void> Function(SealedBlob blob)? ensureLocal,
   )?
   playbackFor;
+
+  /// Builds the pictures of an unlocked vault; without it notes cannot
+  /// hold pictures. [ensureLocal] is as for [playbackFor].
+  final NoteImages Function(
+    SyncEngine engine,
+    Future<void> Function(SealedBlob blob)? ensureLocal,
+  )?
+  imagesFor;
 
   /// Connects the open vault's recordings to the workspace's shared
   /// storage; null without a server, which keeps them on the device.
@@ -224,14 +234,15 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
           ? null
           : widget.replicationFor?.call(vault.engine);
       BlobSync? blobs;
+      final ensureLocal = replication == null
+          ? null
+          : (SealedBlob blob) => blobs!.ensureLocal(blob);
       final store = await VaultNoteStore.open(
         vault.engine,
         catalog: widget.catalog,
         recorder: widget.recorderFor?.call(vault.engine),
-        playback: widget.playbackFor?.call(
-          vault.engine,
-          replication == null ? null : (take) => blobs!.ensureLocal(take),
-        ),
+        playback: widget.playbackFor?.call(vault.engine, ensureLocal),
+        images: widget.imagesFor?.call(vault.engine, ensureLocal),
       );
       if (replication != null) {
         blobs = _blobSync(vault, store, replication);
@@ -357,7 +368,7 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
     return sync;
   }
 
-  /// Which recordings the server holds is a sealed setting, like the
+  /// Which blobs the server holds is a sealed setting, like the
   /// session; a damaged one only means checking them again.
   BlobSync _blobSync(
     UnlockedVault vault,
@@ -367,7 +378,7 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
     final keeper = widget.keeper;
     return BlobSync(
       replication: replication,
-      recordings: () => store.recordings,
+      blobs: () => store.blobs,
       load: () async {
         try {
           return await keeper.loadSetting(vault, _sentBlobsSetting);

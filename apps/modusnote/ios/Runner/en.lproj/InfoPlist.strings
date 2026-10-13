@@ -1,2 +1,6 @@
 /* Shown by iOS when Modus Notes first asks for the microphone. */
 "NSMicrophoneUsageDescription" = "Modus Notes records audio notes, song sketches and dream logs. Recordings are encrypted on this device before they are saved.";
+/* Shown by iOS if Modus Notes asks for the photos; choosing pictures usually does not. */
+"NSPhotoLibraryUsageDescription" = "Modus Notes adds the pictures you choose to your pages. Each picture is encrypted on this device before it is saved.";
+/* Required by the App Store for the picker library, which also holds camera code. */
+"NSCameraUsageDescription" = "Modus Notes does not use the camera; pictures are chosen from your photos.";

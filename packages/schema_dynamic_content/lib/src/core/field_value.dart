@@ -1,6 +1,9 @@
 import 'package:meta/meta.dart';
 
+import 'attachment.dart';
+import 'dynamic_entry.dart';
 import 'identifiers.dart';
+import 'list_equality.dart';
 import 'schema_exception.dart';
 
 /// A value held by a [DynamicEntry] attribute. Each variant is valid on its
@@ -196,4 +199,30 @@ final class ChecklistValue extends FieldValue {
 
   @override
   String toString() => 'ChecklistValue($done/$total)';
+}
+
+/// The pictures and links of a page, in the order the person put them.
+final class AttachmentsValue extends FieldValue {
+  AttachmentsValue(List<Attachment> items) : items = List.unmodifiable(items);
+
+  final List<Attachment> items;
+
+  /// The pictures every attachments field of [entry] holds, in order and
+  /// each once: the blobs the note needs beside it.
+  static List<BlobId> imagesOf(DynamicEntry entry) => {
+    for (final value in entry.attributes.values)
+      if (value is AttachmentsValue)
+        for (final item in value.items)
+          if (item is ImageAttachment) item.blob,
+  }.toList();
+
+  @override
+  bool operator ==(Object other) =>
+      other is AttachmentsValue && listEquals(other.items, items);
+
+  @override
+  int get hashCode => Object.hashAll(items);
+
+  @override
+  String toString() => 'AttachmentsValue(${items.length} items)';
 }

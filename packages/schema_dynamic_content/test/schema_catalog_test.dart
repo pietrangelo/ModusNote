@@ -39,6 +39,7 @@ void main() {
       SchemaId('song_sketch', 1),
       SchemaId('dream_log', 1),
       SchemaId('task', 2),
+      SchemaId('document', 1),
       SchemaId('quick_note', 1),
     ]);
   });
