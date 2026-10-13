@@ -11,7 +11,7 @@
 //
 // CHROME_PATH selects a Chrome binary; otherwise the installed Chrome is used.
 import { chromium } from 'playwright-core';
-import { mkdir } from 'node:fs/promises';
+import { mkdir, readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { serve } from './serve.mjs';
 
@@ -178,6 +178,51 @@ async function scenario(browser, origin, mode) {
   await settle();
   await page.keyboard.press('Escape');
   await page.getByText(/notes? selected/).waitFor({ state: 'detached', timeout: 10000 });
+  await settle();
+
+  // The encrypted backup downloads as ciphertext and restores into the
+  // same vault, adding nothing; the Markdown export is in clear, after a
+  // warning.
+  const backupSheet = async (item) => {
+    await page.getByRole('button', { name: 'Backup and export' }).click();
+    await settle();
+    await page.getByText(item).click();
+    await settle();
+  };
+  await backupSheet('Download an encrypted backup');
+  await typeInto('Backup phrase', 'una frase per il backup');
+  await typeInto('Repeat the phrase', 'una frase per il backup');
+  const backupDownload = page.waitForEvent('download', { timeout: 60000 });
+  await page.getByRole('button', { name: 'Continue' }).click();
+  const backupPath = await (await backupDownload).path();
+  const backup = await readFile(backupPath);
+  if (backup.subarray(0, 4).toString('latin1') !== 'MNBK' ||
+      backup.includes(Buffer.from(noteText))) {
+    throw new Error(`${mode}: the backup is not sealed`);
+  }
+  await page.getByText('Backup downloaded.').first().waitFor({ timeout: 10000 });
+  await settle();
+
+  // The restore asks for the file first.
+  const chooser = page.waitForEvent('filechooser', { timeout: 30000 });
+  await backupSheet('Restore a backup');
+  await (await chooser).setFiles(backupPath);
+  await settle();
+  await typeInto('Backup phrase', 'una frase per il backup');
+  await page.keyboard.press('Enter');
+  await page.getByText(/Restore done: 0 added, [1-9][0-9]* already here\./).first().waitFor({ timeout: 60000 });
+  await settle();
+
+  await backupSheet('Export as Markdown');
+  await page.getByText('Export in clear?').waitFor({ timeout: 10000 });
+  const markdownDownload = page.waitForEvent('download', { timeout: 30000 });
+  await page.getByRole('button', { name: 'Export', exact: true }).click();
+  const zip = await readFile(await (await markdownDownload).path());
+  if (zip.subarray(0, 4).toString('latin1') !== 'PK\x03\x04' ||
+      !zip.includes(Buffer.from(noteText))) {
+    throw new Error(`${mode}: the Markdown export lacks the note`);
+  }
+  await page.getByText('Notes exported.').first().waitFor({ timeout: 10000 });
   await settle();
 
   // A passkey replaces the passphrase after the next reload.
