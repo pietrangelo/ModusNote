@@ -866,6 +866,10 @@
   "@editorDiscard": {
     "description": "Leaving a note with fields missing: drops the unsaved changes."
   },
+  "pickANote": "Pick a note, or start a new one.",
+  "@pickANote": {
+    "description": "Shown beside the list on a wide screen while no note is open."
+  },
   "categories": "Categories",
   "@categories": {
     "description": "Library: opens the categories, folders that notes are filed in."
