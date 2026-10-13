@@ -36,6 +36,11 @@ VaultKeeper vaultKeeper({
   random: Random.secure(),
   kdf: kdf,
   passkeys: passkeys,
+  // A server that can relay device links (Supabase) offers linking.
+  links: switch (server) {
+    final DeviceLinkChannel links => links,
+    _ => null,
+  },
 );
 
 /// The server the vault syncs with and the account that opens it.

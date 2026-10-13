@@ -640,8 +640,92 @@
   "@cloudSignOut": {
     "description": "Button that signs out of the sync account."
   },
-  "cloudOneDevice": "For now each device keeps its own space on the server; linking your devices comes next.",
-  "@cloudOneDevice": {
-    "description": "Sync sheet: devices are not linked yet."
+  "linkDeviceAction": "Link another device",
+  "@linkDeviceAction": {
+    "description": "Sync sheet: opens the linking of another device of the same account."
+  },
+  "linkDeviceTitle": "Link a device",
+  "@linkDeviceTitle": {
+    "description": "Title of the sheet that shows the link code."
+  },
+  "linkDevicePreparing": "Preparing the code…",
+  "@linkDevicePreparing": {
+    "description": "Link sheet: the code is being stretched and posted."
+  },
+  "linkDeviceInstructions": "On the other device, choose “Link to an existing vault”, sign in with the same email and enter this code. It works once, for 10 minutes.",
+  "@linkDeviceInstructions": {
+    "description": "Link sheet: what to do with the code on the other device."
+  },
+  "linkDeviceWaiting": "Waiting for the other device…",
+  "@linkDeviceWaiting": {
+    "description": "Link sheet: the code is shown, no device has answered yet."
+  },
+  "linkDeviceDone": "Device linked. Your notes reach it with its next sync.",
+  "@linkDeviceDone": {
+    "description": "Link sheet: another device was admitted."
+  },
+  "linkDeviceExpired": "The code has expired.",
+  "@linkDeviceExpired": {
+    "description": "Link sheet: ten minutes passed without an answer."
+  },
+  "linkDeviceNewCode": "New code",
+  "@linkDeviceNewCode": {
+    "description": "Link sheet: makes a fresh code after a failure."
+  },
+  "linkDeviceRefused": "The server refused the link. Try signing out and in again.",
+  "@linkDeviceRefused": {
+    "description": "Link sheet: the server refused the account."
+  },
+  "linkDeviceUntrusted": "The server sent data that failed verification, so no device was linked.",
+  "@linkDeviceUntrusted": {
+    "description": "Link sheet: the membership log did not verify."
+  },
+  "joinVaultAction": "Link to an existing vault",
+  "@joinVaultAction": {
+    "description": "First launch: join the vault of another device instead of creating one."
+  },
+  "joinVaultTitle": "Link this device",
+  "@joinVaultTitle": {
+    "description": "Title of the screen that joins another device's vault."
+  },
+  "joinVaultSignInBody": "Sign in with the email you use on your other device.",
+  "@joinVaultSignInBody": {
+    "description": "Join screen: the sign-in step."
+  },
+  "joinVaultBody": "On the other device, open Sync and choose “Link another device”. Enter the code it shows, then choose a passphrase for this device: it can differ from the other one's.",
+  "@joinVaultBody": {
+    "description": "Join screen: where the code comes from and which passphrase to choose."
+  },
+  "joinVaultCodeLabel": "Link code",
+  "@joinVaultCodeLabel": {
+    "description": "Join screen: the code field."
+  },
+  "joinVaultCodeShape": "The code has 10 letters and digits.",
+  "@joinVaultCodeShape": {
+    "description": "Join screen: the typed code is not a code."
+  },
+  "joinVaultSubmit": "Link",
+  "@joinVaultSubmit": {
+    "description": "Join screen: sends the answer to the other device."
+  },
+  "joinVaultWaiting": "Waiting for the other device to let this one in…",
+  "@joinVaultWaiting": {
+    "description": "Join screen: the answer was posted, the other device has not admitted this one yet."
+  },
+  "joinVaultCodeRejected": "Wrong or expired code. Check the one on the other device.",
+  "@joinVaultCodeRejected": {
+    "description": "Join screen: no offer opens with the code."
+  },
+  "joinVaultExpired": "The code has expired. Make a new one on the other device.",
+  "@joinVaultExpired": {
+    "description": "Join screen: ten minutes passed before this device was admitted."
+  },
+  "joinVaultUntrusted": "The server sent data that failed verification, so no vault was created.",
+  "@joinVaultUntrusted": {
+    "description": "Join screen: the membership log did not verify against the offer."
+  },
+  "joinVaultBack": "Back",
+  "@joinVaultBack": {
+    "description": "Join screen: gives up and returns to creating a vault."
   }
 }
