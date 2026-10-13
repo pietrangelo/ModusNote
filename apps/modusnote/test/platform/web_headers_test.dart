@@ -1,5 +1,7 @@
+import 'dart:convert';
 import 'dart:io';
 
+import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// The CSP is the web client's main defence: the page holds decrypted notes
@@ -63,6 +65,31 @@ void main() {
     expect(headers['Strict-Transport-Security'], startsWith('max-age='));
   });
 
+  test('the engine\'s stylesheets are allowed in every browser and build', () {
+    // Flutter's engine writes two <style> elements whose text depends on the
+    // browser (StyleManager.attachGlobalStyles) and on the compiler: dart2js
+    // prints the 14.0 px default font size as "14px", dart2wasm as "14.0px".
+    // The Chrome end-to-end run sees only Chrome's; a missing hash for
+    // another browser goes unnoticed until someone opens it there.
+    final allowed = csp['style-src']!.toSet();
+    for (final browser in _Browser.values) {
+      for (final fontSize in ['14px', '14.0px']) {
+        for (final prefix in ['flutter-view', '']) {
+          final hash = base64.encode(
+            sha256
+                .convert(utf8.encode(_engineCss(prefix, fontSize, browser)))
+                .bytes,
+          );
+          expect(
+            allowed,
+            contains("'sha256-$hash'"),
+            reason: '${browser.name}, $fontSize, "$prefix"',
+          );
+        }
+      }
+    }
+  });
+
   group('adversary', () {
     test('no inline code, no eval, no wildcard, no other host', () {
       final values = csp.values.expand((sources) => sources);
@@ -97,4 +124,46 @@ void main() {
       expect(scripts.first[0], '<script src="trusted_types.js">');
     });
   });
+}
+
+enum _Browser { chrome, edge, firefox, safari }
+
+/// The text of `applyGlobalCssRulesToSheet` in Flutter's web engine
+/// (`lib/_engine/engine/view_embedder/style_manager.dart`), for one browser.
+String _engineCss(String p, String fontSize, _Browser browser) {
+  final css = StringBuffer(
+    '$p flt-scene-host {  font: normal normal $fontSize sans-serif;}'
+    '$p flt-semantics input[type=range] {  appearance: none;'
+    '  -webkit-appearance: none;  width: 100%;  position: absolute;'
+    '  border: none;  top: 0;  right: 0;  bottom: 0;  left: 0;}'
+    '$p input::selection {  background-color: transparent;}'
+    '$p textarea::selection {  background-color: transparent;}'
+    '$p flt-semantics input,$p flt-semantics textarea,'
+    '$p flt-semantics [contentEditable="true"] {  caret-color: transparent;}'
+    '$p .flt-text-editing::placeholder {  opacity: 0;}'
+    '$p:focus { outline: rgb(0, 0, 0) none 0px;}',
+  );
+  if (browser == _Browser.safari) {
+    css.write(
+      '$p * {  -webkit-tap-highlight-color: transparent;}'
+      '$p flt-semantics input[type=range]::-webkit-slider-thumb {'
+      '  -webkit-appearance: none;}',
+    );
+  }
+  if (browser == _Browser.firefox) {
+    css.write('$p flt-paragraph,$p flt-span {  line-height: 100%;}');
+  }
+  if (browser != _Browser.firefox) {
+    css.write(
+      '$p .transparentTextEditing:-webkit-autofill,'
+      '$p .transparentTextEditing:-webkit-autofill:hover,'
+      '$p .transparentTextEditing:-webkit-autofill:focus,'
+      '$p .transparentTextEditing:-webkit-autofill:active {'
+      '  opacity: 0 !important;}',
+    );
+  }
+  if (browser == _Browser.edge) {
+    css.write('$p input::-ms-reveal {  display: none;}');
+  }
+  return css.toString();
 }
