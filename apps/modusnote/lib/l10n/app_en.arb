@@ -1397,5 +1397,17 @@
         "type": "String"
       }
     }
+  },
+  "pageIndex": "Index",
+  "@pageIndex": {
+    "description": "Heading of the pages of a manual, under a document page."
+  },
+  "addPage": "New page",
+  "@addPage": {
+    "description": "Button: writes a new document page in the same category."
+  },
+  "pageIndexNotFiled": "Put the page in a category: the other pages in it will make up the index.",
+  "@pageIndexNotFiled": {
+    "description": "Under a document page that is in no category."
   }
 }
