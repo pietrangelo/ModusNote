@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:blob_storage_media/blob_storage_media.dart';
+
 /// Writes Opus packets into an Ogg container (RFC 3533, RFC 7845), so a
 /// recording decrypts to a standard `.opus` file any player can open.
 ///
@@ -124,10 +126,10 @@ final class OggOpusMuxer {
     view
       ..setUint8(4, 0)
       ..setUint8(5, flags)
-      ..setInt64(6, granule, Endian.little)
       ..setUint32(14, _serial, Endian.little)
       ..setUint32(18, _sequence++, Endian.little)
       ..setUint8(26, lacing.length);
+    _setGranule(view, granule);
     page.setAll(27, lacing);
     var offset = 27 + lacing.length;
     for (final packet in packets) {
@@ -156,6 +158,12 @@ final class OggOpusMuxer {
     }
     return value;
   }, growable: false);
+
+  /// Granules stay far below 2^53 (thirty minutes is 86.4 million
+  /// samples), so the portable writer serves every platform, the browser's
+  /// JavaScript build included.
+  static void _setGranule(ByteData view, int granule) =>
+      setPortableInt64(view, 6, granule, Endian.little);
 
   static Uint8List _uint16(int value) =>
       Uint8List(2)..buffer.asByteData().setUint16(0, value, Endian.little);

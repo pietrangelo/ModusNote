@@ -61,7 +61,10 @@ List<Page> parsePages(Uint8List stream) {
     pages.add(
       Page(
         view.getUint8(5),
-        view.getInt64(6, Endian.little),
+        // Two halves: compiled to JavaScript there is no getInt64. Test
+        // granules are small and never negative.
+        view.getUint32(10, Endian.little) * 0x100000000 +
+            view.getUint32(6, Endian.little),
         view.getUint32(14, Endian.little),
         view.getUint32(18, Endian.little),
         packets,

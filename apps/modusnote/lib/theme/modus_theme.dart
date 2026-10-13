@@ -10,6 +10,11 @@ abstract final class ModusTheme {
   static const titleFont = 'PlusJakartaSans';
   static const bodyFont = 'Inter';
 
+  /// The music signs (♩ ♪ ♫ ♬ ♭ ♮ ♯) cut from Noto Sans Symbols: neither
+  /// font above has them, and without a bundled fallback Flutter on the
+  /// web would try to download one from Google.
+  static const symbolFont = 'NotoSansSymbols';
+
   static ThemeData dark() {
     const scheme = ColorScheme(
       brightness: Brightness.dark,
@@ -88,6 +93,7 @@ abstract final class ModusTheme {
     Color color,
   ) => TextStyle(
     fontFamily: family,
+    fontFamilyFallback: const [symbolFont],
     fontSize: size,
     fontWeight: weight,
     fontVariations: [FontVariation.weight(weight.value.toDouble())],
