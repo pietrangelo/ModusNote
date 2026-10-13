@@ -100,6 +100,38 @@ void main() {
     expect(auth.requests, ['/auth/v1/otp', '/auth/v1/verify']);
   });
 
+  testWidgets('the link of a default email, pasted, signs in too', (
+    tester,
+  ) async {
+    final account = auth.account();
+    final server = MemorySyncServer(account.accessToken);
+    await pumpApp(tester, cloudGate(database, account, server));
+    await create(tester);
+
+    await signIn(tester, code: goodLink);
+
+    expect(account.signedIn, isTrue);
+    expect(server.workspaces, hasLength(1));
+  });
+
+  testWidgets('a link to anywhere else is refused without a request', (
+    tester,
+  ) async {
+    final account = auth.account();
+    final server = MemorySyncServer(account.accessToken);
+    await pumpApp(tester, cloudGate(database, account, server));
+    await create(tester);
+
+    await signIn(
+      tester,
+      code: goodLink.replaceFirst('project.supabase.co', 'evil.example'),
+    );
+
+    expect(find.text('Codice o link errato o scaduto.'), findsOneWidget);
+    expect(account.signedIn, isFalse);
+    expect(auth.requests, ['/auth/v1/otp']);
+  });
+
   testWidgets('a wrong code is refused and the user stays signed out', (
     tester,
   ) async {
@@ -110,7 +142,7 @@ void main() {
 
     await signIn(tester, code: '654321');
 
-    expect(find.text('Codice errato o scaduto.'), findsOneWidget);
+    expect(find.text('Codice o link errato o scaduto.'), findsOneWidget);
     expect(account.signedIn, isFalse);
     expect(server.workspaces, isEmpty);
   });

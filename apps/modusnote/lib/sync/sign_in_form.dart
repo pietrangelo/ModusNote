@@ -60,6 +60,10 @@ class _SignInFormState extends State<SignInForm> {
   static final _emailShape = RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$');
   static final _codeShape = RegExp(r'^\d{6,10}$');
 
+  /// The sign-in link of a default Supabase email, pasted in place of the
+  /// code; the adapter checks where it points before using it.
+  static final _linkShape = RegExp(r'^https://\S{1,2048}$');
+
   Future<void> _sendCode() async {
     final email = _email.text.trim();
     if (email.length > 254 || !_emailShape.hasMatch(email)) {
@@ -75,7 +79,7 @@ class _SignInFormState extends State<SignInForm> {
     final code = _code.text.trim();
     final email = _sentTo;
     if (email == null) return;
-    if (!_codeShape.hasMatch(code)) {
+    if (!_codeShape.hasMatch(code) && !_linkShape.hasMatch(code)) {
       return setState(() => _problem = _Problem.codeInvalid);
     }
     await _run(() async {
@@ -158,12 +162,12 @@ class _SignInFormState extends State<SignInForm> {
         key: const ValueKey('cloud-code'),
         controller: _code,
         enabled: !_busy,
+        // Digits for the code; a link from the email can still be pasted.
         keyboardType: TextInputType.number,
         autofillHints: const [AutofillHints.oneTimeCode],
-        inputFormatters: [
-          FilteringTextInputFormatter.digitsOnly,
-          LengthLimitingTextInputFormatter(10),
-        ],
+        autocorrect: false,
+        enableSuggestions: false,
+        inputFormatters: [LengthLimitingTextInputFormatter(2048)],
         decoration: InputDecoration(labelText: l10n.cloudCodeLabel),
         onChanged: _typed,
         onSubmitted: (_) => _signIn(),
