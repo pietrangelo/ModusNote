@@ -1,0 +1,88 @@
+name: Deploy web
+
+# Publishes the web client to Cloudflare Pages once CI has passed on main.
+# The bundle is rebuilt from the same commit with the sync project fixed in
+# (its URL and publishable key are public: they ship in every client), and
+# its SHA-256 list goes in the job summary, so anyone can compare what
+# modus.serv.run serves with what this commit builds.
+#
+# Needs two repository secrets: CLOUDFLARE_API_TOKEN (Pages: Edit, nothing
+# else) and CLOUDFLARE_ACCOUNT_ID.
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-web
+  cancel-in-progress: false
+
+env:
+  PAGES_PROJECT: modusnote
+  SUPABASE_URL: https://oobxqzjzauhmurvxvhuo.supabase.co
+  SUPABASE_PUBLISHABLE_KEY: sb_publishable_OTXiD1NZMG56ALSGasr2zQ_aeCsZYYy
+  WRANGLER: wrangler@4.139.0
+
+jobs:
+  deploy:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.47.7
+          cache: true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.22.0
+
+      - name: Resolve workspace
+        run: flutter pub get
+
+      - name: Build
+        working-directory: apps/modusnote
+        run: |
+          flutter build web --wasm --csp --no-web-resources-cdn \
+            --dart-define=MODUSNOTE_SUPABASE_URL="$SUPABASE_URL" \
+            --dart-define=MODUSNOTE_SUPABASE_ANON_KEY="$SUPABASE_PUBLISHABLE_KEY"
+          dart run tool/finalize_web_build.dart > build/web-sha256sums.txt
+          {
+            echo "### Web bundle SHA-256 ($(git rev-parse --short HEAD))"
+            echo '```'
+            cat build/web-sha256sums.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Create the Pages project the first time
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if ! npx --yes "$WRANGLER" pages project list | grep -qw "$PAGES_PROJECT"; then
+            npx --yes "$WRANGLER" pages project create "$PAGES_PROJECT" --production-branch=main
+          fi
+
+      - name: Deploy to Cloudflare Pages
+        working-directory: apps/modusnote
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          npx --yes "$WRANGLER" pages deploy build/web \
+            --project-name="$PAGES_PROJECT" --branch=main \
+            --commit-hash="$(git rev-parse HEAD)" --commit-dirty=false
