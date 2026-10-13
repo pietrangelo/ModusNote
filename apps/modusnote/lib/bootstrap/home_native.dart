@@ -46,6 +46,12 @@ Future<Widget> buildHome() async {
       server: cloud.server,
     ),
     account: cloud.account,
+    replicationFor: cloud.remoteBlobs == null
+        ? null
+        : (engine) => BlobReplication(
+            local: blobStore,
+            remote: cloud.remoteBlobs!(engine.ledger.workspace.id.hex),
+          ),
     passwordFrom: (bytes) => SodiumPasswordSecret.fromUtf8Bytes(sodium, bytes),
     catalog: SeedSchemas.catalog,
     recorderFor: (engine) => NoteRecorder(
@@ -53,7 +59,7 @@ Future<Widget> buildHome() async {
       blobs: blobs,
       engine: engine,
     ),
-    playbackFor: (engine) => NotePlayback(
+    playbackFor: (engine, ensureLocal) => NotePlayback(
       decoding: RecordingPlayback(
         storage: blobs,
         // Web takes are WAV; everything recorded here is Ogg Opus.
@@ -61,6 +67,7 @@ Future<Widget> buildHome() async {
       ),
       engine: engine,
       player: player,
+      ensureLocal: ensureLocal,
     ),
   );
 }

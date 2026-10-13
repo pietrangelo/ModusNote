@@ -29,7 +29,7 @@ class RecordingPlayerView extends StatefulWidget {
   State<RecordingPlayerView> createState() => _RecordingPlayerViewState();
 }
 
-enum _Failure { tooLong, unsupported, missing, damaged }
+enum _Failure { tooLong, unsupported, missing, offline, damaged }
 
 class _RecordingPlayerViewState extends State<RecordingPlayerView> {
   OpenedRecording? _opened;
@@ -80,6 +80,8 @@ class _RecordingPlayerViewState extends State<RecordingPlayerView> {
       _fail(_Failure.unsupported);
     } on BlobNotFoundException {
       _fail(_Failure.missing);
+    } on RemoteBlobUnavailableException {
+      _fail(_Failure.offline);
     } on Object catch (error, stack) {
       reportAudioFailure('opening a recording', error, stack);
       // A chunk that fails authentication, a container that does not
@@ -119,6 +121,7 @@ class _RecordingPlayerViewState extends State<RecordingPlayerView> {
       _Failure.tooLong => l10n.recordingTooLong,
       _Failure.unsupported => l10n.recordingUnsupported,
       _Failure.missing => l10n.recordingMissing,
+      _Failure.offline => l10n.recordingOffline,
       _Failure.damaged => l10n.recordingDamaged,
     };
     return Row(

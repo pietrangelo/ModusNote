@@ -58,6 +58,12 @@ Future<Widget> buildHome() async {
       passkeys: passkeys,
     ),
     account: cloud.account,
+    replicationFor: cloud.remoteBlobs == null
+        ? null
+        : (engine) => BlobReplication(
+            local: blobStore,
+            remote: cloud.remoteBlobs!(engine.ledger.workspace.id.hex),
+          ),
     passwordFrom: (bytes) => SodiumPasswordSecret.fromUtf8Bytes(sodium, bytes),
     catalog: SeedSchemas.catalog,
     recorderFor: (engine) => NoteRecorder(
@@ -70,7 +76,7 @@ Future<Widget> buildHome() async {
       blobs: blobs,
       engine: engine,
     ),
-    playbackFor: (engine) => NotePlayback(
+    playbackFor: (engine, ensureLocal) => NotePlayback(
       decoding: RecordingPlayback(
         storage: blobs,
         // Without WebCodecs a phone's Opus take cannot play here; the note
@@ -82,6 +88,7 @@ Future<Widget> buildHome() async {
       ),
       engine: engine,
       player: player,
+      ensureLocal: ensureLocal,
     ),
   );
 }

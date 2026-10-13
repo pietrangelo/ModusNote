@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:blob_storage_media/blob_storage_media.dart';
 import 'package:collaboration_access_control/collaboration_access_control.dart';
 import 'package:flutter/foundation.dart';
 import 'package:offline_sync/offline_sync.dart';
@@ -39,6 +40,7 @@ final class SyncController extends ChangeNotifier {
     required this._engine,
     required this._account,
     required this._onPulled,
+    this._afterSync,
     this._debounce = const Duration(seconds: 2),
     this._interval = const Duration(minutes: 1),
     DateTime Function()? clock,
@@ -47,6 +49,9 @@ final class SyncController extends ChangeNotifier {
   final SyncEngine _engine;
   final SyncAccount _account;
   final Future<void> Function() _onPulled;
+
+  /// Runs after each sync that reached the server: uploads recordings.
+  final Future<void> Function()? _afterSync;
   final Duration _debounce;
   final Duration _interval;
   final DateTime Function() _clock;
@@ -127,10 +132,19 @@ final class SyncController extends ChangeNotifier {
       }
       if (report.pulled > 0) await _onPulled();
       if (_disposed) return;
+      await _afterSync?.call();
+      if (_disposed) return;
       _lastSynced = _clock();
       _set(SyncState.synced);
     } on SyncServerRejectedException {
       _fail(SyncProblem.refused);
+    } on RemoteBlobUnavailableException {
+      // The notes went through; the recordings follow next time.
+      if (!_disposed) _set(SyncState.offline);
+    } on RemoteBlobRejectedException {
+      _fail(SyncProblem.refused);
+    } on MalformedBlobException {
+      _fail(SyncProblem.untrusted);
     } on LedgerRollbackException {
       _fail(SyncProblem.untrusted);
     } on TamperedWorkspaceDataException {

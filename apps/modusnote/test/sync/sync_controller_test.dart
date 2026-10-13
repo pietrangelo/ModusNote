@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:blob_storage_media/blob_storage_media.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:modusnote/sync/sync_controller.dart';
 import 'package:modusnote/vault/vault_note_store.dart';
@@ -200,6 +201,68 @@ void main() {
 
     expect(identical(first, again), isTrue);
     expect(server.rows, hasLength(1));
+  });
+
+  group('recordings', () {
+    Future<(SyncController, MemorySyncServer)> withUploads(
+      Future<void> Function() afterSync,
+    ) async {
+      final account = await signedIn(auth);
+      final server = MemorySyncServer(account.accessToken);
+      final database = memoryDatabase();
+      addTearDown(database.close);
+      final vault = await keeperOn(
+        database,
+        server: server,
+      ).create(passphrase('frase lunga'));
+      addTearDown(vault.lock);
+      final sync = SyncController(
+        engine: vault.engine,
+        account: account,
+        onPulled: () async {},
+        afterSync: afterSync,
+      );
+      addTearDown(sync.dispose);
+      return (sync, server);
+    }
+
+    test('go up after the notes reached the server', () async {
+      late bool workspaceKnown;
+      late MemorySyncServer shared;
+      final (sync, server) = await withUploads(() async {
+        workspaceKnown = shared.workspaces.isNotEmpty;
+      });
+      shared = server;
+
+      await sync.syncNow();
+
+      expect(workspaceKnown, isTrue);
+      expect(sync.state, SyncState.synced);
+    });
+
+    test(
+      'an unreachable blob storage leaves the sync offline, to retry',
+      () async {
+        final (sync, _) = await withUploads(
+          () => Future.error(const RemoteBlobUnavailableException()),
+        );
+
+        await sync.syncNow();
+
+        expect(sync.state, SyncState.offline);
+      },
+    );
+
+    test('a blob storage that refuses the account is reported', () async {
+      final (sync, _) = await withUploads(
+        () => Future.error(const RemoteBlobRejectedException(403)),
+      );
+
+      await sync.syncNow();
+
+      expect(sync.state, SyncState.failed);
+      expect(sync.problem, SyncProblem.refused);
+    });
   });
 
   group('adversary', () {

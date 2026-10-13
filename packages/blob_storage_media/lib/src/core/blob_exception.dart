@@ -81,3 +81,23 @@ final class RecordingTooLongException extends BlobException {
   @override
   String get message => 'recording too long to play';
 }
+
+/// The shared blob storage could not be reached: no network, a timeout or
+/// a server error. Nothing was lost; the transfer is retried later.
+final class RemoteBlobUnavailableException extends BlobException {
+  const RemoteBlobUnavailableException();
+
+  @override
+  String get message => 'remote blob storage unavailable';
+}
+
+/// The shared blob storage refused the transfer (an account that is not
+/// in the workspace, an expired session).
+final class RemoteBlobRejectedException extends BlobException {
+  const RemoteBlobRejectedException(this.status);
+
+  final int status;
+
+  @override
+  String get message => 'remote blob storage refused ($status)';
+}
