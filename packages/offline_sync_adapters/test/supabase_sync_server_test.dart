@@ -127,6 +127,34 @@ void main() {
     );
   });
 
+  group('createWorkspace', () {
+    test('a workspace this account already registered is success', () async {
+      respond = (_) => http.Response('{"code":"23505"}', 409);
+
+      await server().createWorkspace(workspace);
+
+      expect(requests.single.url.path, '/rest/v1/workspaces');
+      expect(jsonDecode(requests.single.body), [
+        {'id': workspace.hex},
+      ]);
+    });
+
+    test('any other refusal still surfaces', () async {
+      respond = (_) => http.Response('', 403);
+
+      await expectLater(
+        server().createWorkspace(workspace),
+        throwsA(
+          isA<SyncServerRejectedException>().having(
+            (e) => e.status,
+            'status',
+            403,
+          ),
+        ),
+      );
+    });
+  });
+
   group('availability', () {
     test('network errors, timeouts and 5xx mean offline', () async {
       for (final failure in <FutureOr<http.Response> Function(http.Request)>[

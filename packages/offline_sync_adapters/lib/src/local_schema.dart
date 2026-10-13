@@ -8,7 +8,7 @@ final class UnsupportedLocalSchemaException implements Exception {
   String toString() => 'UnsupportedLocalSchemaException';
 }
 
-const localSchemaVersion = 3;
+const localSchemaVersion = 4;
 
 /// One schema for the whole device database, shared by every store that
 /// opens it, so their migrations cannot race on `user_version`.
@@ -25,6 +25,7 @@ void migrateLocalDatabase(CommonDatabase database) {
     if (version < 1) database.execute(_records);
     if (version < 2) database.execute(_vault);
     if (version < 3) database.execute(_passkey);
+    if (version < 4) database.execute(_settings);
     database.execute('PRAGMA user_version = $localSchemaVersion');
   });
 }
@@ -83,4 +84,11 @@ const _passkey = '''
     slot INTEGER PRIMARY KEY CHECK (slot = 0),
     passkey BLOB NOT NULL
   );
+''';
+
+const _settings = '''
+  CREATE TABLE vault_settings (
+    name TEXT PRIMARY KEY,
+    envelope BLOB NOT NULL
+  ) WITHOUT ROWID;
 ''';

@@ -93,6 +93,30 @@ final class SqliteVaultStore implements VaultStore {
     _database.execute('DELETE FROM vault_passkey');
   }
 
+  @override
+  Future<EncryptedEnvelope?> loadSetting(String name) async {
+    final rows = _database.select(
+      'SELECT envelope FROM vault_settings WHERE name = ?',
+      [name],
+    );
+    if (rows.isEmpty) return null;
+    return _parse(
+      () => EncryptedEnvelope.parse(rows.single['envelope'] as Uint8List),
+    );
+  }
+
+  @override
+  Future<void> saveSetting(String name, EncryptedEnvelope? sealed) async {
+    if (sealed == null) {
+      _database.execute('DELETE FROM vault_settings WHERE name = ?', [name]);
+    } else {
+      _database.execute(
+        'INSERT OR REPLACE INTO vault_settings (name, envelope) VALUES (?, ?)',
+        [name, sealed.toBytes()],
+      );
+    }
+  }
+
   static T _parse<T>(T Function() parse) {
     try {
       return parse();

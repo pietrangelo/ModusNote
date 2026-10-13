@@ -10,6 +10,7 @@ dependencies:
   collaboration_access_control: any
   http: ^1.6.0
   identity_cryptography: any
+  meta: ^1.16.0
   offline_sync: any
   sqlite3: ^3.7.0
 

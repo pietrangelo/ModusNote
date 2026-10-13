@@ -9,8 +9,11 @@ import 'package:collaboration_access_control/collaboration_access_control.dart';
 import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
 import 'package:identity_cryptography/identity_cryptography.dart';
+import 'package:identity_cryptography_adapters/identity_cryptography_adapters.dart';
 import 'package:offline_sync/offline_sync.dart';
 import 'package:offline_sync_adapters/offline_sync_adapters.dart';
+import 'package:sodium/sodium_sumo.dart';
+import 'package:sqlite3/sqlite3.dart';
 import 'package:test/test.dart';
 
 final postgrest = Platform.environment['MODUSNOTE_POSTGREST_URL'];
@@ -192,6 +195,68 @@ void main() {
       ]);
     });
 
+    test('registering a workspace again is harmless', () async {
+      final workspace = await foundWorkspace();
+
+      await serverFor(alice).createWorkspace(workspace);
+      await serverFor(alice).appendMembership(membershipOf(workspace)[0]);
+
+      expect(
+        await serverFor(alice).membership(workspace, from: 0),
+        hasLength(1),
+      );
+    });
+
+    test('a new vault publishes itself and syncs its notes', () async {
+      final sodium = await SodiumSumoInit.init();
+      final database = sqlite3.openInMemory();
+      addTearDown(database.close);
+      final keeper = VaultKeeper(
+        vaults: SqliteVaultStore(database),
+        records: (workspace) =>
+            SqliteLocalRecordStore(database, workspace: workspace),
+        server: serverFor(alice),
+        identities: SodiumIdentityService(sodium),
+        keys: SodiumKeyDerivationService(sodium),
+        subkeys: SodiumSubkeyDerivationService(sodium),
+        envelopes: SodiumEnvelopeEncryptor(sodium),
+        encapsulation: SodiumKeyEncapsulation(sodium),
+        clock: _Clock(),
+        random: Random.secure(),
+        kdf: KdfParameters.interactive,
+      );
+      final vault = await keeper.create(
+        SodiumPasswordSecret.fromUtf8Bytes(
+          sodium,
+          Uint8List.fromList(utf8.encode('correct horse')),
+        ),
+      );
+      addTearDown(vault.lock);
+      final note = RecordId.parse(_hex(16));
+      await vault.engine.write(
+        note,
+        RevisionContents(Uint8List.fromList(utf8.encode('sul server'))),
+      );
+
+      final first = await vault.engine.sync();
+      final second = await vault.engine.sync();
+
+      expect(first.offline, isFalse);
+      expect(first.pushed, 1);
+      expect(second.pushed, 0);
+      final server = serverFor(alice);
+      expect(
+        await server.membership(vault.workspace, from: 0),
+        vault.engine.ledger.records,
+      );
+      final rows = await server.pull(vault.workspace, after: 0);
+      expect(rows.single.row.record, note);
+      expect(
+        latin1.decode(rows.single.row.ciphertext.envelope.toBytes()),
+        isNot(contains('sul server')),
+      );
+    });
+
     test('an account added by a manager reads and appends', () async {
       final workspace = await foundWorkspace();
       await serverFor(alice).push(workspace, [sealedRow(1)]);
@@ -234,6 +299,18 @@ void main() {
         );
       });
 
+      test('a workspace registered by another account stays theirs', () async {
+        final workspace = await foundWorkspace();
+
+        await serverFor(bob).createWorkspace(workspace);
+
+        await expectLater(
+          serverFor(bob).appendMembership(membershipOf(workspace)[0]),
+          throwsA(isA<SyncServerRejectedException>()),
+        );
+        expect(await serverFor(bob).pull(workspace, after: 0), isEmpty);
+      });
+
       test('a membership sequence cannot be written twice', () async {
         final workspace = await foundWorkspace();
         final founded = membershipOf(workspace)[0];
@@ -270,4 +347,9 @@ String _uuid() {
   final h = _hex(16);
   return '${h.substring(0, 8)}-${h.substring(8, 12)}-4${h.substring(13, 16)}-'
       '8${h.substring(17, 20)}-${h.substring(20)}';
+}
+
+final class _Clock implements Clock {
+  @override
+  DateTime now() => DateTime.now().toUtc();
 }

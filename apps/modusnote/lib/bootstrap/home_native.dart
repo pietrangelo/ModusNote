@@ -13,6 +13,7 @@ import 'package:sqlite3/sqlite3.dart';
 
 import '../audio/note_playback.dart';
 import '../audio/note_recorder.dart';
+import '../sync/sync_config.dart';
 import '../audio/soloud_player.dart';
 import '../vault/vault_gate.dart';
 import 'vault_wiring.dart';
@@ -36,12 +37,15 @@ Future<Widget> buildHome() async {
     subkeys: SodiumSubkeyDerivationService(sodium),
   );
   final player = SoloudRecordingPlayer();
+  final cloud = cloudWiring(SyncConfig.fromEnvironment());
   return VaultGate(
     keeper: vaultKeeper(
       sodium: sodium,
       database: database,
       kdf: KdfParameters.moderate,
+      server: cloud.server,
     ),
+    account: cloud.account,
     passwordFrom: (bytes) => SodiumPasswordSecret.fromUtf8Bytes(sodium, bytes),
     catalog: SeedSchemas.catalog,
     recorderFor: (engine) => NoteRecorder(

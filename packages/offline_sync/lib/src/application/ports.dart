@@ -13,6 +13,14 @@ import '../core/vault_header.dart';
 /// All three streams are append-only: the server never overwrites a row,
 /// and conflicts are resolved by the clients, which see every revision.
 abstract interface class SyncServer {
+  /// Registers [workspace] for this account. Idempotent: a workspace this
+  /// account already registered is not an error.
+  Future<void> createWorkspace(WorkspaceId workspace);
+
+  /// Appends one signed record to the workspace's membership log. The
+  /// server holds each sequence number once.
+  Future<void> appendMembership(MembershipRecord record);
+
   Future<void> push(WorkspaceId workspace, List<SealedRow> rows);
 
   /// Rows appended after position [after], each with its own position.
@@ -30,7 +38,13 @@ abstract interface class SyncServer {
   });
 }
 
-enum SyncStream { rows, keyBundles }
+enum SyncStream {
+  rows,
+  keyBundles,
+
+  /// How many records of the membership log the server is known to hold.
+  membership,
+}
 
 /// Port: the local database (SQLite, native or WASM). It is only ever
 /// handed sealed data.
@@ -77,6 +91,12 @@ abstract interface class VaultStore {
   Future<void> savePasskey(PasskeySlot slot);
 
   Future<void> removePasskey();
+
+  /// A device setting sealed under the local key, if one is stored.
+  Future<EncryptedEnvelope?> loadSetting(String name);
+
+  /// Stores [sealed] under [name], or removes the setting when null.
+  Future<void> saveSetting(String name, EncryptedEnvelope? sealed);
 }
 
 /// Port: wall-clock time, used only to order concurrent edits.

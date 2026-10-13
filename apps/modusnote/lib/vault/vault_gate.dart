@@ -6,12 +6,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:identity_cryptography/identity_cryptography.dart';
 import 'package:offline_sync/offline_sync.dart';
+import 'package:offline_sync_adapters/offline_sync_adapters.dart';
 import 'package:schema_dynamic_content/schema_dynamic_content.dart';
 
 import '../audio/note_playback.dart';
 import '../audio/note_recorder.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../notes/note_library.dart';
+import '../sync/cloud_sheet.dart';
+import '../sync/sync_controller.dart';
 import '../theme/golden_ratio.dart';
 import '../theme/modus_colors.dart';
 import 'auto_lock.dart';
@@ -31,6 +34,8 @@ class VaultGate extends StatefulWidget {
     this.recorderFor,
     this.playbackFor,
     this.autoLockFor,
+    this.account,
+    this.syncFor,
     super.key,
   });
 
@@ -50,6 +55,18 @@ class VaultGate extends StatefulWidget {
 
   /// Builds the auto-lock of an open vault; tests shorten its times.
   final AutoLock Function(VoidCallback onLock)? autoLockFor;
+
+  /// The sync account; null in a build without a server, which offers no
+  /// sign-in and keeps edits queued on the device.
+  final SyncAccount? account;
+
+  /// Builds the sync of an open vault; tests shorten its times.
+  final SyncController Function(
+    SyncEngine engine,
+    SyncAccount account,
+    Future<void> Function() onPulled,
+  )?
+  syncFor;
 
   @override
   State<VaultGate> createState() => _VaultGateState();
@@ -73,12 +90,17 @@ final class _Locked extends _Stage {
 }
 
 final class _Open extends _Stage {
-  const _Open(this.vault, this.store, this.autoLock);
+  const _Open(this.vault, this.store, this.autoLock, this.sync);
 
   final UnlockedVault vault;
   final VaultNoteStore store;
   final AutoLock autoLock;
+  final SyncController? sync;
 }
+
+/// The Supabase session, sealed in the vault under the local key: it opens
+/// only the account's rows (ciphertext), but it is still a credential.
+const _sessionSetting = 'sync.session';
 
 enum _Problem {
   tooShort,
@@ -117,7 +139,9 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _stopWatching();
-    if (_stage case _Open(:final vault, :final autoLock)) {
+    if (_stage case _Open(:final vault, :final autoLock, :final sync)) {
+      sync?.dispose();
+      widget.account?.detach();
       autoLock.dispose();
       vault.lock();
     }
@@ -170,7 +194,10 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
         recorder: widget.recorderFor?.call(vault.engine),
         playback: widget.playbackFor?.call(vault.engine),
       );
+      final sync = await _connect(vault, store);
       if (!mounted) {
+        sync?.dispose();
+        widget.account?.detach();
         vault.lock();
         return;
       }
@@ -178,7 +205,8 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
           widget.autoLockFor?.call(_autoLocked) ??
           AutoLock(onLock: _autoLocked);
       _watchActivity(autoLock);
-      setState(() => _stage = _Open(vault, store, autoLock));
+      setState(() => _stage = _Open(vault, store, autoLock, sync));
+      sync?.start();
     } on WrongPassphraseException {
       _fail(_Problem.wrong);
     } on TamperedWorkspaceDataException {
@@ -198,13 +226,62 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
     }
   }
 
+  /// Restores the account's session from the vault and hands new ones back
+  /// to it, sealed. Nothing of the session outlives the unlocked vault.
+  Future<SyncController?> _connect(
+    UnlockedVault vault,
+    VaultNoteStore store,
+  ) async {
+    final account = widget.account;
+    if (account == null) return null;
+    final keeper = widget.keeper;
+    account.attach(
+      await _storedSession(vault),
+      persist: (session) async {
+        try {
+          await keeper.saveSetting(vault, _sessionSetting, session?.toBytes());
+        } on VaultLockedException {
+          // Locked meanwhile: the session is dropped with the vault.
+        }
+      },
+    );
+    final sync =
+        widget.syncFor?.call(vault.engine, account, store.reload) ??
+        SyncController(
+          engine: vault.engine,
+          account: account,
+          onPulled: store.reload,
+        );
+    store.onWrite = sync.changed;
+    return sync;
+  }
+
+  /// A session that is missing, damaged or sealed for another vault means
+  /// signing in again, never a vault that will not open.
+  Future<SupabaseSession?> _storedSession(UnlockedVault vault) async {
+    try {
+      final stored = await widget.keeper.loadSetting(vault, _sessionSetting);
+      return stored == null ? null : SupabaseSession.fromBytes(stored);
+    } on MalformedSyncDataException {
+      return null;
+    }
+  }
+
   void _fail(_Problem problem) {
     if (mounted) setState(() => _problem = problem);
   }
 
   void _lock() {
-    if (_stage case _Open(:final vault, :final store, :final autoLock)) {
+    if (_stage case _Open(
+      :final vault,
+      :final store,
+      :final autoLock,
+      :final sync,
+    )) {
       _stopWatching();
+      // The sync stops before the keys it works with are released.
+      sync?.dispose();
+      widget.account?.detach();
       autoLock.dispose();
       vault.lock();
       store.dispose();
@@ -277,12 +354,13 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (_stage case _Open(:final autoLock)) {
+    if (_stage case _Open(:final autoLock, :final sync)) {
       switch (state) {
         case AppLifecycleState.hidden || AppLifecycleState.paused:
           autoLock.hidden();
         case AppLifecycleState.resumed:
           autoLock.shown();
+          sync?.syncNow();
         case AppLifecycleState.inactive || AppLifecycleState.detached:
           break;
       }
@@ -321,11 +399,12 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
     _Checking() => const Scaffold(
       body: Center(child: CircularProgressIndicator()),
     ),
-    _Open(:final store, :final autoLock) => AutoLockScope(
+    _Open(:final store, :final autoLock, :final sync) => AutoLockScope(
       autoLock: autoLock,
       child: NoteLibraryScreen(
         schemas: widget.catalog.current,
         store: store,
+        cloud: sync == null ? null : CloudButton(sync: sync),
         onLock: _lock,
         onPasskey: widget.keeper.offersPasskeys ? _passkeySettings : null,
       ),

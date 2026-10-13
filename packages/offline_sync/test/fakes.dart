@@ -13,6 +13,15 @@ final class FakeSyncServer implements SyncServer {
   /// How many membership records it admits to having (for rollback tests).
   int? withholdMembershipAfter;
 
+  final createdWorkspaces = <WorkspaceId>[];
+
+  /// What clients asked of it, in order: `workspace`, `membership <n>`,
+  /// `push <rows>`.
+  final calls = <String>[];
+
+  /// Fails the next call to [appendMembership] as if the network dropped.
+  var dropNextAppend = false;
+
   void _check() {
     if (!online) throw const ServerUnavailableException();
   }
@@ -20,7 +29,32 @@ final class FakeSyncServer implements SyncServer {
   @override
   Future<void> push(WorkspaceId workspace, List<SealedRow> rows) async {
     _check();
+    calls.add('push ${rows.length}');
     this.rows.addAll(rows);
+  }
+
+  @override
+  Future<void> createWorkspace(WorkspaceId workspace) async {
+    _check();
+    calls.add('workspace');
+    if (!createdWorkspaces.contains(workspace)) {
+      createdWorkspaces.add(workspace);
+    }
+  }
+
+  @override
+  Future<void> appendMembership(MembershipRecord record) async {
+    _check();
+    if (dropNextAppend) {
+      dropNextAppend = false;
+      throw const ServerUnavailableException();
+    }
+    calls.add('membership ${record.sequence}');
+    // The real table's primary key: a sequence is written once.
+    if (record.sequence != membershipLog.length) {
+      throw StateError('membership sequence ${record.sequence} taken');
+    }
+    membershipLog.add(record);
   }
 
   @override
@@ -103,6 +137,7 @@ final class FakeClock implements Clock {
 final class FakeVaultStore implements VaultStore {
   VaultHeader? header;
   PasskeySlot? passkey;
+  final settings = <String, EncryptedEnvelope>{};
   final membership = <MembershipRecord>[];
   final bundles = <KeyBundle>[];
 
@@ -137,4 +172,16 @@ final class FakeVaultStore implements VaultStore {
 
   @override
   Future<void> removePasskey() async => passkey = null;
+
+  @override
+  Future<EncryptedEnvelope?> loadSetting(String name) async => settings[name];
+
+  @override
+  Future<void> saveSetting(String name, EncryptedEnvelope? sealed) async {
+    if (sealed == null) {
+      settings.remove(name);
+    } else {
+      settings[name] = sealed;
+    }
+  }
 }
