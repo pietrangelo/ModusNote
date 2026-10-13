@@ -1006,6 +1006,106 @@
       "count": {"type": "int"}
     }
   },
+  "backupSettings": "Backup and export",
+  "@backupSettings": {
+    "description": "Library button: opens the backup and export sheet."
+  },
+  "backupTitle": "Backup and export",
+  "@backupTitle": {
+    "description": "Backup sheet title."
+  },
+  "backupExport": "Download an encrypted backup",
+  "@backupExport": {
+    "description": "Backup sheet: saves every note sealed under a phrase."
+  },
+  "backupExportHint": "Opens only with the phrase you choose now, in Modus Notes.",
+  "@backupExportHint": {
+    "description": "Backup sheet: what the encrypted backup is."
+  },
+  "backupRestore": "Restore a backup",
+  "@backupRestore": {
+    "description": "Backup sheet: reads a backup file back in."
+  },
+  "backupRestoreHint": "Adds what is missing; the notes you already have stay as they are.",
+  "@backupRestoreHint": {
+    "description": "Backup sheet: what a restore does."
+  },
+  "markdownExport": "Export as Markdown",
+  "@markdownExport": {
+    "description": "Backup sheet: saves every note as Markdown, in clear."
+  },
+  "markdownExportHint": "A .zip anyone who opens it can read: it is not encrypted.",
+  "@markdownExportHint": {
+    "description": "Backup sheet: what the Markdown export is."
+  },
+  "backupPhraseTitle": "Backup phrase",
+  "@backupPhraseTitle": {
+    "description": "Field and dialog title for the phrase sealing a backup."
+  },
+  "backupPhraseHint": "Choose a phrase for this backup: without it the file does not open. It is kept nowhere.",
+  "@backupPhraseHint": {
+    "description": "Dialog text before choosing a backup phrase."
+  },
+  "backupPhraseConfirm": "Repeat the phrase",
+  "@backupPhraseConfirm": {
+    "description": "Second field, to catch a typo."
+  },
+  "backupPhraseMismatch": "The two phrases differ.",
+  "@backupPhraseMismatch": {
+    "description": "Error when the two fields differ."
+  },
+  "backupPhraseDone": "Continue",
+  "@backupPhraseDone": {
+    "description": "Confirms the backup phrase."
+  },
+  "backupWorking": "One moment…",
+  "@backupWorking": {
+    "description": "Progress while a backup is sealed or opened."
+  },
+  "backupSaved": "Backup downloaded.",
+  "@backupSaved": {
+    "description": "Snackbar after the backup download starts."
+  },
+  "backupRejected": "This file does not open with this phrase.",
+  "@backupRejected": {
+    "description": "Snackbar: wrong phrase, or not a backup."
+  },
+  "backupTooLarge": "The file is too large.",
+  "@backupTooLarge": {
+    "description": "Snackbar: a file over the restore limit."
+  },
+  "markdownWarningTitle": "Export in clear?",
+  "@markdownWarningTitle": {
+    "description": "Warning before the Markdown export."
+  },
+  "markdownWarningBody": "The file will hold your notes unencrypted: anyone who opens or finds it can read them. Recordings and pictures are not included.",
+  "@markdownWarningBody": {
+    "description": "Warning before the Markdown export."
+  },
+  "markdownExportAction": "Export",
+  "@markdownExportAction": {
+    "description": "Confirms the Markdown export."
+  },
+  "markdownSaved": "Notes exported.",
+  "@markdownSaved": {
+    "description": "Snackbar after the Markdown download starts."
+  },
+  "markdownRecording": "recording (not included)",
+  "@markdownRecording": {
+    "description": "Markdown export: in place of a recording."
+  },
+  "markdownPicture": "picture (not included)",
+  "@markdownPicture": {
+    "description": "Markdown export: in place of a picture."
+  },
+  "backupRestored": "Restore done: {added} added, {kept} already here.",
+  "@backupRestored": {
+    "description": "Snackbar after a restore: records written and records kept.",
+    "placeholders": {
+      "added": {"type": "int"},
+      "kept": {"type": "int"}
+    }
+  },
   "iconFolder": "Folder",
   "@iconFolder": {
     "description": "Icon choice."

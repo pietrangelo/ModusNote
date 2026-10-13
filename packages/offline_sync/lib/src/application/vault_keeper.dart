@@ -6,13 +6,18 @@ import 'package:identity_cryptography/identity_cryptography.dart';
 
 import '../core/device_link.dart';
 import '../core/passkey_slot.dart';
+import '../core/record_revision.dart';
 import '../core/sync_exception.dart';
+import '../core/vault_backup.dart';
 import '../core/vault_header.dart';
 import 'ports.dart';
 import 'sync_engine.dart';
 
 /// An open vault: the device identity, its local key and the GroupKeys, all
 /// in native memory until [lock] releases them.
+/// How a restore went: records written, and records the vault already had.
+typedef BackupRestore = ({int added, int kept});
+
 final class UnlockedVault {
   UnlockedVault._({
     required this._engine,
@@ -367,6 +372,100 @@ final class VaultKeeper {
               associatedData: _settingSlot(vault, name),
             ),
     );
+  }
+
+  /// Every live record of the open [vault], sealed under a key stretched
+  /// from [passphrase] (consumed) with a salt of its own: a file to keep
+  /// elsewhere, which [openBackup] opens on any device, in any vault.
+  Future<Uint8List> exportBackup(
+    UnlockedVault vault,
+    PasswordSecret passphrase,
+  ) async {
+    final salt = _keys.newSalt();
+    final SymmetricKey key;
+    try {
+      if (vault.isLocked) throw const VaultLockedException();
+      key = await _keys.deriveKey(
+        password: passphrase,
+        salt: salt,
+        parameters: _kdf,
+      );
+    } finally {
+      passphrase.dispose();
+    }
+    try {
+      final records = await vault.engine.records();
+      final contents = BackupContents({
+        for (final MapEntry(:key, :value) in records.entries) key: value.bytes,
+      });
+      return SealedBackup.sealing(
+        salt: salt,
+        kdf: _kdf,
+        seal: (slot) =>
+            _envelopes.seal(contents.toBytes(), key: key, associatedData: slot),
+      ).toBytes();
+    } finally {
+      key.dispose();
+    }
+  }
+
+  /// Opens a file written by [exportBackup] with [passphrase] (consumed).
+  /// Throws [BackupRejectedException] for a wrong passphrase or a file that
+  /// is not such a backup; costs out of bounds are refused before any
+  /// Argon2id runs.
+  Future<BackupContents> openBackup(
+    List<int> file,
+    PasswordSecret passphrase,
+  ) async {
+    final SealedBackup sealed;
+    final SymmetricKey key;
+    try {
+      try {
+        sealed = SealedBackup.parse(file);
+      } on SyncException {
+        throw const BackupRejectedException();
+      }
+      key = await _keys.deriveKey(
+        password: passphrase,
+        salt: sealed.salt,
+        parameters: sealed.kdf,
+      );
+    } finally {
+      passphrase.dispose();
+    }
+    try {
+      return BackupContents.parse(
+        _envelopes.open(sealed.sealed, key: key, associatedData: sealed.slot),
+      );
+    } on AuthenticationTagMismatchException {
+      throw const BackupRejectedException();
+    } on SyncException {
+      throw const BackupRejectedException();
+    } finally {
+      key.dispose();
+    }
+  }
+
+  /// Writes into the open [vault] each record of [backup] it has no live
+  /// contents for, deleted ones included; a record it has is kept as it
+  /// is, so a restore never takes an edit back.
+  Future<BackupRestore> restoreBackup(
+    UnlockedVault vault,
+    BackupContents backup,
+  ) async {
+    if (vault.isLocked) throw const VaultLockedException();
+    var added = 0;
+    var kept = 0;
+    for (final MapEntry(:key, :value) in backup.records.entries) {
+      final engine = vault.engine;
+      if (await engine.read(key) is RevisionContents) {
+        kept++;
+      } else {
+        await engine.write(key, RevisionContents(value));
+        added++;
+      }
+    }
+    return (added: added, kept: kept);
   }
 
   static void _checkSettingName(String name) {

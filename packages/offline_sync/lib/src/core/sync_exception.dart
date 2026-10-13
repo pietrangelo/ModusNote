@@ -125,3 +125,12 @@ final class LinkExpiredException extends VaultException {
   @override
   String get message => 'device link expired';
 }
+
+/// The file does not open as a backup with this passphrase: mistyped, not
+/// a backup, cut short or altered. Indistinguishable by design.
+final class BackupRejectedException extends VaultException {
+  const BackupRejectedException();
+
+  @override
+  String get message => 'not a backup that opens with this passphrase';
+}
