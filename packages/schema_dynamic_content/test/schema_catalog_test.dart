@@ -40,6 +40,7 @@ void main() {
       SchemaId('dream_log', 1),
       SchemaId('task', 2),
       SchemaId('quick_note', 1),
+      SchemaId('document', 1),
     ]);
   });
 

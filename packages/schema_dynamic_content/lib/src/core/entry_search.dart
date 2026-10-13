@@ -3,8 +3,8 @@ import 'package:meta/meta.dart';
 import 'dynamic_entry.dart';
 import 'field_value.dart';
 
-/// Full-text match over an entry's words: text, tags, choice options and
-/// tasks.
+/// Full-text match over an entry's words: text, tags, choice options,
+/// tasks and the captions and titles of attachments.
 ///
 /// Runs on decrypted entries in memory only. No index is built or stored,
 /// so searching never leaves plaintext on disk beside the encrypted records.
@@ -29,6 +29,8 @@ final class EntrySearch {
           TagListValue(:final tags) => tags,
           ChoiceValue(:final option) => [option],
           ChecklistValue(:final items) => [for (final i in items) i.text],
+          // Captions and titles, not addresses: what the person wrote.
+          AttachmentsValue(:final items) => [for (final i in items) i.text],
           _ => const <String>[],
         },
     ].map(fold).join('\n');

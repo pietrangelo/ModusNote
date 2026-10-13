@@ -72,11 +72,21 @@ final class WidgetPlacement {
 /// The symbol that tells a note type apart at a glance. Names, not
 /// pictures: the app draws each one, and a name it does not know (from a
 /// newer device) is simply not shown.
-enum NoteIcon { note, music, moon, checklist, star, lightbulb, book, heart }
+enum NoteIcon {
+  note,
+  music,
+  moon,
+  checklist,
+  star,
+  lightbulb,
+  book,
+  heart,
+  page,
+}
 
 /// The accent colour of a note type, as a palette role the app maps to
 /// its design tokens.
-enum NoteTint { gold, violet, cyan, rose }
+enum NoteTint { gold, violet, cyan, rose, silver }
 
 /// The meta-model of a note type, interpreted at runtime. Every instance
 /// satisfies its invariants; there is no way to hold a half-valid schema.

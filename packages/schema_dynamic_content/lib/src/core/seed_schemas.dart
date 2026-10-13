@@ -44,6 +44,15 @@ abstract final class SeedSchemas {
     ('tags', TagListFieldType(), false),
   ]);
 
+  /// A page of a manual or any document made of linked pages: a title,
+  /// Markdown that links to other pages, pictures and links.
+  static final documentV1 = _seed('document', NoteIcon.page, NoteTint.silver, [
+    ('title', TextFieldType(maxLength: 200), true),
+    ('body', const MarkdownFieldType(), false),
+    ('attachments', AttachmentsFieldType(), false),
+    ('tags', TagListFieldType(), false),
+  ]);
+
   /// A to-do is a list of tasks, with an optional title. A [taskV1] note
   /// becomes a one-task list: its description, made one safe line, and
   /// its completed flag.
@@ -81,6 +90,7 @@ abstract final class SeedSchemas {
     dreamLogV1,
     taskV2,
     quickNoteV1,
+    documentV1,
   ]);
 
   static final catalog = SchemaCatalog(current: all, migrations: [taskV1ToV2]);
