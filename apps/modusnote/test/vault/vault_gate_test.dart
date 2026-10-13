@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:identity_cryptography/identity_cryptography.dart';
 import 'package:identity_cryptography_adapters/identity_cryptography_adapters.dart';
 import 'package:modusnote/notes/note_editor.dart';
 import 'package:modusnote/notes/note_library.dart';
@@ -11,14 +12,16 @@ import 'package:sqlite3/sqlite3.dart';
 import '../notes/harness.dart';
 import 'support.dart';
 
-Widget gateOn(Database database, {AutoLock Function(VoidCallback)? autoLock}) =>
-    VaultGate(
-      keeper: keeperOn(database),
-      passwordFrom: (bytes) =>
-          SodiumPasswordSecret.fromUtf8Bytes(sodium, bytes),
-      catalog: SeedSchemas.catalog,
-      autoLockFor: autoLock,
-    );
+Widget gateOn(
+  Database database, {
+  AutoLock Function(VoidCallback)? autoLock,
+  PasskeyPrf? passkeys,
+}) => VaultGate(
+  keeper: keeperOn(database, passkeys: passkeys),
+  passwordFrom: (bytes) => SodiumPasswordSecret.fromUtf8Bytes(sodium, bytes),
+  catalog: SeedSchemas.catalog,
+  autoLockFor: autoLock,
+);
 
 /// The real policy with times short enough for a widget test.
 AutoLock quickLock(VoidCallback onLock) => AutoLock(
@@ -208,6 +211,134 @@ void main() {
 
       expect(locks, 0);
       expect(unlockPrompt, findsOneWidget);
+    });
+  });
+
+  group('passkey', () {
+    late FakePasskeys passkeys;
+    final passkeyButton = find.text('Sblocca con passkey');
+    final passkeySettings = find.byTooltip('Sblocco con passkey');
+
+    setUp(() => passkeys = FakePasskeys());
+
+    Future<void> lock(WidgetTester tester) async {
+      await tester.tap(find.byTooltip('Blocca'));
+      await tester.pumpAndSettle();
+    }
+
+    Future<void> setUpPasskey(WidgetTester tester) async {
+      await tester.tap(passkeySettings);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Attiva la passkey'));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('without passkey support nothing mentions passkeys', (
+      tester,
+    ) async {
+      await pumpApp(tester, gateOn(database));
+      await create(tester, 'frase lunga', 'frase lunga');
+
+      expect(passkeySettings, findsNothing);
+      await lock(tester);
+      expect(passkeyButton, findsNothing);
+    });
+
+    testWidgets('a passkey set up in the library unlocks the next time', (
+      tester,
+    ) async {
+      await pumpApp(tester, gateOn(database, passkeys: passkeys));
+      await create(tester, 'frase lunga', 'frase lunga');
+      await lock(tester);
+      expect(passkeyButton, findsNothing, reason: 'none set up yet');
+      await unlock(tester, 'frase lunga');
+
+      await setUpPasskey(tester);
+      expect(
+        find.text(
+          'Passkey pronta. La prossima volta puoi sbloccare con la passkey.',
+        ),
+        findsOneWidget,
+      );
+      await lock(tester);
+      await pumpApp(tester, gateOn(database, passkeys: passkeys));
+      await tester.tap(passkeyButton);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(NoteLibraryScreen), findsOneWidget);
+    });
+
+    testWidgets('a cancelled prompt says so and the passphrase still works', (
+      tester,
+    ) async {
+      await pumpApp(tester, gateOn(database, passkeys: passkeys));
+      await create(tester, 'frase lunga', 'frase lunga');
+      await setUpPasskey(tester);
+      await lock(tester);
+
+      passkeys.failNext = const PasskeyCancelledException();
+      await tester.tap(passkeyButton);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Richiesta della passkey annullata.'), findsOneWidget);
+      expect(find.byType(NoteLibraryScreen), findsNothing);
+      await unlock(tester, 'frase lunga');
+      expect(find.byType(NoteLibraryScreen), findsOneWidget);
+    });
+
+    testWidgets('a passkey that cannot derive a key is reported at setup', (
+      tester,
+    ) async {
+      await pumpApp(tester, gateOn(database, passkeys: passkeys));
+      await create(tester, 'frase lunga', 'frase lunga');
+
+      passkeys.failNext = const PasskeyUnsupportedException();
+      await setUpPasskey(tester);
+
+      expect(
+        find.text(
+          'Questo browser o questa passkey non possono sbloccare il vault.',
+        ),
+        findsOneWidget,
+      );
+      await lock(tester);
+      expect(passkeyButton, findsNothing);
+    });
+
+    testWidgets('turning the passkey off leaves only the passphrase', (
+      tester,
+    ) async {
+      await pumpApp(tester, gateOn(database, passkeys: passkeys));
+      await create(tester, 'frase lunga', 'frase lunga');
+      await setUpPasskey(tester);
+
+      await tester.tap(passkeySettings);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Disattiva'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Passkey disattivata.'), findsOneWidget);
+      await lock(tester);
+      expect(passkeyButton, findsNothing);
+    });
+
+    testWidgets('another authenticator\'s answer opens nothing', (
+      tester,
+    ) async {
+      await pumpApp(tester, gateOn(database, passkeys: passkeys));
+      await create(tester, 'frase lunga', 'frase lunga');
+      await setUpPasskey(tester);
+      await lock(tester);
+
+      passkeys.impostor = true;
+      await tester.tap(passkeyButton);
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('Questa passkey non apre il vault. Usa la passphrase.'),
+        findsOneWidget,
+      );
+      expect(find.byType(NoteLibraryScreen), findsNothing);
     });
   });
 

@@ -360,6 +360,54 @@
   "@lockVault": {
     "description": "Tooltip of the button that locks the vault."
   },
+  "passkeyUnlockAction": "Unlock with passkey",
+  "@passkeyUnlockAction": {
+    "description": "Button on the unlock screen that opens the vault with the passkey set up in this browser."
+  },
+  "passkeyCancelled": "The passkey request was cancelled.",
+  "@passkeyCancelled": {
+    "description": "Shown when the user dismisses the passkey prompt or it times out."
+  },
+  "passkeyRejected": "This passkey does not open the vault. Use your passphrase.",
+  "@passkeyRejected": {
+    "description": "Shown when the passkey answered but does not open the vault."
+  },
+  "passkeyUnsupported": "This browser or passkey cannot unlock the vault.",
+  "@passkeyUnsupported": {
+    "description": "Shown when the browser or the chosen passkey cannot derive a key (no PRF support)."
+  },
+  "passkeySettings": "Passkey unlock",
+  "@passkeySettings": {
+    "description": "Tooltip of the library button and title of the dialog that sets up or turns off the passkey."
+  },
+  "passkeySetupBody": "Next time, open your notes with your fingerprint, face or device PIN instead of typing the passphrase. Your passphrase keeps working.",
+  "@passkeySetupBody": {
+    "description": "Explains the passkey before setting it up."
+  },
+  "passkeySetupAction": "Set up passkey",
+  "@passkeySetupAction": {
+    "description": "Button that creates the passkey."
+  },
+  "passkeyActiveBody": "This browser opens your notes with a passkey. Turning it off leaves only the passphrase.",
+  "@passkeyActiveBody": {
+    "description": "Shown in the passkey dialog when a passkey is already set up."
+  },
+  "passkeyRemoveAction": "Turn off",
+  "@passkeyRemoveAction": {
+    "description": "Button that removes the passkey."
+  },
+  "passkeyReady": "Passkey ready. Next time you can unlock with it.",
+  "@passkeyReady": {
+    "description": "Confirmation after the passkey is set up."
+  },
+  "passkeyRemoved": "Passkey turned off.",
+  "@passkeyRemoved": {
+    "description": "Confirmation after the passkey is removed."
+  },
+  "dialogClose": "Close",
+  "@dialogClose": {
+    "description": "Generic button that closes a dialog without doing anything."
+  },
   "recordingInProgress": "Recording",
   "@recordingInProgress": {
     "description": "Title of the sheet shown while the microphone records."

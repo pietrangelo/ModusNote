@@ -24,6 +24,23 @@ VaultHeader header(MemberId founder) => VaultHeader(
   ),
 );
 
+PasskeySlot passkey({int fill = 5}) => PasskeySlot(
+  credential: PasskeyCredentialId.fromBytes(List.filled(20, fill)),
+  salt: PrfSalt.fromBytes(List.filled(PrfSalt.length, 6)),
+  keyId: SubkeyId.fromBytes(List.filled(SubkeyId.length, 8)),
+  sealedIdentity: EncryptedEnvelope(
+    nonce: Nonce.fromBytes(List.filled(Nonce.length, 3)),
+    ciphertext: List.filled(80, 4),
+  ),
+  sealedLocalKey: SealedKey(
+    encapsulation: List.filled(SealedKey.encapsulationLength, 1),
+    envelope: EncryptedEnvelope(
+      nonce: Nonce.fromBytes(List.filled(Nonce.length, 2)),
+      ciphertext: List.filled(48, 9),
+    ),
+  ),
+);
+
 void main() {
   late SodiumSumo sodium;
   late FoundedWorkspace founded;
@@ -115,7 +132,71 @@ void main() {
     );
   });
 
+  group('passkey', () {
+    test('a fresh vault has none', () async {
+      await store.create(header(me()), membership: const [], bundles: const []);
+
+      expect(await store.loadPasskey(), isNull);
+    });
+
+    test('is kept across reopening and replaced by the next', () async {
+      await store.create(header(me()), membership: const [], bundles: const []);
+      await store.savePasskey(passkey());
+
+      store = reopen();
+      expect(await store.loadPasskey(), passkey());
+
+      await store.savePasskey(passkey(fill: 7));
+
+      expect(await reopen().loadPasskey(), passkey(fill: 7));
+    });
+
+    test('can be removed', () async {
+      await store.create(header(me()), membership: const [], bundles: const []);
+      await store.savePasskey(passkey());
+
+      await store.removePasskey();
+
+      expect(await reopen().loadPasskey(), isNull);
+    });
+
+    test('cannot be saved without a vault to open', () async {
+      await expectLater(
+        store.savePasskey(passkey()),
+        throwsA(isA<NoVaultException>()),
+      );
+      expect(await store.loadPasskey(), isNull);
+    });
+
+    test('a database from before passkeys gains the table', () async {
+      database
+        ..execute('DROP TABLE vault_passkey')
+        ..execute('PRAGMA user_version = 2');
+      await store.create(header(me()), membership: const [], bundles: const []);
+
+      final reopened = reopen();
+
+      expect(await reopened.loadHeader(), header(me()));
+      expect(await reopened.loadPasskey(), isNull);
+      await reopened.savePasskey(passkey());
+      expect(await reopened.loadPasskey(), passkey());
+    });
+  });
+
   group('adversary', () {
+    test('a corrupted passkey surfaces as malformed, not a crash', () async {
+      await store.create(header(me()), membership: const [], bundles: const []);
+      await store.savePasskey(passkey());
+      database.execute('UPDATE vault_passkey SET passkey = ?', [
+        Uint8List.fromList([1, 2, 3]),
+      ]);
+
+      await expectLater(
+        store.loadPasskey(),
+        throwsA(isA<MalformedSyncDataException>()),
+      );
+    });
+
     test('a corrupted header surfaces as malformed, not a crash', () async {
       await store.create(header(me()), membership: const [], bundles: const []);
       database.execute('UPDATE vault SET header = ?', [

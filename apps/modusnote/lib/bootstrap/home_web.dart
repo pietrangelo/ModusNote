@@ -5,6 +5,7 @@ import 'package:blob_storage_media_recorder_adapters/blob_storage_media_recorder
 import 'package:flutter/widgets.dart';
 import 'package:identity_cryptography/identity_cryptography.dart';
 import 'package:identity_cryptography_adapters/identity_cryptography_adapters.dart';
+import 'package:identity_cryptography_adapters/web_passkeys.dart';
 import 'package:schema_dynamic_content/schema_dynamic_content.dart';
 import 'package:sodium/sodium_sumo.dart';
 import 'package:sqlite3/wasm.dart';
@@ -21,7 +22,8 @@ import 'vault_wiring.dart';
 /// the sealed vault header and envelopes: nothing readable without the
 /// passphrase. Recordings are sealed blobs in a second IndexedDB database,
 /// encoded to Ogg Opus by WebCodecs where the browser has it (WAV
-/// elsewhere) and played through Web Audio.
+/// elsewhere) and played through Web Audio. Where the browser has WebAuthn,
+/// a passkey with the PRF extension can replace typing the passphrase.
 Future<Widget> buildHome() async {
   final sodium = await SodiumSumoInit.init();
   final sqlite = await WasmSqlite3.loadFromUrl(Uri.parse('sqlite3.wasm'));
@@ -42,11 +44,15 @@ Future<Widget> buildHome() async {
   final opus = await WebCodecsOpusEncoder.isSupported();
   final opusPlayback = await WebCodecsOpusDecoder.isSupported();
   final player = WebAudioRecordingPlayer();
+  final passkeys = await WebAuthnPasskeyPrf.isSupported()
+      ? WebAuthnPasskeyPrf(sodium)
+      : null;
   return VaultGate(
     keeper: vaultKeeper(
       sodium: sodium,
       database: database,
       kdf: KdfParameters.moderate,
+      passkeys: passkeys,
     ),
     passwordFrom: (bytes) => SodiumPasswordSecret.fromUtf8Bytes(sodium, bytes),
     catalog: SeedSchemas.catalog,

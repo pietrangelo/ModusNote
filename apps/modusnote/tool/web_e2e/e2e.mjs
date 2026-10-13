@@ -1,7 +1,9 @@
 // End-to-end check of the built web client in Chrome, under the CSP and
 // headers of web/_headers, on both builds Flutter ships: WebAssembly and
 // the JavaScript fallback for browsers without WasmGC. Chrome's fake
-// microphone (a beeping tone) stands in for a real one.
+// microphone (a beeping tone) stands in for a real one, and its virtual
+// WebAuthn authenticator (with PRF, user verification always granted) for
+// a passkey.
 //
 //   flutter build web --wasm --csp --no-web-resources-cdn
 //   dart run tool/finalize_web_build.dart
@@ -37,6 +39,20 @@ async function scenario(browser, origin, mode) {
     if (!url.startsWith(origin) && !url.startsWith(`blob:${origin}/`)) outside.push(url);
   });
   page.on('response', (response) => loaded.push(new URL(response.url()).pathname));
+  const cdp = await context.newCDPSession(page);
+  await cdp.send('WebAuthn.enable', { enableUI: false });
+  const { authenticatorId } = await cdp.send('WebAuthn.addVirtualAuthenticator', {
+    options: {
+      protocol: 'ctap2',
+      ctap2Version: 'ctap2_1',
+      transport: 'internal',
+      hasResidentKey: true,
+      hasUserVerification: true,
+      isUserVerified: true,
+      hasPrf: true,
+      automaticPresenceSimulation: true,
+    },
+  });
   await page.addInitScript((forceJs) => {
     window.__violations = [];
     document.addEventListener('securitypolicyviolation', (event) =>
@@ -140,6 +156,19 @@ async function scenario(browser, origin, mode) {
   await page.getByRole('button', { name: 'Back' }).click();
   await settle();
 
+  // A passkey replaces the passphrase after the next reload.
+  await page.getByRole('button', { name: 'Passkey unlock' }).click();
+  await page.getByRole('button', { name: 'Set up passkey' }).click();
+  await page.getByText('Passkey ready. Next time you can unlock with it.').waitFor({ timeout: 30000 });
+  const { credentials } = await cdp.send('WebAuthn.getCredentials', { authenticatorId });
+  check(credentials.length === 1, `expected one passkey, found ${credentials.length}`);
+  await settle();
+  await page.reload();
+  await semantics();
+  await page.getByRole('button', { name: 'Unlock with passkey' }).click();
+  await page.getByText(noteText).first().waitFor({ timeout: 60000 });
+  await settle();
+
   // What the browser keeps must be ciphertext only.
   const leaks = await page.evaluate(async (needles) => {
     let found = 0;
@@ -218,7 +247,7 @@ let failed = false;
 for (const mode of ['wasm', 'js']) {
   try {
     const bytes = await scenario(browser, origin, mode);
-    console.log(`ok ${mode}: vault created, note and recording saved, reloaded, unlocked, played; ${bytes} bytes stored, all ciphertext`);
+    console.log(`ok ${mode}: vault created, note and recording saved, reloaded, unlocked, played, passkey set up and used; ${bytes} bytes stored, all ciphertext`);
   } catch (error) {
     failed = true;
     console.error(`FAIL ${mode}: ${error.message}`);

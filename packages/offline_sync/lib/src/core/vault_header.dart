@@ -108,8 +108,12 @@ final class VaultHeader {
   /// The associated data the identity is sealed under.
   AssociatedData get identitySlot => AssociatedData.forContext(
     'modusnote.vault.identity.v1',
-    _hex(_clearFields().take()),
+    _hex(boundFields),
   );
+
+  /// Every clear field, as bound into the identity's associated data; other
+  /// secrets kept next to the header bind them too.
+  Uint8List get boundFields => _clearFields().take();
 
   Uint8List toBytes() =>
       (_clearFields()..blob(sealedIdentity.toBytes())).take();
