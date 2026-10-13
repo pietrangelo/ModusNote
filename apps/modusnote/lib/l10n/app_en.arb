@@ -582,7 +582,7 @@
   "@cloudSendCode": {
     "description": "Button that emails a sign-in code."
   },
-  "cloudCodeSent": "We sent a code to {email}.",
+  "cloudCodeSent": "We sent an email to {email}. Enter its code, or copy the link in it and paste it here.",
   "@cloudCodeSent": {
     "description": "Shown after the sign-in code was emailed.",
     "placeholders": {
@@ -591,7 +591,7 @@
       }
     }
   },
-  "cloudCodeLabel": "Code from the email",
+  "cloudCodeLabel": "Code or link from the email",
   "@cloudCodeLabel": {
     "description": "Label of the sign-in code field."
   },
@@ -607,11 +607,11 @@
   "@cloudEmailInvalid": {
     "description": "The email field does not hold an address."
   },
-  "cloudCodeInvalid": "The code is the 6 to 10 digits in the email.",
+  "cloudCodeInvalid": "Enter the 6 to 10 digits in the email, or paste its link.",
   "@cloudCodeInvalid": {
     "description": "The code field does not hold a code."
   },
-  "cloudCodeRefused": "Wrong or expired code.",
+  "cloudCodeRefused": "Wrong or expired code or link.",
   "@cloudCodeRefused": {
     "description": "The server refused the code."
   },

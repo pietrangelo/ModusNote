@@ -105,8 +105,9 @@ final class SupabaseSession {
 /// like [SupabaseSyncServer]: a six-digit code sent by email, so signing in
 /// needs no link to open and works the same on phones and in the browser.
 ///
-/// The Supabase project's "Magic Link" email template must include
-/// `{{ .Token }}` for the email to carry the code.
+/// The email carries the code when the project's "Magic Link" and "Confirm
+/// signup" templates include `{{ .Token }}`; with the default templates it
+/// carries only a link, which [verifyCode] also accepts.
 final class SupabaseAuth {
   SupabaseAuth({
     required Uri projectUrl,
@@ -129,10 +130,39 @@ final class SupabaseAuth {
     await _post('otp', {'email': email, 'create_user': true});
   }
 
-  Future<SupabaseSession> verifyCode(String email, String code) async =>
-      _session(
+  /// Signs in with what the email carried: the six-digit code, or the
+  /// sign-in link pasted whole, for projects whose email template cannot
+  /// show the code (Supabase's free plan keeps the default, link-only one).
+  /// A link is never opened: only its token hash is sent back to this
+  /// project, and a link to any other host, path or purpose is refused
+  /// before any request.
+  Future<SupabaseSession> verifyCode(String email, String code) async {
+    final link = Uri.tryParse(code.trim());
+    if (link == null || !link.hasScheme) {
+      return _session(
         await _post('verify', {'type': 'email', 'email': email, 'token': code}),
       );
+    }
+    final token = link.queryParameters['token'] ?? '';
+    final type = link.queryParameters['type'];
+    if (link.scheme != 'https' ||
+        link.host != _auth.host ||
+        link.hasPort && link.port != _auth.port ||
+        link.userInfo.isNotEmpty ||
+        link.path != _auth.resolve('verify').path ||
+        !_tokenHash.hasMatch(token) ||
+        !_linkTypes.contains(type)) {
+      throw const SupabaseAuthRejectedException(400);
+    }
+    return _session(await _post('verify', {'type': type, 'token_hash': token}));
+  }
+
+  /// Sign-in links only: a new account's confirmation or a returning
+  /// account's magic link. Recovery, invites and email changes stay out.
+  static const _linkTypes = {'magiclink', 'signup'};
+
+  /// GoTrue's token hash: SHA-224 of the email and the code, in hex.
+  static final _tokenHash = RegExp(r'^[0-9a-f]{56}$');
 
   Future<SupabaseSession> refresh(SupabaseSession session) async => _session(
     await _post(
