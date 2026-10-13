@@ -172,6 +172,14 @@ async function scenario(browser, origin, mode) {
   await page.getByRole('button', { name: 'Close' }).click();
   await settle();
 
+  // Ctrl+click picks a note instead of opening it; Escape lets it go.
+  await page.getByText(noteText).first().click({ modifiers: ['Control'] });
+  await page.getByText('1 note selected').waitFor({ timeout: 10000 });
+  await settle();
+  await page.keyboard.press('Escape');
+  await page.getByText(/notes? selected/).waitFor({ state: 'detached', timeout: 10000 });
+  await settle();
+
   // A passkey replaces the passphrase after the next reload.
   await page.getByRole('button', { name: 'Passkey unlock' }).click();
   await page.getByRole('button', { name: 'Set up passkey' }).click();

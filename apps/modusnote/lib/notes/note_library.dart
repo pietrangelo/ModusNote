@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:schema_dynamic_content/schema_dynamic_content.dart';
 
 import '../l10n/generated/app_localizations.dart';
@@ -67,6 +68,13 @@ class _NoteLibraryScreenState extends State<NoteLibraryScreen> {
   var _editor = GlobalKey<NoteEditorScreenState>();
   var _showTrash = false;
 
+  /// Three columns only: the notes picked to act on together, or null
+  /// while none are being picked. Only those the list shows are acted on.
+  Set<EntryId>? _picks;
+
+  /// Where a Shift+click range starts: the note picked last.
+  EntryId? _anchor;
+
   /// The notes the filters let through: type, category and its
   /// subcategories, search.
   List<DynamicEntry> _shown() {
@@ -93,7 +101,124 @@ class _NoteLibraryScreenState extends State<NoteLibraryScreen> {
       _opened = opened;
       _showTrash = trash;
       _editor = GlobalKey();
+      if (trash) _picks = null;
     });
+  }
+
+  /// A click on a row of the list: opens the note, or with Ctrl (⌘) or
+  /// while picking adds it to the picks or takes it out, and with Shift
+  /// picks every note from the last one picked.
+  void _click(DynamicEntry entry, List<DynamicEntry> shown) {
+    final keys = HardwareKeyboard.instance;
+    final anchor = shown.indexWhere((e) => e.id == _anchor);
+    if (keys.isShiftPressed && anchor >= 0) {
+      final at = shown.indexOf(entry);
+      final (from, to) = anchor < at ? (anchor, at) : (at, anchor);
+      setState(() {
+        _picks = {
+          ...?_picks,
+          for (final e in shown.sublist(from, to + 1)) e.id,
+        };
+        _anchor = entry.id;
+      });
+    } else if (_picks != null ||
+        keys.isControlPressed ||
+        keys.isMetaPressed ||
+        keys.isShiftPressed) {
+      _toggle(entry.id);
+    } else {
+      unawaited(_openBeside(entry.id));
+    }
+  }
+
+  void _toggle(EntryId id) => setState(() {
+    final picks = _picks ??= {};
+    if (!picks.remove(id)) picks.add(id);
+    _anchor = id;
+  });
+
+  void _endPicking() => setState(() {
+    _picks = null;
+    _anchor = null;
+  });
+
+  /// The picks the list shows: a note a filter or search hides is never
+  /// acted on unseen.
+  List<EntryId> _pickedShown() {
+    final picks = _picks ?? const <EntryId>{};
+    return [
+      for (final entry in _shown())
+        if (picks.contains(entry.id)) entry.id,
+    ];
+  }
+
+  Future<void> _trashPicked() async {
+    final ids = _pickedShown();
+    if (ids.isEmpty) return;
+    final messenger = ScaffoldMessenger.of(context);
+    final l10n = AppLocalizations.of(context);
+    // The open note is saved first, so nothing written in it is lost; a
+    // note that cannot be saved, kept by the user, stops it all.
+    if (_opened case final EntryId open when ids.contains(open)) {
+      await _openBeside(null);
+      if (!mounted || _opened != null) return;
+    }
+    final store = widget.store;
+    for (final id in ids) {
+      await store.moveToTrash(id);
+    }
+    if (!mounted) return;
+    _endPicking();
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(l10n.notesTrashed(ids.length)),
+          action: SnackBarAction(
+            label: l10n.undo,
+            onPressed: () => unawaited(() async {
+              for (final id in ids) {
+                await store.restore(id);
+              }
+            }()),
+          ),
+        ),
+      );
+  }
+
+  Future<void> _filePicked() async {
+    final ids = _pickedShown();
+    if (ids.isEmpty) return;
+    final store = widget.store;
+    final messenger = ScaffoldMessenger.of(context);
+    final l10n = AppLocalizations.of(context);
+    final now = {for (final id in ids) store.categoryOf(id)};
+    final choice = await showCategoryPicker(
+      context,
+      tree: store.categories,
+      current: now.length == 1 ? now.single : null,
+    );
+    if (choice == null) return;
+    for (final id in ids) {
+      await store.file(id, choice.id);
+    }
+    if (!mounted) return;
+    _endPicking();
+    final name = switch (choice.id) {
+      final id? => store.categories[id]?.name.value,
+      null => null,
+    };
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(
+            name == null
+                ? l10n.notesUnfiled(ids.length)
+                : l10n.notesFiled(ids.length, name),
+          ),
+        ),
+      );
   }
 
   SchemaDefinition? _schemaOf(DynamicEntry entry) {
@@ -166,7 +291,11 @@ class _NoteLibraryScreenState extends State<NoteLibraryScreen> {
 
   @override
   Widget build(BuildContext context) => CallbackShortcuts(
-    bindings: {CommandPalette.activator: _showPalette},
+    bindings: {
+      CommandPalette.activator: _showPalette,
+      if (_picks != null)
+        const SingleActivator(LogicalKeyboardKey.escape): _endPicking,
+    },
     child: Focus(
       autofocus: true,
       child: LayoutBuilder(
@@ -368,10 +497,24 @@ class _NoteLibraryScreenState extends State<NoteLibraryScreen> {
       ),
       Padding(
         padding: const EdgeInsets.symmetric(horizontal: Spacing.m),
-        child: FilledButton.icon(
-          onPressed: () => unawaited(_openBeside(_NewNote())),
-          icon: const Icon(Icons.add),
-          label: Text(l10n.newNote),
+        child: Row(
+          children: [
+            Expanded(
+              child: FilledButton.icon(
+                onPressed: () => unawaited(_openBeside(_NewNote())),
+                icon: const Icon(Icons.add),
+                label: Text(l10n.newNote),
+              ),
+            ),
+            IconButton(
+              onPressed: _picks == null
+                  ? () => setState(() => _picks = {})
+                  : _endPicking,
+              isSelected: _picks != null,
+              tooltip: l10n.selectNotes,
+              icon: const Icon(Icons.checklist),
+            ),
+          ],
         ),
       ),
       const SizedBox(height: Spacing.s),
@@ -380,6 +523,7 @@ class _NoteLibraryScreenState extends State<NoteLibraryScreen> {
           listenable: widget.store,
           builder: (context, _) {
             final shown = _shown();
+            final picks = _picks;
             if (shown.isEmpty) {
               return Padding(
                 padding: const EdgeInsets.all(Spacing.l),
@@ -392,7 +536,7 @@ class _NoteLibraryScreenState extends State<NoteLibraryScreen> {
                 ),
               );
             }
-            return ListView.builder(
+            final list = ListView.builder(
               padding: const EdgeInsets.only(bottom: Spacing.xxl),
               itemCount: shown.length,
               itemBuilder: (context, index) {
@@ -402,10 +546,28 @@ class _NoteLibraryScreenState extends State<NoteLibraryScreen> {
                   entry: entry,
                   schema: _schemaOf(entry),
                   selected: entry.id == _opened,
-                  onTap: () => unawaited(_openBeside(entry.id)),
+                  picked: picks?.contains(entry.id),
+                  onTap: () => _click(entry, shown),
+                  onPick: () => _toggle(entry.id),
                   onLongPress: () => _file(entry),
                 );
               },
+            );
+            if (picks == null) return list;
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _PickBar(
+                  count: _pickedShown().length,
+                  onEnd: _endPicking,
+                  onAll: () => setState(
+                    () => _picks = {...picks, for (final e in shown) e.id},
+                  ),
+                  onFile: () => unawaited(_filePicked()),
+                  onTrash: () => unawaited(_trashPicked()),
+                ),
+                Expanded(child: list),
+              ],
             );
           },
         ),
@@ -958,7 +1120,9 @@ class _NoteRow extends StatelessWidget {
     required this.entry,
     required this.schema,
     required this.selected,
+    required this.picked,
     required this.onTap,
+    required this.onPick,
     required this.onLongPress,
     super.key,
   });
@@ -966,18 +1130,25 @@ class _NoteRow extends StatelessWidget {
   final DynamicEntry entry;
   final SchemaDefinition? schema;
   final bool selected;
+
+  /// Whether the note is picked; null while none are being picked.
+  final bool? picked;
   final VoidCallback onTap;
+  final VoidCallback onPick;
   final VoidCallback onLongPress;
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final title = NoteTitle.of(entry, schema);
+    final picked = this.picked;
     return ListTile(
-      leading: Icon(
-        NoteAppearance.icon(schema?.icon),
-        color: NoteAppearance.tint(schema?.tint),
-      ),
+      leading: picked == null
+          ? Icon(
+              NoteAppearance.icon(schema?.icon),
+              color: NoteAppearance.tint(schema?.tint),
+            )
+          : Checkbox(value: picked, onChanged: (_) => onPick()),
       title: Text(
         title.isEmpty ? l10n.untitled : title,
         maxLines: 2,
@@ -988,9 +1159,74 @@ class _NoteRow extends StatelessWidget {
             .formatMediumDate(entry.audit.updatedAt.toLocal()),
         maxLines: 1,
       ),
-      selected: selected,
+      selected: selected || (picked ?? false),
       onTap: onTap,
       onLongPress: onLongPress,
+    );
+  }
+}
+
+/// Above the list while notes are being picked: how many, and what can be
+/// done with them together.
+class _PickBar extends StatelessWidget {
+  const _PickBar({
+    required this.count,
+    required this.onEnd,
+    required this.onAll,
+    required this.onFile,
+    required this.onTrash,
+  });
+
+  final int count;
+  final VoidCallback onEnd;
+  final VoidCallback onAll;
+  final VoidCallback onFile;
+  final VoidCallback onTrash;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final some = count > 0;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: Spacing.xs),
+      child: Row(
+        children: [
+          IconButton(
+            key: const ValueKey('selection-clear'),
+            onPressed: onEnd,
+            tooltip: l10n.endPicking,
+            icon: const Icon(Icons.close),
+          ),
+          Expanded(
+            child: Semantics(
+              liveRegion: true,
+              child: Text(
+                l10n.notesPicked(count),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ),
+          IconButton(
+            key: const ValueKey('selection-all'),
+            onPressed: onAll,
+            tooltip: l10n.pickAll,
+            icon: const Icon(Icons.select_all),
+          ),
+          IconButton(
+            key: const ValueKey('selection-file'),
+            onPressed: some ? onFile : null,
+            tooltip: l10n.fileNotes,
+            icon: const Icon(Icons.drive_file_move_outline),
+          ),
+          IconButton(
+            key: const ValueKey('selection-trash'),
+            onPressed: some ? onTrash : null,
+            tooltip: l10n.moveToTrash,
+            icon: const Icon(Icons.delete_outline),
+          ),
+        ],
+      ),
     );
   }
 }
