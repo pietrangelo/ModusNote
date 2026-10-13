@@ -30,6 +30,7 @@ class NoteLibraryScreen extends StatefulWidget {
     this.cloud,
     this.onLock,
     this.onPasskey,
+    this.onBackup,
     super.key,
   });
 
@@ -45,6 +46,10 @@ class NoteLibraryScreen extends StatefulWidget {
 
   /// Opens the passkey settings; null where passkeys are not offered.
   final VoidCallback? onPasskey;
+
+  /// Opens the backup and export sheet; null where files cannot be
+  /// saved and picked.
+  final VoidCallback? onBackup;
 
   /// The narrowest window that shows the three columns.
   static const wideFrom = Extents.xxxl;
@@ -385,6 +390,12 @@ class _NoteLibraryScreenState extends State<NoteLibraryScreen> {
         onPressed: _openTrash,
         tooltip: l10n.trash,
         icon: const Icon(Icons.delete_outline),
+      ),
+    if (widget.onBackup case final onBackup?)
+      IconButton(
+        onPressed: onBackup,
+        tooltip: l10n.backupSettings,
+        icon: const Icon(Icons.save_alt),
       ),
     if (widget.onPasskey case final onPasskey?)
       IconButton(

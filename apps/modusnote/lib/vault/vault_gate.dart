@@ -11,10 +11,14 @@ import 'package:offline_sync_adapters/offline_sync_adapters.dart';
 import 'package:schema_dynamic_content/schema_dynamic_content.dart';
 
 import '../attachments/note_images.dart';
+import '../backup/backup_sheet.dart';
+import '../backup/file_exchange.dart';
+import '../backup/markdown_export.dart';
 import '../audio/note_playback.dart';
 import '../audio/note_recorder.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../notes/note_library.dart';
+import '../notes/schema_text.dart';
 import '../sync/blob_sync.dart';
 import '../sync/cloud_sheet.dart';
 import '../sync/link_device_sheet.dart';
@@ -44,6 +48,7 @@ class VaultGate extends StatefulWidget {
     this.autoLockFor,
     this.account,
     this.syncFor,
+    this.files,
     super.key,
   });
 
@@ -94,6 +99,10 @@ class VaultGate extends StatefulWidget {
     Future<void> Function() onPulled,
   )?
   syncFor;
+
+  /// Saves and picks files for the backup and the export; null where the
+  /// platform has no way yet, which hides them.
+  final FileExchange? files;
 
   @override
   State<VaultGate> createState() => _VaultGateState();
@@ -426,6 +435,44 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
     }
   }
 
+  /// The encrypted backup, its restore and the Markdown export of the
+  /// open vault.
+  Future<void> _backup() async {
+    final files = widget.files;
+    if (files == null) return;
+    if (_stage case _Open(:final vault, :final store)) {
+      final keeper = widget.keeper;
+      final l10n = AppLocalizations.of(context);
+      final dates = MaterialLocalizations.of(context);
+      await showBackupSheet(
+        context,
+        BackupTools(
+          files: files,
+          secretFrom: widget.passwordFrom,
+          export: (phrase) => keeper.exportBackup(vault, phrase),
+          open: keeper.openBackup,
+          restore: (backup) async {
+            final restored = await keeper.restoreBackup(vault, backup);
+            await store.reload();
+            return restored;
+          },
+          markdown: (at) => MarkdownExport(
+            schemas: widget.catalog.current,
+            labels: SchemaText(l10n),
+            words: (
+              untitled: l10n.untitled,
+              recording: l10n.markdownRecording,
+              picture: l10n.markdownPicture,
+              date: dates.formatMediumDate,
+            ),
+            categories: store.categories,
+            categoryOf: store.categoryOf,
+          ).archive(store.entries, at: at),
+        ),
+      );
+    }
+  }
+
   /// Sets up or turns off the passkey of the open vault.
   Future<void> _passkeySettings() async {
     final keeper = widget.keeper;
@@ -547,6 +594,7 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
                 onLinkDevice: widget.keeper.offersLinking ? _linkDevice : null,
               ),
         onLock: _lock,
+        onBackup: widget.files == null ? null : _backup,
         onPasskey: widget.keeper.offersPasskeys ? _passkeySettings : null,
       ),
     ),
