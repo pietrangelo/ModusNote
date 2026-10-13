@@ -42,6 +42,7 @@ final class NotePlayback {
     required this._decoding,
     required this._engine,
     required this._player,
+    this._ensureLocal,
   });
 
   /// Bars in a waveform: a Fibonacci number, like every count on screen.
@@ -51,9 +52,14 @@ final class NotePlayback {
   final SyncEngine _engine;
   final RecordingPlayer _player;
 
+  /// Downloads a recording this device does not have yet; null where there
+  /// is no shared storage.
+  final Future<void> Function(KeyedRecording take)? _ensureLocal;
+
   bool canPlay(KeyedRecording take) => _decoding.canPlay(take.metadata.format);
 
   Future<OpenedRecording> open(KeyedRecording take) async {
+    await _ensureLocal?.call(take);
     final audio = await _decoding.open(
       take.metadata,
       contentKey: _engine.contentKeyFor(take.epoch),

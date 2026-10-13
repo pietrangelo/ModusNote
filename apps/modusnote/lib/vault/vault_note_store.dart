@@ -53,6 +53,11 @@ final class VaultNoteStore extends ChangeNotifier implements NoteStore {
       [for (final note in _notes.values) note.entry]
         ..sort((a, b) => b.audit.updatedAt.compareTo(a.audit.updatedAt));
 
+  /// Every recording the notes reference.
+  Iterable<KeyedRecording> get recordings => [
+    for (final note in _notes.values) ...note.recordings.values,
+  ];
+
   @override
   KeyedRecording? recordingOf(BlobId id) {
     for (final note in _notes.values) {
