@@ -225,6 +225,91 @@ void main() {
     });
   });
 
+  group('category', () {
+    final shelf = CategoryId('0123456789abcdef0123456789abcdef');
+
+    test('a note starts in no category and can be filed and unfiled', () {
+      final note = RecordedNote.of(song());
+      expect(note.category, isNull);
+
+      final filed = note.filedIn(shelf);
+      expect(filed.category, shelf);
+      expect(filed.entry, same(note.entry));
+      expect(filed.filedIn(null).category, isNull);
+    });
+
+    test('edits, trash and restore keep the category', () {
+      final filed = RecordedNote.of(song()).filedIn(shelf);
+
+      expect(filed.edited(song()).category, shelf);
+      expect(filed.trashed(at: later).category, shelf);
+      expect(filed.trashed(at: later).restored().category, shelf);
+      expect(RecordedNote.compose(song(), category: shelf).category, shelf);
+    });
+
+    test('a note in no category keeps the older versions byte for byte', () {
+      final note = RecordedNote.of(song());
+
+      expect(
+        RecordedNoteCodec.encode(note.filedIn(shelf).filedIn(null)),
+        RecordedNoteCodec.encode(note),
+      );
+      expect(RecordedNoteCodec.encode(note.trashed(at: later))[0], 2);
+    });
+
+    test('a filed note round-trips, in the trash or not', () {
+      final note = valid(
+        RecordedNote.of(song())
+            .attach(take('take_1'), field: guideTrack, schema: schema, at: at),
+      ).filedIn(shelf);
+
+      for (final written in [note, note.trashed(at: later)]) {
+        final wire = RecordedNoteCodec.encode(written);
+        expect(wire[0], 3);
+        final back = valid(RecordedNoteCodec.decode(wire, schemas: resolve));
+        expect(back.category, shelf);
+        expect(back.trashedAt, written.trashedAt);
+        expect(back.recordings, note.recordings);
+        expect(back.entry.attributes, note.entry.attributes);
+      }
+    });
+
+    test('every truncation, trailing byte and unknown flag is refused', () {
+      final wire = RecordedNoteCodec.encode(
+        RecordedNote.of(song()).filedIn(shelf).trashed(at: later),
+      );
+      for (var length = 0; length < wire.length; length++) {
+        expect(
+          () => RecordedNoteCodec.decode(
+            Uint8List.sublistView(wire, 0, length),
+            schemas: resolve,
+          ),
+          throwsA(isA<MalformedBlobException>()),
+          reason: '$length bytes',
+        );
+      }
+      expect(
+        () => RecordedNoteCodec.decode([...wire, 0], schemas: resolve),
+        throwsA(isA<MalformedBlobException>()),
+      );
+      // flags | trash time (8) | id length (1) | id (32)
+      final flags = wire.length - 1 - 32 - 8 - 1;
+      for (final bad in [0, 4, 0x80, 0xFF]) {
+        final forged = Uint8List.fromList(wire)..[flags] = bad;
+        expect(
+          () => RecordedNoteCodec.decode(forged, schemas: resolve),
+          throwsA(isA<MalformedBlobException>()),
+          reason: 'flags $bad',
+        );
+      }
+      final badId = Uint8List.fromList(wire)..[wire.length - 1] = 0x20;
+      expect(
+        () => RecordedNoteCodec.decode(badId, schemas: resolve),
+        throwsA(isA<MalformedBlobException>()),
+      );
+    });
+  });
+
   group('adversary', () {
     Uint8List encoded() => RecordedNoteCodec.encode(
       valid(

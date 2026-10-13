@@ -43,12 +43,16 @@ final class KeyedRecording {
 /// A note in the trash is still whole, recordings included, so restoring
 /// it brings everything back; only deleting it for good (a tombstone in the
 /// sync layer) lets its recordings go.
+///
+/// The category a note is filed in travels here too, sealed with it: the
+/// server cannot tell which notes share one.
 @immutable
 final class RecordedNote {
   RecordedNote._(
     this.entry,
     Map<BlobId, KeyedRecording> recordings, {
     DateTime? trashedAt,
+    this.category,
   }) : recordings = Map.unmodifiable(recordings),
        trashedAt = trashedAt?.toUtc();
 
@@ -58,6 +62,7 @@ final class RecordedNote {
   factory RecordedNote.compose(
     DynamicEntry entry, {
     Iterable<KeyedRecording> known = const [],
+    CategoryId? category,
   }) {
     final byId = {for (final take in known) take.id: take};
     final recordings = <BlobId, KeyedRecording>{};
@@ -66,7 +71,7 @@ final class RecordedNote {
           byId[id] ??
           (throw ArgumentError.value(id.value, 'entry', 'unknown recording'));
     }
-    return RecordedNote._(entry, recordings);
+    return RecordedNote._(entry, recordings, category: category);
   }
 
   factory RecordedNote.of(DynamicEntry entry) => RecordedNote.compose(entry);
@@ -79,12 +84,25 @@ final class RecordedNote {
 
   bool get isTrashed => trashedAt != null;
 
+  /// The category the note is filed in; null for none. It may name one
+  /// that is gone: [CategoryTree.resolve] says where the note shows.
+  final CategoryId? category;
+
   /// The same note in the trash since [at].
   RecordedNote trashed({required DateTime at}) =>
-      RecordedNote._(entry, recordings, trashedAt: at);
+      RecordedNote._(entry, recordings, trashedAt: at, category: category);
 
-  /// The same note back out of the trash.
-  RecordedNote restored() => RecordedNote._(entry, recordings);
+  /// The same note back out of the trash, in the category it had.
+  RecordedNote restored() =>
+      RecordedNote._(entry, recordings, category: category);
+
+  /// The same note filed in [category] (null: in none).
+  RecordedNote filedIn(CategoryId? category) => RecordedNote._(
+    entry,
+    recordings,
+    trashedAt: trashedAt,
+    category: category,
+  );
 
   /// Puts [take] in the audio [field]; a take it replaces is dropped.
   Validated<RecordedNote> attach(
@@ -118,7 +136,12 @@ final class RecordedNote {
       next,
       known: [...recordings.values, ...takes],
     );
-    return RecordedNote._(note.entry, note.recordings, trashedAt: trashedAt);
+    return RecordedNote._(
+      note.entry,
+      note.recordings,
+      trashedAt: trashedAt,
+      category: category,
+    );
   }
 
   /// Blobs [before] held that [after] does not: ciphertext to delete once
@@ -131,26 +154,47 @@ final class RecordedNote {
 }
 
 /// Bytes form of a [RecordedNote]: `version(1) | entry (EntryCodec, u32
-/// length) | count(u16) | recordings`, then, in version 2 only, the trash
-/// time (u64 microseconds since the epoch, UTC). A note outside the trash
-/// is always written as version 1, byte for byte what apps without a trash
-/// read; those apps see a trashed note as unreadable, so it leaves their
-/// library too. Decoding treats its input as hostile and throws only
-/// [MalformedBlobException].
+/// length) | count(u16) | recordings`, then
+/// * in version 2, the trash time (u64 microseconds since the epoch, UTC);
+/// * in version 3, `flags(1)` (bit 0 in the trash, bit 1 filed, which is
+///   always set), the trash time if bit 0, then the category id (u8
+///   length, ASCII).
+///
+/// Each note is written in the oldest version that holds it: one outside
+/// the trash and any category is version 1, byte for byte what apps
+/// without a trash read, and a trashed one outside any category version 2.
+/// Older apps see a note in a later version as unreadable, so it leaves
+/// their library until they are updated. Decoding treats its input as
+/// hostile and throws only [MalformedBlobException].
 abstract final class RecordedNoteCodec {
   static const _version = 1;
   static const _trashedVersion = 2;
+  static const _filedVersion = 3;
+  static const _trashedFlag = 1;
+  static const _filedFlag = 2;
   static const _maxRecordings = 64;
 
   static Uint8List encode(RecordedNote note) {
     final bytes = encodeUnchecked(note.entry, note.recordings);
     final trashedAt = note.trashedAt;
-    if (trashedAt == null) return bytes;
-    return (BytesBuilder(copy: false)
-          ..addByte(_trashedVersion)
-          ..add(Uint8List.sublistView(bytes, 1))
-          ..add(_uint(8, trashedAt.microsecondsSinceEpoch)))
-        .takeBytes();
+    final category = note.category;
+    if (trashedAt == null && category == null) return bytes;
+    final out = BytesBuilder(copy: false)
+      ..addByte(category == null ? _trashedVersion : _filedVersion)
+      ..add(Uint8List.sublistView(bytes, 1));
+    if (category != null) {
+      out.addByte(_filedFlag | (trashedAt == null ? 0 : _trashedFlag));
+    }
+    if (trashedAt != null) {
+      out.add(_uint(8, trashedAt.microsecondsSinceEpoch));
+    }
+    if (category != null) {
+      final id = ascii.encode(category.value);
+      out
+        ..addByte(id.length)
+        ..add(id);
+    }
+    return out.takeBytes();
   }
 
   /// Writes any pairing, even one [decode] refuses; for adversary tests.
@@ -184,7 +228,9 @@ abstract final class RecordedNoteCodec {
     try {
       final reader = _Reader(bytes);
       final version = reader.uint(1);
-      if (version != _version && version != _trashedVersion) {
+      if (version != _version &&
+          version != _trashedVersion &&
+          version != _filedVersion) {
         throw const MalformedBlobException('unknown note version');
       }
       final entryBytes = reader.blob();
@@ -200,11 +246,24 @@ abstract final class RecordedNoteCodec {
         }
         recordings[take.id] = take;
       }
-      final trashedAt = version == _trashedVersion ? _time(reader) : null;
+      final flags = version == _filedVersion
+          ? reader.uint(1)
+          : version == _trashedVersion
+          ? _trashedFlag
+          : 0;
+      if (version == _filedVersion &&
+          (flags & _filedFlag == 0 ||
+              flags & ~(_filedFlag | _trashedFlag) != 0)) {
+        throw const MalformedBlobException('unknown note flags');
+      }
+      final trashedAt = flags & _trashedFlag != 0 ? _time(reader) : null;
+      final category = flags & _filedFlag != 0
+          ? CategoryId(ascii.decode(reader.bytes(reader.uint(1))))
+          : null;
       reader.finish();
       return switch (EntryCodec.decode(entryBytes, schemas: schemas)) {
         Valid(value: final entry) => Valid(
-          _paired(entry, recordings, trashedAt: trashedAt),
+          _paired(entry, recordings, trashedAt: trashedAt, category: category),
         ),
         Invalid(:final violations) => Invalid(violations),
       };
@@ -216,6 +275,8 @@ abstract final class RecordedNoteCodec {
       throw const MalformedBlobException('malformed recording id');
     } on CollaborationException {
       throw const MalformedBlobException('malformed recording epoch');
+    } on InvalidValueException {
+      throw const MalformedBlobException('malformed category');
     } on FormatException {
       throw const MalformedBlobException('malformed recording text');
     }
@@ -225,13 +286,19 @@ abstract final class RecordedNoteCodec {
     DynamicEntry entry,
     Map<BlobId, KeyedRecording> recordings, {
     DateTime? trashedAt,
+    CategoryId? category,
   }) {
     final referenced = AudioAttachment.referencedBlobs(entry);
     if (referenced.length != recordings.length ||
         !referenced.containsAll(recordings.keys)) {
       throw const MalformedBlobException('recordings do not match the note');
     }
-    return RecordedNote._(entry, recordings, trashedAt: trashedAt);
+    return RecordedNote._(
+      entry,
+      recordings,
+      trashedAt: trashedAt,
+      category: category,
+    );
   }
 
   static DateTime _time(_Reader reader) {

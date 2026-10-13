@@ -39,6 +39,7 @@ class NoteEditorScreen extends StatefulWidget {
     required this.initialSchema,
     this.entry,
     this.onClose,
+    this.category,
     this.clock = DateTime.now,
     super.key,
   });
@@ -53,6 +54,9 @@ class NoteEditorScreen extends StatefulWidget {
   /// Closes the note when it is shown beside the list; null on a page of
   /// its own, which goes back instead.
   final VoidCallback? onClose;
+
+  /// Where a new note is filed; an existing one stays where it is.
+  final CategoryId? category;
   final DateTime Function() clock;
 
   /// How long typing must pause before the note is saved.
@@ -74,6 +78,10 @@ class NoteEditorScreenState extends State<NoteEditorScreen>
   /// The id a new note will be saved under.
   late final EntryId _id = widget.entry?.id ?? _newEntryId();
 
+  /// Where a new note goes: the category open when it was started, even if
+  /// the list beside it moves on to another.
+  late final CategoryId? _newIn;
+
   /// Takes recorded since the last save; kept only once a save holds them.
   final _takes = <BlobId, KeyedRecording>{};
 
@@ -86,6 +94,7 @@ class NoteEditorScreenState extends State<NoteEditorScreen>
   @override
   void initState() {
     super.initState();
+    _newIn = widget.category;
     WidgetsBinding.instance.addObserver(this);
   }
 
@@ -191,7 +200,11 @@ class NoteEditorScreenState extends State<NoteEditorScreen>
     // A save is not cut short by the vault locking itself.
     final release = AutoLockScope.maybeOf(context)?.hold();
     try {
-      await widget.store.save(entry, takes: _takes.values.toList());
+      await widget.store.save(
+        entry,
+        takes: _takes.values.toList(),
+        newIn: _newIn,
+      );
     } on Object {
       return _show(SaveState.failed);
     } finally {
