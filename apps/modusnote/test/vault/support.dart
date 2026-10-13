@@ -14,11 +14,71 @@ Future<void> loadSodium() async => sodium = await SodiumSumoInit.init();
 
 /// A vault on an in-memory SQLite database, as the app builds it on a
 /// device; several keepers on the same [database] are app restarts.
-VaultKeeper keeperOn(Database database) => vaultKeeper(
+VaultKeeper keeperOn(Database database, {PasskeyPrf? passkeys}) => vaultKeeper(
   sodium: sodium,
   database: database,
   kdf: KdfParameters.interactive,
+  passkeys: passkeys,
 );
+
+/// An authenticator in memory: each passkey is a random secret and its PRF
+/// a hash of secret and salt, as `hmac-secret` is an HMAC of both.
+final class FakePasskeys implements PasskeyPrf {
+  final _secrets = <PasskeyCredentialId, Uint8List>{};
+
+  /// Thrown by the next request instead of answering it.
+  Object? failNext;
+
+  /// Answers with an unrelated secret, as another authenticator would.
+  bool impostor = false;
+
+  @override
+  Future<RegisteredPasskey> register({required PrfSalt salt}) async {
+    _maybeFail();
+    final credential = PasskeyCredentialId.fromBytes(
+      sodium.randombytes.buf(32),
+    );
+    _secrets[credential] = sodium.randombytes.buf(32);
+    return RegisteredPasskey(
+      credential: credential,
+      key: _prf(credential, salt),
+    );
+  }
+
+  @override
+  Future<SymmetricKey> evaluate(
+    PasskeyCredentialId credential, {
+    required PrfSalt salt,
+  }) async {
+    _maybeFail();
+    if (!_secrets.containsKey(credential)) {
+      throw const PasskeyCancelledException();
+    }
+    return _prf(credential, salt);
+  }
+
+  @override
+  Future<void> forget(PasskeyCredentialId credential) async =>
+      _secrets.remove(credential);
+
+  void _maybeFail() {
+    final failure = failNext;
+    failNext = null;
+    if (failure != null) throw failure;
+  }
+
+  SymmetricKey _prf(PasskeyCredentialId credential, PrfSalt salt) =>
+      SodiumSymmetricKey.wrap(
+        sodium.secureCopy(
+          sodium.crypto.genericHash(
+            message: Uint8List.fromList([
+              ...impostor ? sodium.randombytes.buf(32) : _secrets[credential]!,
+              ...salt.bytes,
+            ]),
+          ),
+        ),
+      );
+}
 
 Database memoryDatabase() => sqlite3.openInMemory();
 

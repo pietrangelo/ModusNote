@@ -53,5 +53,7 @@ export async function serve(root) {
     }
   });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
-  return { server, origin: `http://127.0.0.1:${server.address().port}` };
+  // localhost, not the bare IP: WebAuthn refuses IP addresses as relying
+  // party, and localhost is a secure context like the HTTPS deployment.
+  return { server, origin: `http://localhost:${server.address().port}` };
 }

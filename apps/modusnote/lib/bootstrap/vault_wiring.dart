@@ -11,11 +11,13 @@ import '../vault/offline_server.dart';
 
 /// The vault as every platform builds it: libsodium for the crypto and one
 /// SQLite database (a file on mobile, IndexedDB in the browser) holding the
-/// sealed header, the member log and the record envelopes.
+/// sealed header, the member log and the record envelopes. [passkeys] is
+/// the second way in where the platform has one (WebAuthn in the browser).
 VaultKeeper vaultKeeper({
   required SodiumSumo sodium,
   required CommonDatabase database,
   required KdfParameters kdf,
+  PasskeyPrf? passkeys,
 }) => VaultKeeper(
   vaults: SqliteVaultStore(database),
   records: (workspace) =>
@@ -29,4 +31,5 @@ VaultKeeper vaultKeeper({
   clock: const SystemClock(),
   random: Random.secure(),
   kdf: kdf,
+  passkeys: passkeys,
 );

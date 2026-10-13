@@ -2,6 +2,7 @@ import 'package:collaboration_access_control/collaboration_access_control.dart';
 import 'package:identity_cryptography/identity_cryptography.dart';
 
 import '../core/outbox.dart';
+import '../core/passkey_slot.dart';
 import '../core/record_revision.dart';
 import '../core/sync_row.dart';
 import '../core/vault_header.dart';
@@ -67,6 +68,15 @@ abstract interface class VaultStore {
   Future<List<MembershipRecord>> loadMembership();
 
   Future<List<KeyBundle>> loadKeyBundles();
+
+  /// The passkey enrolled on this device, if any.
+  Future<PasskeySlot?> loadPasskey();
+
+  /// Stores [slot], replacing any earlier one. Throws [NoVaultException]
+  /// when there is no vault for it to open.
+  Future<void> savePasskey(PasskeySlot slot);
+
+  Future<void> removePasskey();
 }
 
 /// Port: wall-clock time, used only to order concurrent edits.

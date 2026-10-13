@@ -3,6 +3,7 @@ import 'dart:math';
 import 'package:collaboration_access_control/collaboration_access_control.dart';
 import 'package:identity_cryptography/identity_cryptography.dart';
 
+import '../core/passkey_slot.dart';
 import '../core/sync_exception.dart';
 import '../core/vault_header.dart';
 import 'ports.dart';
@@ -15,14 +16,16 @@ final class UnlockedVault {
     required this._engine,
     required this.member,
     required this.workspace,
-    required this._secrets,
+    required this._identity,
+    required this._localKey,
     required this._keyring,
   });
 
   final MemberId member;
   final WorkspaceId workspace;
   final SyncEngine _engine;
-  final List<Secret> _secrets;
+  final IdentityKeyPair _identity;
+  final SymmetricKey _localKey;
   final GroupKeyring _keyring;
   var _locked = false;
 
@@ -34,18 +37,24 @@ final class UnlockedVault {
   void lock() {
     if (_locked) return;
     _locked = true;
-    for (final secret in _secrets) {
-      secret.dispose();
-    }
+    _identity.dispose();
+    _localKey.dispose();
     _keyring.dispose();
   }
 }
 
-/// Use case: creating the device's vault from a passphrase and reopening it.
+/// Use case: creating the device's vault from a passphrase and reopening it,
+/// with the passphrase or with a passkey.
 ///
 /// The passphrase is stretched with Argon2id into the MasterKey, which only
 /// ever seals the identity and derives the device-local key; it is disposed
 /// as soon as both exist. The passphrase is consumed by every call.
+///
+/// A passkey, where the platform offers one ([PasskeyPrf]), is a second
+/// way in: an open vault seals its identity and local key again under a key
+/// derived from the passkey's PRF output ([PasskeySlot]), so the MasterKey
+/// is never needed, nor kept, to enroll. The passphrase always keeps
+/// working.
 final class VaultKeeper {
   VaultKeeper({
     required this._vaults,
@@ -59,13 +68,16 @@ final class VaultKeeper {
     required this._clock,
     required this._random,
     required this._kdf,
-  }) : _administration = WorkspaceAdministration(
+    this._passkeys,
+  }) : _encapsulation = encapsulation,
+       _administration = WorkspaceAdministration(
          identities: _identities,
          encapsulation: encapsulation,
          envelopes: _envelopes,
        );
 
   static final _localKeyContext = KeyContext('mn-local');
+  static final _passkeyContext = KeyContext('mn-passk');
 
   final VaultStore _vaults;
   final LocalRecordStore Function(WorkspaceId) _records;
@@ -74,12 +86,21 @@ final class VaultKeeper {
   final KeyDerivationService _keys;
   final SubkeyDerivationService _subkeys;
   final EnvelopeEncryptor _envelopes;
+  final KeyEncapsulation _encapsulation;
+  final PasskeyPrf? _passkeys;
   final WorkspaceAdministration _administration;
   final Clock _clock;
   final Random _random;
   final KdfParameters _kdf;
 
   Future<bool> get exists async => await _vaults.loadHeader() != null;
+
+  /// Whether this platform can unlock with a passkey at all.
+  bool get offersPasskeys => _passkeys != null;
+
+  /// Whether a passkey is enrolled and this platform can use it.
+  Future<bool> get hasPasskey async =>
+      _passkeys != null && await _vaults.loadPasskey() != null;
 
   /// Founds a personal workspace owned by a new device identity.
   Future<UnlockedVault> create(PasswordSecret password) async {
@@ -172,6 +193,137 @@ final class VaultKeeper {
       master.dispose();
     }
 
+    return _verified(header, identity, localKey);
+  }
+
+  /// Opens the vault with the enrolled passkey: the user confirms on the
+  /// authenticator and its PRF output, through a subkey, opens the identity
+  /// and then the local key.
+  ///
+  /// Throws [NoVaultException], [NoPasskeyException],
+  /// [PasskeyRejectedException], the port's [PasskeyCancelledException] or
+  /// [PasskeyUnsupportedException], or [TamperedWorkspaceDataException].
+  Future<UnlockedVault> unlockWithPasskey() async {
+    final passkeys = _passkeys ?? (throw const PasskeyUnsupportedException());
+    final header =
+        await _vaults.loadHeader() ?? (throw const NoVaultException());
+    final slot =
+        await _vaults.loadPasskey() ?? (throw const NoPasskeyException());
+    final prf = await passkeys.evaluate(slot.credential, salt: slot.salt);
+    final SymmetricKey passkeyKey;
+    try {
+      passkeyKey = _subkeys.deriveSubkey(
+        parent: prf,
+        context: _passkeyContext,
+        id: slot.keyId,
+      );
+    } finally {
+      prf.dispose();
+    }
+
+    final IdentityKeyPair identity;
+    try {
+      identity = _identities.openIdentity(
+        slot.sealedIdentity,
+        key: passkeyKey,
+        associatedData: slot.identitySlot(header),
+      );
+    } on AuthenticationTagMismatchException {
+      throw const PasskeyRejectedException();
+    } finally {
+      passkeyKey.dispose();
+    }
+    final SymmetricKey localKey;
+    try {
+      // The identity must also be the founder the header pins, or a slot
+      // could smuggle in an identity of its own.
+      if (MemberId.of(identity.publicIdentity) != header.founder) {
+        throw const PasskeyRejectedException();
+      }
+      localKey = _encapsulation.open(
+        slot.sealedLocalKey,
+        recipient: identity,
+        associatedData: slot.localKeySlot(header),
+      );
+    } on AuthenticationTagMismatchException {
+      identity.dispose();
+      throw const PasskeyRejectedException();
+    } catch (_) {
+      identity.dispose();
+      rethrow;
+    }
+    return _verified(header, identity, localKey);
+  }
+
+  /// Registers a new passkey and seals the open [vault]'s identity and
+  /// local key under it, replacing any passkey enrolled before.
+  Future<void> enrollPasskey(UnlockedVault vault) async {
+    final passkeys = _passkeys ?? (throw const PasskeyUnsupportedException());
+    if (vault.isLocked) throw const VaultLockedException();
+    final header =
+        await _vaults.loadHeader() ?? (throw const NoVaultException());
+    final previous = await _vaults.loadPasskey();
+    final salt = PrfSalt.fromBytes(
+      List.generate(PrfSalt.length, (_) => _random.nextInt(256)),
+    );
+    final registered = await passkeys.register(salt: salt);
+    final keyId = _subkeys.newSubkeyId();
+    final PasskeySlot slot;
+    try {
+      // Locked while the user was at the authenticator: nothing to seal.
+      if (vault.isLocked) throw const VaultLockedException();
+      final passkeyKey = _subkeys.deriveSubkey(
+        parent: registered.key,
+        context: _passkeyContext,
+        id: keyId,
+      );
+      try {
+        slot = PasskeySlot.sealing(
+          header: header,
+          credential: registered.credential,
+          salt: salt,
+          keyId: keyId,
+          sealIdentity: (data) => _identities.sealIdentity(
+            vault._identity,
+            key: passkeyKey,
+            associatedData: data,
+          ),
+          sealLocalKey: (data) => _encapsulation.seal(
+            vault._localKey,
+            recipient: vault._identity.publicIdentity.encryptionKey,
+            associatedData: data,
+          ),
+        );
+      } finally {
+        passkeyKey.dispose();
+      }
+    } catch (_) {
+      await passkeys.forget(registered.credential);
+      rethrow;
+    } finally {
+      registered.key.dispose();
+    }
+    await _vaults.savePasskey(slot);
+    if (previous != null && previous.credential != slot.credential) {
+      await passkeys.forget(previous.credential);
+    }
+  }
+
+  /// Removes the enrolled passkey; the passphrase remains the only way in.
+  Future<void> removePasskey() async {
+    final slot = await _vaults.loadPasskey();
+    if (slot == null) return;
+    await _vaults.removePasskey();
+    await _passkeys?.forget(slot.credential);
+  }
+
+  /// Verifies the stored log against the founder the header pins and
+  /// accepts the stored key bundles, then opens the vault.
+  Future<UnlockedVault> _verified(
+    VaultHeader header,
+    IdentityKeyPair identity,
+    SymmetricKey localKey,
+  ) async {
     final keyring = GroupKeyring(header.workspace);
     try {
       final ledger = MembershipLedger(_identities).verify(
@@ -214,7 +366,8 @@ final class VaultKeeper {
   ) => UnlockedVault._(
     member: MemberId.of(identity.publicIdentity),
     workspace: header.workspace,
-    secrets: [identity, localKey],
+    identity: identity,
+    localKey: localKey,
     keyring: keyring,
     engine: SyncEngine(
       server: _server,
