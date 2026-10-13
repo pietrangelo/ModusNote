@@ -145,7 +145,7 @@ class _CategoryDialogState extends State<_CategoryDialog> {
           onPressed: () => Navigator.of(context).pop(),
           child: Text(l10n.cancel),
         ),
-        FilledButton(onPressed: _save, child: Text(l10n.save)),
+        FilledButton(onPressed: _save, child: Text(l10n.categorySave)),
       ],
     );
   }
