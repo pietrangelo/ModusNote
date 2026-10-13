@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:blob_storage_media/blob_storage_media.dart';
 import 'package:collaboration_access_control/collaboration_access_control.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -13,6 +14,7 @@ import '../audio/note_playback.dart';
 import '../audio/note_recorder.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../notes/note_library.dart';
+import '../sync/blob_sync.dart';
 import '../sync/cloud_sheet.dart';
 import '../sync/sync_controller.dart';
 import '../theme/golden_ratio.dart';
@@ -33,6 +35,7 @@ class VaultGate extends StatefulWidget {
     required this.catalog,
     this.recorderFor,
     this.playbackFor,
+    this.replicationFor,
     this.autoLockFor,
     this.account,
     this.syncFor,
@@ -51,7 +54,18 @@ class VaultGate extends StatefulWidget {
 
   /// Builds the player's opener for an unlocked vault; without it
   /// recordings show their length but cannot be played.
-  final NotePlayback Function(SyncEngine engine)? playbackFor;
+  ///
+  /// [ensureLocal] downloads a recording from the shared storage; null
+  /// without one.
+  final NotePlayback Function(
+    SyncEngine engine,
+    Future<void> Function(KeyedRecording take)? ensureLocal,
+  )?
+  playbackFor;
+
+  /// Connects the open vault's recordings to the workspace's shared
+  /// storage; null without a server, which keeps them on the device.
+  final BlobReplication Function(SyncEngine engine)? replicationFor;
 
   /// Builds the auto-lock of an open vault; tests shorten its times.
   final AutoLock Function(VoidCallback onLock)? autoLockFor;
@@ -101,6 +115,9 @@ final class _Open extends _Stage {
 /// The Supabase session, sealed in the vault under the local key: it opens
 /// only the account's rows (ciphertext), but it is still a credential.
 const _sessionSetting = 'sync.session';
+
+/// The recordings already in the workspace's shared storage.
+const _sentBlobsSetting = 'sync.blobs-sent';
 
 enum _Problem {
   tooShort,
@@ -188,13 +205,23 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
     await Future<void>.delayed(Duration.zero);
     try {
       final vault = await opening();
+      final replication = widget.account == null
+          ? null
+          : widget.replicationFor?.call(vault.engine);
+      BlobSync? blobs;
       final store = await VaultNoteStore.open(
         vault.engine,
         catalog: widget.catalog,
         recorder: widget.recorderFor?.call(vault.engine),
-        playback: widget.playbackFor?.call(vault.engine),
+        playback: widget.playbackFor?.call(
+          vault.engine,
+          replication == null ? null : (take) => blobs!.ensureLocal(take),
+        ),
       );
-      final sync = await _connect(vault, store);
+      if (replication != null) {
+        blobs = _blobSync(vault, store, replication);
+      }
+      final sync = await _connect(vault, store, blobs);
       if (!mounted) {
         sync?.dispose();
         widget.account?.detach();
@@ -231,6 +258,7 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
   Future<SyncController?> _connect(
     UnlockedVault vault,
     VaultNoteStore store,
+    BlobSync? blobs,
   ) async {
     final account = widget.account;
     if (account == null) return null;
@@ -251,9 +279,32 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
           engine: vault.engine,
           account: account,
           onPulled: store.reload,
+          afterSync: blobs?.uploadPending,
         );
     store.onWrite = sync.changed;
     return sync;
+  }
+
+  /// Which recordings the server holds is a sealed setting, like the
+  /// session; a damaged one only means checking them again.
+  BlobSync _blobSync(
+    UnlockedVault vault,
+    VaultNoteStore store,
+    BlobReplication replication,
+  ) {
+    final keeper = widget.keeper;
+    return BlobSync(
+      replication: replication,
+      recordings: () => store.recordings,
+      load: () async {
+        try {
+          return await keeper.loadSetting(vault, _sentBlobsSetting);
+        } on MalformedSyncDataException {
+          return null;
+        }
+      },
+      save: (value) => keeper.saveSetting(vault, _sentBlobsSetting, value),
+    );
   }
 
   /// A session that is missing, damaged or sealed for another vault means

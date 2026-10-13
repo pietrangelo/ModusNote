@@ -109,6 +109,7 @@
   "recordingTooLong": "Le registrazioni oltre i 30 minuti non si possono ancora ascoltare qui.",
   "recordingUnsupported": "Questo dispositivo non riproduce il formato di questa registrazione.",
   "recordingMissing": "Questa registrazione non è ancora su questo dispositivo.",
+  "recordingOffline": "Collegati a Internet per scaricare questa registrazione.",
   "recordingDamaged": "La registrazione è danneggiata o è stata alterata, quindi non viene riprodotta.",
   "markdownWrite": "Scrivi",
   "markdownPreview": "Anteprima",

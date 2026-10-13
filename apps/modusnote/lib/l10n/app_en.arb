@@ -477,6 +477,10 @@
   "@recordingMissing": {
     "description": "Audio player in a note's audio field."
   },
+  "recordingOffline": "Connect to the internet to download this recording.",
+  "@recordingOffline": {
+    "description": "A recording from another device could not be downloaded because the server is unreachable."
+  },
   "recordingDamaged": "The recording is damaged or was altered, so it won't be played.",
   "@recordingDamaged": {
     "description": "Audio player in a note's audio field."

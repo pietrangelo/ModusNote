@@ -1,5 +1,7 @@
 import 'dart:math';
 
+import 'package:blob_storage_media/blob_storage_media.dart';
+import 'package:blob_storage_media_adapters/remote_blobs.dart';
 import 'package:identity_cryptography/identity_cryptography.dart';
 import 'package:identity_cryptography_adapters/identity_cryptography_adapters.dart';
 import 'package:offline_sync/offline_sync.dart';
@@ -38,12 +40,16 @@ VaultKeeper vaultKeeper({
 
 /// The server the vault syncs with and the account that opens it.
 final class CloudWiring {
-  const CloudWiring({required this.server, this.account});
+  const CloudWiring({required this.server, this.account, this.remoteBlobs});
 
   final SyncServer server;
 
   /// Null in a build without a Supabase project: no sign-in is offered.
   final SyncAccount? account;
+
+  /// The shared blob storage of a workspace (its id in hex); null without
+  /// a server, which keeps recordings on the device.
+  final RemoteBlobStore Function(String workspace)? remoteBlobs;
 }
 
 /// Supabase when the build names a project ([SyncConfig]); otherwise a
@@ -62,5 +68,11 @@ CloudWiring cloudWiring(SyncConfig? config) {
       accessToken: account.accessToken,
     ),
     account: account,
+    remoteBlobs: (workspace) => R2RemoteBlobStore(
+      projectUrl: config.projectUrl,
+      anonKey: config.anonKey,
+      workspace: workspace,
+      accessToken: account.accessToken,
+    ),
   );
 }
