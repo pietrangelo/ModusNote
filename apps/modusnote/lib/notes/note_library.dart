@@ -9,6 +9,7 @@ import '../theme/golden_ratio.dart';
 import '../vault/auto_lock.dart';
 import 'categories/categories_screen.dart';
 import 'categories/category_picker.dart';
+import 'command_palette.dart';
 import 'note_appearance.dart';
 import 'note_editor.dart';
 import 'note_store.dart';
@@ -102,9 +103,9 @@ class _NoteLibraryScreenState extends State<NoteLibraryScreen> {
     return null;
   }
 
-  void _open({DynamicEntry? entry}) {
-    final schema = entry == null
-        ? _type ?? widget.schemas.last
+  void _open({DynamicEntry? entry, SchemaDefinition? schema}) {
+    schema = entry == null
+        ? schema ?? _type ?? widget.schemas.last
         : _schemaOf(entry);
     if (schema == null) return;
     _push(
@@ -160,13 +161,88 @@ class _NoteLibraryScreenState extends State<NoteLibraryScreen> {
     );
   }
 
+  bool get _isWide =>
+      MediaQuery.sizeOf(context).width >= NoteLibraryScreen.wideFrom;
+
   @override
-  Widget build(BuildContext context) => LayoutBuilder(
-    builder: (context, constraints) =>
-        constraints.maxWidth >= NoteLibraryScreen.wideFrom
-        ? _wide(context)
-        : _narrow(context),
+  Widget build(BuildContext context) => CallbackShortcuts(
+    bindings: {CommandPalette.activator: _showPalette},
+    child: Focus(
+      autofocus: true,
+      child: LayoutBuilder(
+        builder: (context, constraints) =>
+            constraints.maxWidth >= NoteLibraryScreen.wideFrom
+            ? _wide(context)
+            : _narrow(context),
+      ),
+    ),
   );
+
+  void _showPalette() => unawaited(CommandPalette.show(context, _commands));
+
+  /// What the palette offers for [query]: with nothing typed the latest
+  /// notes come first, otherwise the commands whose name matches.
+  List<PaletteCommand> _commands(String query) {
+    final l10n = AppLocalizations.of(context);
+    final text = SchemaText(l10n);
+    final wide = _isWide;
+    final terms = EntrySearch.fold(query)
+        .split(' ')
+        .where((term) => term.isNotEmpty)
+        .toList();
+    bool named(String label) {
+      final folded = EntrySearch.fold(label);
+      return terms.every(folded.contains);
+    }
+
+    final actions = [
+      for (final schema in widget.schemas)
+        PaletteCommand(
+          icon: NoteAppearance.icon(schema.icon),
+          color: NoteAppearance.tint(schema.tint),
+          label: l10n.paletteNewNote(text.label(schema.label)),
+          run: () => wide
+              ? unawaited(_openBeside(_NewNote(schema)))
+              : _open(schema: schema),
+        ),
+      PaletteCommand(
+        icon: Icons.folder_outlined,
+        label: l10n.categories,
+        run: _openCategories,
+      ),
+      PaletteCommand(
+        icon: Icons.delete_outline,
+        label: l10n.trash,
+        run: () =>
+            wide ? unawaited(_openBeside(null, trash: true)) : _openTrash(),
+      ),
+      if (widget.onLock case final onLock?)
+        PaletteCommand(
+          icon: Icons.lock_outline,
+          label: l10n.lockVault,
+          run: onLock,
+        ),
+    ].where((command) => named(command.label));
+    final search = EntrySearch(query);
+    final dates = MaterialLocalizations.of(context);
+    final notes = [
+      for (final entry in widget.store.entries)
+        if (search.matches(entry))
+          () {
+            final schema = _schemaOf(entry);
+            final title = NoteTitle.of(entry, schema);
+            return PaletteCommand(
+              icon: NoteAppearance.icon(schema?.icon),
+              color: NoteAppearance.tint(schema?.tint),
+              label: title.isEmpty ? l10n.untitled : title,
+              detail: dates.formatMediumDate(entry.audit.updatedAt.toLocal()),
+              run: () =>
+                  wide ? unawaited(_openBeside(entry.id)) : _open(entry: entry),
+            );
+          }(),
+    ];
+    return terms.isEmpty ? [...notes, ...actions] : [...actions, ...notes];
+  }
 
   List<Widget> _actions(AppLocalizations l10n, {bool trash = true}) => [
     ?widget.cloud,
@@ -242,7 +318,14 @@ class _NoteLibraryScreenState extends State<NoteLibraryScreen> {
                     onType: (type) => _filter(() => _type = type),
                     onCategory: (id) => _filter(() => _category = id),
                     onTrash: () => unawaited(_openBeside(null, trash: true)),
-                    actions: _actions(l10n, trash: false),
+                    actions: [
+                      IconButton(
+                        onPressed: _showPalette,
+                        tooltip: CommandPalette.tooltip(l10n),
+                        icon: const Icon(Icons.search),
+                      ),
+                      ..._actions(l10n, trash: false),
+                    ],
                   ),
                 ),
               ),
@@ -343,7 +426,7 @@ class _NoteLibraryScreenState extends State<NoteLibraryScreen> {
             .firstOrNull;
         schema = entry == null ? null : _schemaOf(entry);
       } else if (opened is _NewNote) {
-        schema = _type ?? widget.schemas.last;
+        schema = opened.schema ?? _type ?? widget.schemas.last;
       }
       if (schema == null) {
         return Center(
@@ -737,7 +820,12 @@ class _WholeLines extends StatelessWidget {
 }
 
 /// A new note not saved yet, open beside the list.
-final class _NewNote {}
+final class _NewNote {
+  _NewNote([this.schema]);
+
+  /// The type it starts as; null for the one the filters suggest.
+  final SchemaDefinition? schema;
+}
 
 /// The first column: every note, each type, the categories as a tree, the
 /// trash, and the vault's buttons at the foot.
