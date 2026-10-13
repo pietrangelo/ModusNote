@@ -5,6 +5,7 @@
 /// library, never files under `src/`.
 library;
 
+export 'src/core/category.dart';
 export 'src/core/dynamic_entry.dart';
 export 'src/core/entry_codec.dart';
 export 'src/core/entry_search.dart';

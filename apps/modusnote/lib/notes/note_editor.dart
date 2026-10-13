@@ -22,6 +22,7 @@ class NoteEditorScreen extends StatefulWidget {
     required this.store,
     required this.initialSchema,
     this.entry,
+    this.category,
     this.clock = DateTime.now,
     super.key,
   });
@@ -32,6 +33,9 @@ class NoteEditorScreen extends StatefulWidget {
 
   /// The note being edited, or null for a new one.
   final DynamicEntry? entry;
+
+  /// Where a new note is filed; an existing one stays where it is.
+  final CategoryId? category;
   final DateTime Function() clock;
 
   @override
@@ -91,7 +95,11 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
     };
     switch (result) {
       case Valid(:final value) when unreadable.isEmpty:
-        await widget.store.save(value, takes: _takes.values);
+        await widget.store.save(
+          value,
+          takes: _takes.values,
+          newIn: widget.category,
+        );
         _saved = true;
         messenger.showSnackBar(SnackBar(content: Text(l10n.noteSaved)));
         if (mounted) Navigator.of(context).maybePop();

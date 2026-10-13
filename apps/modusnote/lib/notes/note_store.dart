@@ -27,11 +27,32 @@ abstract interface class NoteStore implements Listenable {
 
   /// Saves [entry] with the [takes] recorded while editing it. Takes it
   /// does not reference, and recordings it no longer references, are
-  /// deleted.
+  /// deleted. A new note is filed in [newIn]; an existing one stays where
+  /// it is.
   Future<void> save(
     DynamicEntry entry, {
     Iterable<KeyedRecording> takes = const [],
+    CategoryId? newIn,
   });
+
+  /// The categories notes are filed in, as a tree.
+  CategoryTree get categories;
+
+  /// The category note [id] shows in: null for none, or for one that is
+  /// gone.
+  CategoryId? categoryOf(EntryId id);
+
+  /// Creates or changes a category, on every device of the workspace.
+  /// Throws [ArgumentError] for a parent that would make a loop or a level
+  /// past [CategoryTree.maxDepth].
+  Future<void> saveCategory(NoteCategory category);
+
+  /// Deletes a category. Nothing in it is lost: its notes and the
+  /// categories inside it move up to its parent.
+  Future<void> deleteCategory(CategoryId id);
+
+  /// Files note [id] in [category] (null: in none), in the trash or not.
+  Future<void> file(EntryId id, CategoryId? category);
 
   /// Deletes takes recorded in an edit that was abandoned.
   Future<void> discardTakes(Iterable<KeyedRecording> takes);
@@ -82,12 +103,54 @@ final class InMemoryNoteStore extends ChangeNotifier implements NoteStore {
   Future<void> save(
     DynamicEntry entry, {
     Iterable<KeyedRecording> takes = const [],
+    CategoryId? newIn,
   }) async {
     _notes[entry.id] = switch (_notes[entry.id]) {
-      null => RecordedNote.compose(entry, known: takes),
+      null => RecordedNote.compose(entry, known: takes, category: newIn),
       final before => before.edited(entry, takes: takes).restored(),
     };
     notifyListeners();
+  }
+
+  final _categories = <CategoryId, NoteCategory>{};
+  CategoryTree? _tree;
+
+  @override
+  CategoryTree get categories => _tree ??= CategoryTree(_categories.values);
+
+  @override
+  CategoryId? categoryOf(EntryId id) =>
+      categories.resolve(_notes[id]?.category);
+
+  @override
+  Future<void> saveCategory(NoteCategory category) async {
+    Filing.checkPlacement(categories, category);
+    _categories[category.id] = category;
+    _tree = null;
+    notifyListeners();
+  }
+
+  @override
+  Future<void> deleteCategory(CategoryId id) async {
+    final tree = categories;
+    final up = tree.parentOf(id);
+    for (final child in Filing.inside(tree, _categories.values, id)) {
+      _categories[child.id] = child.movedTo(up);
+    }
+    _notes.updateAll(
+      (_, note) => note.category == id ? note.filedIn(up) : note,
+    );
+    _categories.remove(id);
+    _tree = null;
+    notifyListeners();
+  }
+
+  @override
+  Future<void> file(EntryId id, CategoryId? category) async {
+    if (_notes[id] case final note?) {
+      _notes[id] = note.filedIn(category);
+      notifyListeners();
+    }
   }
 
   @override
@@ -138,4 +201,39 @@ abstract final class NoteOrder {
     for (final note in notes)
       if (note.isTrashed) note,
   ]..sort((a, b) => b.trashedAt!.compareTo(a.trashedAt!));
+}
+
+/// Rules both stores apply when categories change.
+abstract final class Filing {
+  /// Throws [ArgumentError] when [category] cannot go where it says: a
+  /// parent that is missing, inside itself, or a level too deep. A
+  /// category that stays where it is always can, even in a tree another
+  /// device made too deep.
+  static void checkPlacement(CategoryTree tree, NoteCategory category) {
+    final existing = tree[category.id];
+    if (existing != null && existing.parent == category.parent) return;
+    if (!tree.canPlace(
+      category.parent,
+      moving: existing == null ? null : category.id,
+    )) {
+      throw ArgumentError.value(
+        category.parent?.value,
+        'parent',
+        'a loop or a level too deep',
+      );
+    }
+  }
+
+  /// The categories to move up when [id] is deleted: those the tree shows
+  /// inside it, and those whose record names it.
+  static List<NoteCategory> inside(
+    CategoryTree tree,
+    Iterable<NoteCategory> all,
+    CategoryId id,
+  ) => [
+    for (final category in all)
+      if (category.id != id &&
+          (category.parent == id || tree.parentOf(category.id) == id))
+        category,
+  ];
 }
