@@ -30,8 +30,8 @@ enum ImageFormat {
 
 /// A picture's format and size in pixels, as its own header states them.
 @immutable
-final class ImageInfo {
-  ImageInfo(this.format, this.width, this.height) {
+final class ImageHeader {
+  ImageHeader(this.format, this.width, this.height) {
     if (width < 1 ||
         height < 1 ||
         width > ImageProbe.maxSide ||
@@ -47,7 +47,7 @@ final class ImageInfo {
 
   @override
   bool operator ==(Object other) =>
-      other is ImageInfo &&
+      other is ImageHeader &&
       other.format == format &&
       other.width == width &&
       other.height == height;
@@ -56,7 +56,7 @@ final class ImageInfo {
   int get hashCode => Object.hash(format, width, height);
 
   @override
-  String toString() => 'ImageInfo(${format.wireName}, $width×$height)';
+  String toString() => 'ImageHeader(${format.wireName}, $width×$height)';
 }
 
 /// Reads a picture's header, and only its header: which format it is and
@@ -79,7 +79,7 @@ abstract final class ImageProbe {
   /// Throws [UnsupportedImageException] for anything that is not a PNG,
   /// JPEG, GIF or WebP it can read the size of, and
   /// [ImageTooLargeException] for one past the limits.
-  static ImageInfo probe(List<int> bytes) {
+  static ImageHeader probe(List<int> bytes) {
     if (bytes.length > maxBytes) throw const ImageTooLargeException();
     final data = bytes is Uint8List ? bytes : Uint8List.fromList(bytes);
     final view = ByteData.sublistView(data);
@@ -98,14 +98,14 @@ abstract final class ImageProbe {
         if (view.getUint32(8) != 13 || !_ascii(data, 12, 'IHDR')) {
           throw const UnsupportedImageException();
         }
-        return ImageInfo(
+        return ImageHeader(
           ImageFormat.png,
           view.getUint32(16),
           view.getUint32(20),
         );
       }
       if (_ascii(data, 0, 'GIF87a') || _ascii(data, 0, 'GIF89a')) {
-        return ImageInfo(
+        return ImageHeader(
           ImageFormat.gif,
           view.getUint16(6, Endian.little),
           view.getUint16(8, Endian.little),
@@ -121,13 +121,13 @@ abstract final class ImageProbe {
     throw const UnsupportedImageException();
   }
 
-  static ImageInfo _webp(Uint8List data, ByteData view) {
+  static ImageHeader _webp(Uint8List data, ByteData view) {
     if (_ascii(data, 12, 'VP8 ')) {
       // Frame tag (3 bytes), then the start code and 14-bit sizes.
       if (!_starts(data, const [0x9D, 0x01, 0x2A], at: 23)) {
         throw const UnsupportedImageException();
       }
-      return ImageInfo(
+      return ImageHeader(
         ImageFormat.webp,
         view.getUint16(26, Endian.little) & 0x3FFF,
         view.getUint16(28, Endian.little) & 0x3FFF,
@@ -136,7 +136,7 @@ abstract final class ImageProbe {
     if (_ascii(data, 12, 'VP8L')) {
       if (data[20] != 0x2F) throw const UnsupportedImageException();
       final bits = view.getUint32(21, Endian.little);
-      return ImageInfo(
+      return ImageHeader(
         ImageFormat.webp,
         (bits & 0x3FFF) + 1,
         ((bits >> 14) & 0x3FFF) + 1,
@@ -144,14 +144,14 @@ abstract final class ImageProbe {
     }
     if (_ascii(data, 12, 'VP8X')) {
       int u24(int at) => data[at] | data[at + 1] << 8 | data[at + 2] << 16;
-      return ImageInfo(ImageFormat.webp, u24(24) + 1, u24(27) + 1);
+      return ImageHeader(ImageFormat.webp, u24(24) + 1, u24(27) + 1);
     }
     throw const UnsupportedImageException();
   }
 
   /// Walks the segments up to the first frame header; a scan before any
   /// frame header is not a picture this reads.
-  static ImageInfo _jpeg(Uint8List data, ByteData view) {
+  static ImageHeader _jpeg(Uint8List data, ByteData view) {
     var at = 2;
     while (true) {
       if (data[at] != 0xFF) throw const UnsupportedImageException();
@@ -172,7 +172,7 @@ abstract final class ImageProbe {
           marker != 0xC8 &&
           marker != 0xCC;
       if (isFrame) {
-        return ImageInfo(
+        return ImageHeader(
           ImageFormat.jpeg,
           view.getUint16(at + 5),
           view.getUint16(at + 3),
@@ -213,7 +213,7 @@ final class ImageMetadata {
   }
 
   final SealedBlob blob;
-  final ImageInfo info;
+  final ImageHeader info;
   final DateTime addedAt;
 
   BlobId get id => blob.id;

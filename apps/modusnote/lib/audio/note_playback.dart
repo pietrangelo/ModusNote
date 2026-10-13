@@ -54,12 +54,12 @@ final class NotePlayback {
 
   /// Downloads a recording this device does not have yet; null where there
   /// is no shared storage.
-  final Future<void> Function(KeyedRecording take)? _ensureLocal;
+  final Future<void> Function(SealedBlob blob)? _ensureLocal;
 
   bool canPlay(KeyedRecording take) => _decoding.canPlay(take.metadata.format);
 
   Future<OpenedRecording> open(KeyedRecording take) async {
-    await _ensureLocal?.call(take);
+    await _ensureLocal?.call(take.blob);
     final audio = await _decoding.open(
       take.metadata,
       contentKey: _engine.contentKeyFor(take.epoch),

@@ -1,2 +1,6 @@
 /* Mostrato da iOS quando Modus Notes chiede il microfono per la prima volta. */
 "NSMicrophoneUsageDescription" = "Modus Notes registra note vocali, bozze di canzoni e diari dei sogni. Le registrazioni vengono cifrate su questo dispositivo prima di essere salvate.";
+/* Mostrato da iOS se Modus Notes chiede le foto: la scelta delle immagini di solito non lo richiede. */
+"NSPhotoLibraryUsageDescription" = "Modus Notes aggiunge alle pagine le immagini che scegli. Ogni immagine viene cifrata su questo dispositivo prima di essere salvata.";
+/* Richiesto da App Store per la libreria delle immagini, che contiene anche la fotocamera. */
+"NSCameraUsageDescription" = "Modus Notes non usa la fotocamera: le immagini si scelgono tra le tue foto.";

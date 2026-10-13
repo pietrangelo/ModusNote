@@ -52,7 +52,7 @@ final class ImageStorage {
       out.add(chunk);
     }
     final bytes = out.takeBytes();
-    final ImageInfo info;
+    final ImageHeader info;
     try {
       info = ImageProbe.probe(bytes);
     } on UnsupportedImageException {

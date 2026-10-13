@@ -471,7 +471,7 @@ abstract final class RecordedNoteCodec {
       epoch: epoch,
       metadata: ImageMetadata(
         blob: SealedBlob(id: id, keyId: keyId, plaintextLength: length),
-        info: ImageInfo(format, width, height),
+        info: ImageHeader(format, width, height),
         addedAt: _time(reader),
       ),
     );

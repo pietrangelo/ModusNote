@@ -9,8 +9,8 @@ void main() {
       'song_sketch',
       'dream_log',
       'task',
-      'quick_note',
       'document',
+      'quick_note',
     ]);
   });
 

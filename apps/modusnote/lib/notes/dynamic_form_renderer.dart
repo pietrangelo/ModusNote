@@ -1,3 +1,4 @@
+import 'package:blob_storage_media/blob_storage_media.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:schema_dynamic_content/schema_dynamic_content.dart';
@@ -6,6 +7,7 @@ import '../audio/recording_sheet.dart' show formatLength;
 import '../l10n/generated/app_localizations.dart';
 import '../theme/golden_ratio.dart';
 import '../theme/modus_colors.dart';
+import 'attachments/attachments_input.dart';
 import 'editor/markdown_controller.dart';
 import 'editor/markdown_toolbar.dart';
 import 'schema_text.dart';
@@ -30,8 +32,9 @@ final class FormDraft {
 /// It is laid out as a page to write on, the way Standard Notes and
 /// Notesnook do it: the first one-line text is the title, large and
 /// without a frame; the first long text (or else the first list of tasks)
-/// is the body, also frameless; recordings stay in sight above it; every
-/// other field folds under the title as the note's details.
+/// is the body, also frameless; recordings stay in sight above it and
+/// attachments below it; every other field folds under the title as the
+/// note's details.
 ///
 /// Every value is shown through text widgets, never parsed as HTML, so
 /// content synced from someone else cannot run as code. A Markdown body
@@ -47,6 +50,7 @@ class DynamicFormRenderer extends StatefulWidget {
     this.recordingLength,
     this.recordingPlayer,
     this.markdownTarget,
+    this.attachments,
     this.autofocus = false,
     super.key,
   });
@@ -71,6 +75,10 @@ class DynamicFormRenderer extends StatefulWidget {
   /// Set to the Markdown body's controller, for a formatting toolbar
   /// outside the form; null when the body is not Markdown.
   final ValueNotifier<MarkdownEditingController?>? markdownTarget;
+
+  /// Adds and opens pictures and links; without it pictures cannot be
+  /// added or shown, and links do not open.
+  final AttachmentHooks? attachments;
 
   /// Puts the cursor in the title, or in the body when there is none.
   final bool autofocus;
@@ -189,9 +197,16 @@ class _DynamicFormRendererState extends State<DynamicFormRenderer> {
               onChanged: (v) => _set(body.key, v),
             ),
           }),
+        for (final field in _layout.attachments)
+          keyed(field, _input(field, text, l10n)),
       ],
     );
   }
+
+  static final _noAttachments = AttachmentHooks(
+    openImage: (blob) => Future.error(BlobNotFoundException(blob)),
+    openLink: (_) async => false,
+  );
 
   Widget _input(FieldDefinition field, SchemaText text, AppLocalizations l10n) {
     final label = text.label(field.label);
@@ -272,6 +287,13 @@ class _DynamicFormRendererState extends State<DynamicFormRenderer> {
         label: label,
         error: error,
         value: value is ChecklistValue ? value : null,
+        onChanged: set,
+      ),
+      AttachmentsFieldType() => AttachmentsInput(
+        label: label,
+        error: error,
+        value: value is AttachmentsValue ? value : null,
+        hooks: widget.attachments ?? _noAttachments,
         onChanged: set,
       ),
       AudioBlobFieldType() => _AudioInput(
@@ -379,7 +401,13 @@ class _TextInputState extends State<_TextInput> {
 /// The page layout of a schema: which field is the title, which the
 /// body, and what is left as details, in the order of [_ordered].
 final class _PageLayout {
-  _PageLayout(this.title, this.body, this.details, this.recordings);
+  _PageLayout(
+    this.title,
+    this.body,
+    this.details,
+    this.recordings,
+    this.attachments,
+  );
 
   factory _PageLayout.of(SchemaDefinition schema) {
     final fields = _DynamicFormRendererState._ordered(schema);
@@ -402,11 +430,18 @@ final class _PageLayout {
       body,
       [
         for (final field in fields)
-          if (rest(field) && field.type is! AudioBlobFieldType) field,
+          if (rest(field) &&
+              field.type is! AudioBlobFieldType &&
+              field.type is! AttachmentsFieldType)
+            field,
       ],
       [
         for (final field in fields)
           if (rest(field) && field.type is AudioBlobFieldType) field,
+      ],
+      [
+        for (final field in fields)
+          if (rest(field) && field.type is AttachmentsFieldType) field,
       ],
     );
   }
@@ -417,6 +452,9 @@ final class _PageLayout {
 
   /// Recordings: content, not details, so they never fold away.
   final List<FieldDefinition> recordings;
+
+  /// Pictures and links, under the body: content too.
+  final List<FieldDefinition> attachments;
 }
 
 /// The note's title: large, without a frame, its label as the hint.

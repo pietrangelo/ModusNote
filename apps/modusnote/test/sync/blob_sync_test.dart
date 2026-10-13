@@ -5,6 +5,7 @@ import 'package:blob_storage_media_adapters/blob_storage_media_adapters.dart';
 import 'package:file/memory.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:identity_cryptography_adapters/identity_cryptography_adapters.dart';
+import 'package:modusnote/attachments/note_images.dart';
 import 'package:modusnote/audio/note_playback.dart';
 import 'package:modusnote/audio/note_recorder.dart';
 import 'package:modusnote/sync/blob_sync.dart';
@@ -13,6 +14,7 @@ import 'package:offline_sync/offline_sync.dart';
 import 'package:schema_dynamic_content/schema_dynamic_content.dart';
 
 import '../audio/fake_capture.dart';
+import '../notes/image_support.dart';
 import '../vault/support.dart';
 
 /// The workspace's shared storage in memory.
@@ -66,7 +68,7 @@ final class DeviceBlobs {
 
   BlobSync sync(VaultNoteStore store) => BlobSync(
     replication: replication,
-    recordings: () => store.recordings,
+    blobs: () => store.blobs,
     load: () async => setting,
     save: (value) async => setting = value,
   );
@@ -169,6 +171,40 @@ void main() {
     // Already on the server: the tablet never sends it back.
     await tabletSync.uploadPending();
     expect(remote.uploads, hasLength(1));
+  });
+
+  test('a picture goes up and comes down like a recording', () async {
+    final phoneImages = NoteImages(
+      blobs: phone.storage,
+      engine: vault.engine,
+      chooser: FakeChooser(),
+    );
+    final image = (await phoneImages.choose())!;
+    final page = switch (DynamicEntry.create(
+      schema: SeedSchemas.documentV1,
+      id: EntryId('d' * 32),
+      attributes: {
+        FieldKey('title'): const TextValue('Pagina'),
+        FieldKey('attachments'): AttachmentsValue([ImageAttachment(image.id)]),
+      },
+      at: DateTime.utc(2026, 10, 13),
+    )) {
+      Valid(:final value) => value,
+      Invalid(:final violations) => throw StateError('$violations'),
+    };
+    await store.save(page, pictures: [image]);
+
+    await phone.sync(store).uploadPending();
+    expect(remote.uploads, containsAll([take.id, image.id]));
+
+    final tablet = DeviceBlobs(remote);
+    final tabletImages = NoteImages(
+      blobs: tablet.storage,
+      engine: vault.engine,
+      chooser: FakeChooser(),
+      ensureLocal: tablet.sync(store).ensureLocal,
+    );
+    expect(await tabletImages.open(store.imageOf(image.id)!), pixel);
   });
 
   test('a recording not uploaded yet says so', () async {
