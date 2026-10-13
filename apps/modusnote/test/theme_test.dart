@@ -107,6 +107,31 @@ void main() {
       }
     });
 
+    test('a card washed with its type\'s tint keeps its text at AA', () {
+      for (final tint in [...NoteTint.values, null]) {
+        final card = NoteAppearance.wash(tint);
+        expect(card, isNot(ModusColors.abyssalSlate), reason: '$tint');
+        // Title, label and date, progress, the done check.
+        for (final text in [
+          ModusColors.pureMist,
+          ModusColors.dustSilver,
+          ModusColors.cadenceCyan,
+        ]) {
+          expect(
+            contrast(text, card),
+            greaterThanOrEqualTo(4.5),
+            reason: '$text on the $tint card',
+          );
+        }
+        // The type icon is not text: 3:1 (WCAG 1.4.11).
+        expect(
+          contrast(NoteAppearance.tint(tint), card),
+          greaterThanOrEqualTo(3),
+          reason: 'icon on the $tint card',
+        );
+      }
+    });
+
     test('Rhythm Violet itself is a fill colour: below AA as text', () {
       expect(
         contrast(ModusColors.rhythmViolet, ModusColors.abyssalSlate),
