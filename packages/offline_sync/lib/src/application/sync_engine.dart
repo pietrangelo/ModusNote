@@ -58,6 +58,7 @@ final class SyncEngine {
     required this._me,
     required this._ledger,
     required this._keyring,
+    this._journal,
   }) : _ledgers = MembershipLedger(_identities),
        _authenticator = RevisionAuthenticator(_identities);
 
@@ -71,6 +72,10 @@ final class SyncEngine {
   final Clock _clock;
   final IdentityKeyPair _me;
   final GroupKeyring _keyring;
+
+  /// Where verified membership and the bundles granting this device keys
+  /// are kept, so the vault reopens offline knowing all it learned.
+  final VaultStore? _journal;
   final MembershipLedger _ledgers;
   final RevisionAuthenticator _authenticator;
   VerifiedLedger _ledger;
@@ -155,6 +160,38 @@ final class SyncEngine {
     }
   }
 
+  /// Admits another device of the same person as an owner: appends it to
+  /// the membership log, publishes the record and grants it every GroupKey
+  /// this device holds. Safe to repeat: a device already admitted is only
+  /// granted the keys again, in case its first bundle never went out.
+  Future<void> admit(PublicIdentity device) async {
+    await _publishMembership();
+    await _catchUpMembership();
+    final id = MemberId.of(device);
+    final KeyBundle bundle;
+    if (_ledger.workspace.isMember(id)) {
+      bundle = _administration.grantAll(
+        _ledger,
+        _keyring,
+        issuer: _me,
+        recipient: id,
+      );
+    } else {
+      final update = _administration.invite(
+        _ledger,
+        _keyring,
+        owner: _me,
+        invitee: device,
+        role: Role.owner,
+      );
+      await _journal?.appendMembership([update.record]);
+      _ledger = update.ledger;
+      await _publishMembership();
+      bundle = update.bundle!;
+    }
+    await _server.appendKeyBundle(bundle);
+  }
+
   Future<int> _push() async {
     final rows = (await _store.loadOutbox()).pending;
     if (rows.isEmpty) return 0;
@@ -195,13 +232,17 @@ final class SyncEngine {
       _workspace,
       from: _ledger.records.length,
     );
-    if (newer.isNotEmpty) _ledger = _ledgers.extend(_ledger, newer);
+    if (newer.isNotEmpty) {
+      _ledger = _ledgers.extend(_ledger, newer);
+      await _journal?.appendMembership(newer);
+    }
     // Whatever came from the server, the server holds.
     await _store.saveCursor(SyncStream.membership, _ledger.records.length);
   }
 
   Future<void> _acceptKeyBundles() async {
     var cursor = await _store.loadCursor(SyncStream.keyBundles);
+    final granted = <KeyBundle>[];
     for (final (position, bundle) in await _server.keyBundles(
       _workspace,
       after: cursor,
@@ -213,12 +254,16 @@ final class SyncEngine {
           me: _me,
           keyring: _keyring,
         );
+        if (bundle.grants.any((grant) => grant.recipient == _myId)) {
+          granted.add(bundle);
+        }
       } on CollaborationException {
         // A bundle that fails verification grants nothing; the next one
         // may still be valid.
       }
       cursor = position;
     }
+    if (granted.isNotEmpty) await _journal?.appendKeyBundles(granted);
     await _store.saveCursor(SyncStream.keyBundles, cursor);
   }
 

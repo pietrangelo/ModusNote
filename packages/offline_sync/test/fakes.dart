@@ -22,6 +22,9 @@ final class FakeSyncServer implements SyncServer {
   /// Fails the next call to [appendMembership] as if the network dropped.
   var dropNextAppend = false;
 
+  /// Fails the next call to [appendKeyBundle] as if the network dropped.
+  var dropNextBundle = false;
+
   void _check() {
     if (!online) throw const ServerUnavailableException();
   }
@@ -88,6 +91,59 @@ final class FakeSyncServer implements SyncServer {
   }) async {
     _check();
     return [for (var i = after; i < bundles.length; i++) (i + 1, bundles[i])];
+  }
+
+  @override
+  Future<void> appendKeyBundle(KeyBundle bundle) async {
+    _check();
+    if (dropNextBundle) {
+      dropNextBundle = false;
+      throw const ServerUnavailableException();
+    }
+    calls.add('bundle');
+    bundles.add(bundle);
+  }
+}
+
+/// Where two devices of one account meet: whatever they post, it relays.
+final class FakeLinkChannel implements DeviceLinkChannel {
+  var online = true;
+  final offers = <LinkOffer>[];
+  final posted = <LinkAnswer>[];
+  final closed = <LinkId>[];
+
+  void _check() {
+    if (!online) throw const ServerUnavailableException();
+  }
+
+  @override
+  Future<void> postOffer(LinkOffer offer) async {
+    _check();
+    offers.add(offer);
+  }
+
+  @override
+  Future<LinkOffer?> latestOffer() async {
+    _check();
+    return offers.lastOrNull;
+  }
+
+  @override
+  Future<void> postAnswer(LinkAnswer answer) async {
+    _check();
+    posted.add(answer);
+  }
+
+  @override
+  Future<List<LinkAnswer>> answers(LinkId link) async {
+    _check();
+    return [...posted.where((answer) => answer.id == link)];
+  }
+
+  @override
+  Future<void> close(LinkId link) async {
+    _check();
+    closed.add(link);
   }
 }
 
@@ -160,6 +216,17 @@ final class FakeVaultStore implements VaultStore {
 
   @override
   Future<List<KeyBundle>> loadKeyBundles() async => [...bundles];
+
+  @override
+  Future<void> appendMembership(List<MembershipRecord> records) async {
+    for (final record in records) {
+      if (record.sequence == membership.length) membership.add(record);
+    }
+  }
+
+  @override
+  Future<void> appendKeyBundles(List<KeyBundle> bundles) async =>
+      this.bundles.addAll(bundles);
 
   @override
   Future<PasskeySlot?> loadPasskey() async => passkey;

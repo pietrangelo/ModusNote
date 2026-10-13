@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:collaboration_access_control/collaboration_access_control.dart';
 import 'package:identity_cryptography/identity_cryptography.dart';
 
+import '../core/device_link.dart';
 import '../core/passkey_slot.dart';
 import '../core/sync_exception.dart';
 import '../core/vault_header.dart';
@@ -70,6 +71,7 @@ final class VaultKeeper {
     required this._random,
     required this._kdf,
     this._passkeys,
+    this._links,
   }) : _encapsulation = encapsulation,
        _administration = WorkspaceAdministration(
          identities: _identities,
@@ -89,6 +91,9 @@ final class VaultKeeper {
   final EnvelopeEncryptor _envelopes;
   final KeyEncapsulation _encapsulation;
   final PasskeyPrf? _passkeys;
+
+  /// Where devices of one account meet to link; null without a server.
+  final DeviceLinkChannel? _links;
   final WorkspaceAdministration _administration;
   final Clock _clock;
   final Random _random;
@@ -98,6 +103,9 @@ final class VaultKeeper {
 
   /// Whether this platform can unlock with a passkey at all.
   bool get offersPasskeys => _passkeys != null;
+
+  /// Whether this build can link devices into one workspace.
+  bool get offersLinking => _links != null;
 
   /// Whether a passkey is enrolled and this platform can use it.
   Future<bool> get hasPasskey async =>
@@ -236,9 +244,9 @@ final class VaultKeeper {
     }
     final SymmetricKey localKey;
     try {
-      // The identity must also be the founder the header pins, or a slot
+      // The identity must also be the member the header pins, or a slot
       // could smuggle in an identity of its own.
-      if (MemberId.of(identity.publicIdentity) != header.founder) {
+      if (MemberId.of(identity.publicIdentity) != header.member) {
         throw const PasskeyRejectedException();
       }
       localKey = _encapsulation.open(
@@ -437,6 +445,343 @@ final class VaultKeeper {
       me: identity,
       ledger: ledger,
       keyring: keyring,
+      journal: _vaults,
     ),
   );
+
+  /// How long a code stays good, on both devices.
+  static const linkLifetime = Duration(minutes: 10);
+
+  DeviceLinkChannel get _channel =>
+      _links ?? (throw UnsupportedError('no server to link devices through'));
+
+  /// Starts linking another device into the open [vault]'s workspace:
+  /// stretches [code] (a fresh [LinkCode], shown to the user) with Argon2id
+  /// and posts the workspace's [Invitation] sealed under it. The returned
+  /// [LinkOffering] admits the device that answers with the same code.
+  ///
+  /// [code] is consumed.
+  Future<LinkOffering> offerLink(
+    UnlockedVault vault,
+    PasswordSecret code,
+  ) async {
+    final links = _channel;
+    final id = LinkId.random(_random);
+    final salt = _keys.newSalt();
+    final SymmetricKey key;
+    try {
+      if (vault.isLocked) throw const VaultLockedException();
+      key = await _keys.deriveKey(password: code, salt: salt, parameters: _kdf);
+    } finally {
+      code.dispose();
+    }
+    try {
+      if (vault.isLocked) throw const VaultLockedException();
+      final ledger = vault.engine.ledger;
+      final invitation = Invitation(
+        workspace: ledger.workspace.id,
+        founder: ledger.records.first.author,
+      );
+      await links.postOffer(
+        LinkOffer(
+          id: id,
+          salt: salt,
+          sealedInvitation: _envelopes.seal(
+            invitation.toBytes(),
+            key: key,
+            associatedData: LinkOffer.associatedData(id),
+          ),
+        ),
+      );
+    } catch (_) {
+      key.dispose();
+      rethrow;
+    }
+    return LinkOffering._(
+      keeper: this,
+      vault: vault,
+      id: id,
+      key: key,
+      expiresAt: _clock.now().add(linkLifetime),
+    );
+  }
+
+  /// Joins the workspace of another device of this account, on a device
+  /// with no vault yet: opens that device's offer with [code], posts this
+  /// device's new identity back under the same key, and stretches
+  /// [passphrase] into the MasterKey of the vault to be. The returned
+  /// [LinkRequest] creates the vault once the other device has admitted
+  /// this one.
+  ///
+  /// Throws [VaultAlreadyExistsException], [LinkCodeRejectedException] or
+  /// [ServerUnavailableException]. [code] and [passphrase] are consumed.
+  Future<LinkRequest> join({
+    required PasswordSecret code,
+    required PasswordSecret passphrase,
+  }) async {
+    SymmetricKey? linkKey;
+    SymmetricKey? master;
+    IdentityKeyPair? identity;
+    try {
+      final links = _channel;
+      if (await exists) throw const VaultAlreadyExistsException();
+      final offer =
+          await links.latestOffer() ??
+          (throw const LinkCodeRejectedException());
+      linkKey = await _keys.deriveKey(
+        password: code,
+        salt: offer.salt,
+        parameters: _kdf,
+      );
+      final Invitation invitation;
+      try {
+        invitation = Invitation.parse(
+          _envelopes.open(
+            offer.sealedInvitation,
+            key: linkKey,
+            associatedData: LinkOffer.associatedData(offer.id),
+          ),
+        );
+      } on AuthenticationTagMismatchException {
+        throw const LinkCodeRejectedException();
+      } on CollaborationException {
+        throw const LinkCodeRejectedException();
+      }
+      final salt = _keys.newSalt();
+      master = await _keys.deriveKey(
+        password: passphrase,
+        salt: salt,
+        parameters: _kdf,
+      );
+      identity = _identities.generateIdentity();
+      await links.postAnswer(
+        LinkAnswer(
+          id: offer.id,
+          sealedIdentity: _envelopes.seal(
+            identity.publicIdentity.toBytes(),
+            key: linkKey,
+            associatedData: LinkAnswer.associatedData(offer.id),
+          ),
+        ),
+      );
+      final request = LinkRequest._(
+        keeper: this,
+        invitation: invitation,
+        salt: salt,
+        master: master,
+        identity: identity,
+        expiresAt: _clock.now().add(linkLifetime),
+      );
+      master = null;
+      identity = null;
+      return request;
+    } finally {
+      code.dispose();
+      passphrase.dispose();
+      linkKey?.dispose();
+      master?.dispose();
+      identity?.dispose();
+    }
+  }
+}
+
+/// A link offered from an open vault, waiting for the new device's answer.
+/// It holds the code's key until it admits a device, expires or is
+/// cancelled.
+final class LinkOffering {
+  LinkOffering._({
+    required this._keeper,
+    required this._vault,
+    required this.id,
+    required this._key,
+    required this.expiresAt,
+  });
+
+  final VaultKeeper _keeper;
+  final UnlockedVault _vault;
+  final LinkId id;
+  final SymmetricKey _key;
+  final DateTime expiresAt;
+
+  bool get isClosed => _key.isDisposed;
+
+  /// Looks for an answer sealed with the code and admits its device: the
+  /// member id it now has, or null while no one has answered. An answer
+  /// that does not open is ignored, so only the code's holder gets in.
+  ///
+  /// Throws [LinkExpiredException] past [expiresAt] or once closed,
+  /// [VaultLockedException] once the vault is locked, and
+  /// [ServerUnavailableException] offline, after which a later call retries.
+  Future<MemberId?> poll() async {
+    if (isClosed) throw const LinkExpiredException();
+    if (_vault.isLocked) {
+      cancel();
+      throw const VaultLockedException();
+    }
+    if (!_keeper._clock.now().isBefore(expiresAt)) {
+      cancel();
+      throw const LinkExpiredException();
+    }
+    final links = _keeper._channel;
+    for (final answer in await links.answers(id)) {
+      if (answer.id != id) continue;
+      if (isClosed) throw const LinkExpiredException();
+      final PublicIdentity device;
+      try {
+        device = PublicIdentity.parse(
+          _keeper._envelopes.open(
+            answer.sealedIdentity,
+            key: _key,
+            associatedData: LinkAnswer.associatedData(id),
+          ),
+        );
+      } on CryptographyException {
+        continue;
+      }
+      final member = MemberId.of(device);
+      // Only the code's holder could seal it, but this device is not new.
+      if (member == _vault.member) continue;
+      if (_vault.isLocked) throw const VaultLockedException();
+      await _vault.engine.admit(device);
+      cancel();
+      try {
+        await links.close(id);
+      } on ServerUnavailableException {
+        // The rows expire on the server anyway.
+      }
+      return member;
+    }
+    return null;
+  }
+
+  void cancel() => _key.dispose();
+}
+
+/// A device waiting to be admitted, with its new identity and the
+/// MasterKey of its vault to be, both released by [cancel].
+final class LinkRequest {
+  LinkRequest._({
+    required this._keeper,
+    required this._invitation,
+    required this._salt,
+    required this._master,
+    required this._identity,
+    required this.expiresAt,
+  });
+
+  final VaultKeeper _keeper;
+  final Invitation _invitation;
+  final Salt _salt;
+  final SymmetricKey _master;
+  final IdentityKeyPair _identity;
+  final DateTime expiresAt;
+
+  bool get isClosed => _master.isDisposed;
+
+  /// Checks whether the other device has admitted this one: the open vault
+  /// once the server shows a log that verifies against the offer's founder,
+  /// with this device a member and a GroupKey for the current epoch; null
+  /// until then.
+  ///
+  /// Throws [LinkExpiredException] past [expiresAt] or once closed,
+  /// [TamperedWorkspaceDataException] for a log that does not verify, and
+  /// [ServerUnavailableException] offline, after which a later call retries.
+  Future<UnlockedVault?> poll() async {
+    if (isClosed) throw const LinkExpiredException();
+    final keeper = _keeper;
+    if (!keeper._clock.now().isBefore(expiresAt)) {
+      cancel();
+      throw const LinkExpiredException();
+    }
+    final workspace = _invitation.workspace;
+    final records = await keeper._server.membership(workspace, from: 0);
+    if (records.isEmpty) return null;
+    final ledger = MembershipLedger(keeper._identities)
+        .verify(records, invitation: _invitation);
+    final me = MemberId.of(_identity.publicIdentity);
+    if (!ledger.workspace.isMember(me)) return null;
+
+    final bundles = await keeper._server.keyBundles(workspace, after: 0);
+    if (isClosed) throw const LinkExpiredException();
+    final keyring = GroupKeyring(workspace);
+    final granted = <KeyBundle>[];
+    var cursor = 0;
+    for (final (position, bundle) in bundles) {
+      cursor = position;
+      if (!bundle.grants.any((grant) => grant.recipient == me)) continue;
+      try {
+        keeper._administration.accept(
+          bundle,
+          ledger: ledger,
+          me: _identity,
+          keyring: keyring,
+        );
+        granted.add(bundle);
+      } on CollaborationException {
+        // A forged bundle grants nothing; a genuine one may follow.
+      }
+    }
+    if (!keyring.holds(ledger.workspace.epoch)) {
+      keyring.dispose();
+      return null;
+    }
+    return _create(ledger, keyring, granted, keyBundleCursor: cursor);
+  }
+
+  Future<UnlockedVault> _create(
+    VerifiedLedger ledger,
+    GroupKeyring keyring,
+    List<KeyBundle> granted, {
+    required int keyBundleCursor,
+  }) async {
+    final keeper = _keeper;
+    final VaultHeader header;
+    final SymmetricKey localKey;
+    try {
+      header = VaultHeader.sealing(
+        salt: _salt,
+        kdf: keeper._kdf,
+        workspace: _invitation.workspace,
+        founder: _invitation.founder,
+        member: MemberId.of(_identity.publicIdentity),
+        localKeyId: keeper._subkeys.newSubkeyId(),
+        seal: (slot) => keeper._identities.sealIdentity(
+          _identity,
+          key: _master,
+          associatedData: slot,
+        ),
+      );
+      localKey = keeper._localKey(_master, header);
+    } catch (_) {
+      keyring.dispose();
+      _identity.dispose();
+      rethrow;
+    } finally {
+      _master.dispose();
+    }
+    try {
+      await keeper._vaults.create(
+        header,
+        membership: ledger.records,
+        bundles: granted,
+      );
+      final records = keeper._records(header.workspace);
+      await records.saveCursor(SyncStream.membership, ledger.records.length);
+      await records.saveCursor(SyncStream.keyBundles, keyBundleCursor);
+    } catch (_) {
+      keyring.dispose();
+      localKey.dispose();
+      _identity.dispose();
+      rethrow;
+    }
+    return keeper._open(header, _identity, localKey, ledger, keyring);
+  }
+
+  /// Gives up: the identity and the MasterKey are released and nothing is
+  /// stored. The other device may already have admitted the identity; it
+  /// stays an unused member until an owner revokes it.
+  void cancel() {
+    _master.dispose();
+    _identity.dispose();
+  }
 }
