@@ -165,5 +165,21 @@
   "joinVaultCodeRejected": "Codice errato o scaduto. Controlla quello sull'altro dispositivo.",
   "joinVaultExpired": "Il codice è scaduto. Creane uno nuovo sull'altro dispositivo.",
   "joinVaultUntrusted": "Il server ha inviato dati che non superano la verifica, quindi il vault non è stato creato.",
-  "joinVaultBack": "Indietro"
+  "joinVaultBack": "Indietro",
+  "trash": "Cestino",
+  "moveToTrash": "Sposta nel cestino",
+  "noteTrashed": "Nota spostata nel cestino.",
+  "undo": "Annulla",
+  "restoreNote": "Ripristina",
+  "noteRestored": "Nota ripristinata.",
+  "deleteForever": "Elimina per sempre",
+  "deleteForeverTitle": "Eliminare la nota per sempre?",
+  "deleteForeverBody": "Verrà eliminata con le sue registrazioni da tutti i tuoi dispositivi. Non si può annullare.",
+  "emptyTrash": "Svuota il cestino",
+  "emptyTrashTitle": "Svuotare il cestino?",
+  "emptyTrashBody": "Tutte le note nel cestino verranno eliminate con le loro registrazioni da tutti i tuoi dispositivi. Non si può annullare.",
+  "delete": "Elimina",
+  "cancel": "Annulla",
+  "trashIsEmpty": "Il cestino è vuoto.",
+  "trashedOn": "Nel cestino dal {date}"
 }

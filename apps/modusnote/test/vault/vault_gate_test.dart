@@ -110,6 +110,28 @@ void main() {
     expect(find.text('Sblocca le tue note'), findsOneWidget);
   });
 
+  testWidgets('locking takes back the undo of a trashed note', (tester) async {
+    await pumpApp(tester, gateOn(database));
+    await create(tester, 'frase lunga', 'frase lunga');
+    await tester.tap(find.text('Nuova nota'));
+    await tester.pumpAndSettle();
+    await tester.enterText(textInput('content'), 'Da buttare');
+    await tester.tap(find.text('Salva'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Da buttare'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Sposta nel cestino'));
+    await tester.pumpAndSettle();
+    expect(find.text('Annulla'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Blocca'));
+    await tester.pumpAndSettle();
+
+    // The keys are gone: an undo now would write with a released key.
+    expect(find.text('Annulla'), findsNothing);
+    expect(find.text('Sblocca le tue note'), findsOneWidget);
+  });
+
   group('auto-lock', () {
     final unlockPrompt = find.text('Sblocca le tue note');
 

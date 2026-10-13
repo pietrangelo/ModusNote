@@ -727,5 +727,75 @@
   "joinVaultBack": "Back",
   "@joinVaultBack": {
     "description": "Join screen: gives up and returns to creating a vault."
+  },
+  "trash": "Trash",
+  "@trash": {
+    "description": "Library and editor: the trash, where deleted notes wait."
+  },
+  "moveToTrash": "Move to trash",
+  "@moveToTrash": {
+    "description": "Editor: moves the note being edited to the trash."
+  },
+  "noteTrashed": "Note moved to the trash.",
+  "@noteTrashed": {
+    "description": "Snackbar after a note goes to the trash."
+  },
+  "undo": "Undo",
+  "@undo": {
+    "description": "Snackbar action: takes the note back out of the trash."
+  },
+  "restoreNote": "Restore",
+  "@restoreNote": {
+    "description": "Trash: takes a note back to the library."
+  },
+  "noteRestored": "Note restored.",
+  "@noteRestored": {
+    "description": "Snackbar after a note leaves the trash."
+  },
+  "deleteForever": "Delete forever",
+  "@deleteForever": {
+    "description": "Trash: deletes one note for good."
+  },
+  "deleteForeverTitle": "Delete this note forever?",
+  "@deleteForeverTitle": {
+    "description": "Confirmation before deleting one note for good."
+  },
+  "deleteForeverBody": "It will be deleted with its recordings from all your devices. This can't be undone.",
+  "@deleteForeverBody": {
+    "description": "Confirmation before deleting one note for good."
+  },
+  "emptyTrash": "Empty trash",
+  "@emptyTrash": {
+    "description": "Trash: deletes every note in it for good."
+  },
+  "emptyTrashTitle": "Empty the trash?",
+  "@emptyTrashTitle": {
+    "description": "Confirmation before emptying the trash."
+  },
+  "emptyTrashBody": "Every note in the trash will be deleted with its recordings from all your devices. This can't be undone.",
+  "@emptyTrashBody": {
+    "description": "Confirmation before emptying the trash."
+  },
+  "delete": "Delete",
+  "@delete": {
+    "description": "Confirmation dialog: deletes for good."
+  },
+  "cancel": "Cancel",
+  "@cancel": {
+    "description": "Confirmation dialog: changes nothing."
+  },
+  "trashIsEmpty": "The trash is empty.",
+  "@trashIsEmpty": {
+    "description": "Trash with no notes in it."
+  },
+  "trashedOn": "In the trash since {date}",
+  "@trashedOn": {
+    "description": "Trash: when a note was trashed.",
+    "placeholders": {
+      "date": {
+        "type": "DateTime",
+        "format": "yMMMd"
+      }
+    }
   }
 }

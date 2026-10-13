@@ -120,6 +120,129 @@ void main() {
     expect(store.entries, hasLength(1));
   });
 
+  group('trash', () {
+    late UnlockedVault vault;
+    late VaultNoteStore store;
+    final trashedAt = DateTime.utc(2026, 10, 13, 15);
+
+    setUp(() async {
+      final database = memoryDatabase();
+      addTearDown(database.close);
+      vault = await keeperOn(database).create(passphrase('frase lunga'));
+      addTearDown(vault.lock);
+      store = await VaultNoteStore.open(
+        vault.engine,
+        catalog: SeedSchemas.catalog,
+        clock: () => trashedAt,
+      );
+      await store.save(quickNote(first, 'uno', DateTime.utc(2026, 10, 11)));
+      await store.save(quickNote(second, 'due', DateTime.utc(2026, 10, 12)));
+    });
+
+    Future<VaultNoteStore> reopen() =>
+        VaultNoteStore.open(vault.engine, catalog: SeedSchemas.catalog);
+
+    test('a trashed note leaves the library and waits in the trash', () async {
+      var notified = 0;
+      store.addListener(() => notified++);
+
+      await store.moveToTrash(EntryId(first));
+
+      expect(notified, 1);
+      expect(store.entries.map((e) => e.id.value), [second]);
+      expect(store.trash.single.entry.id.value, first);
+      expect(store.trash.single.trashedAt, trashedAt);
+      final reopened = await reopen();
+      expect(reopened.entries.map((e) => e.id.value), [second]);
+      expect(reopened.trash.single.trashedAt, trashedAt);
+      expect(reopened.unreadable, 0);
+    });
+
+    test('restoring brings the note back as it was', () async {
+      await store.moveToTrash(EntryId(first));
+
+      await store.restore(EntryId(first));
+
+      expect(store.trash, isEmpty);
+      final reopened = await reopen();
+      expect(reopened.entries.map((e) => e.id.value), [second, first]);
+      expect(
+        reopened.entries.last.valueOf(FieldKey('content')),
+        const TextValue('uno'),
+      );
+    });
+
+    test('deleting for good leaves a tombstone, not the note', () async {
+      await store.moveToTrash(EntryId(first));
+
+      await store.deleteForever(EntryId(first));
+
+      expect(store.trash, isEmpty);
+      expect(
+        await vault.engine.read(RecordId.parse(first)),
+        isA<RevisionDeleted>(),
+      );
+      final reopened = await reopen();
+      expect(reopened.entries.map((e) => e.id.value), [second]);
+      expect(reopened.trash, isEmpty);
+      expect(reopened.unreadable, 0);
+    });
+
+    test('emptying the trash deletes every note in it', () async {
+      await store.moveToTrash(EntryId(first));
+      await store.moveToTrash(EntryId(second));
+
+      await store.emptyTrash();
+
+      expect(store.trash, isEmpty);
+      expect(store.entries, isEmpty);
+      for (final id in [first, second]) {
+        expect(
+          await vault.engine.read(RecordId.parse(id)),
+          isA<RevisionDeleted>(),
+        );
+      }
+    });
+
+    test('each change is queued for the server', () async {
+      var writes = 0;
+      store.onWrite = () => writes++;
+
+      await store.moveToTrash(EntryId(first));
+      await store.restore(EntryId(first));
+      await store.moveToTrash(EntryId(first));
+      await store.deleteForever(EntryId(first));
+
+      expect(writes, 4);
+    });
+
+    test('saving an edit takes the note out of the trash', () async {
+      // Another device may have trashed it while it was being edited here:
+      // what the person just saved is what they want to keep.
+      await store.moveToTrash(EntryId(first));
+
+      await store.save(quickNote(first, 'uno bis', DateTime.utc(2026, 10, 13)));
+
+      expect(store.trash, isEmpty);
+      expect(store.entries.map((e) => e.id.value), [first, second]);
+    });
+
+    test('a note outside the trash cannot be deleted for good', () async {
+      await expectLater(store.deleteForever(EntryId(first)), throwsStateError);
+      expect(store.entries, hasLength(2));
+    });
+
+    test('a note deleted on another device leaves on reload', () async {
+      // What a merged tombstone from the server looks like locally.
+      await vault.engine.write(RecordId.parse(first), const RevisionDeleted());
+
+      await store.reload();
+
+      expect(store.entries.map((e) => e.id.value), [second]);
+      expect(store.unreadable, 0);
+    });
+  });
+
   group('adversary', () {
     test(
       'a record that is not a readable note is counted, never shown',
