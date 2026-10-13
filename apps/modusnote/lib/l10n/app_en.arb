@@ -1380,5 +1380,22 @@
   "bookNotFiled": "Put the book in a category: the chapters, characters and places in it will show here.",
   "@bookNotFiled": {
     "description": "Under a book that is in no category."
+  },
+  "commandPalette": "Search and commands",
+  "@commandPalette": {
+    "description": "Opens a box to find a note or run a command from the keyboard."
+  },
+  "paletteHint": "Search notes or commands…",
+  "@paletteHint": {
+    "description": "Hint of the command palette's search field."
+  },
+  "paletteNewNote": "New note: {type}",
+  "@paletteNewNote": {
+    "description": "Command palette: starts a new note of a type.",
+    "placeholders": {
+      "type": {
+        "type": "String"
+      }
+    }
   }
 }
