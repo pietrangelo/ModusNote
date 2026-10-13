@@ -16,6 +16,7 @@ class NoteLibraryScreen extends StatefulWidget {
     required this.schemas,
     required this.store,
     this.onLock,
+    this.onPasskey,
     super.key,
   });
 
@@ -25,6 +26,9 @@ class NoteLibraryScreen extends StatefulWidget {
   /// Locks the vault; without it (no vault, e.g. the web preview) the
   /// library shows no lock button.
   final VoidCallback? onLock;
+
+  /// Opens the passkey settings; null where passkeys are not offered.
+  final VoidCallback? onPasskey;
 
   @override
   State<NoteLibraryScreen> createState() => _NoteLibraryScreenState();
@@ -73,6 +77,12 @@ class _NoteLibraryScreenState extends State<NoteLibraryScreen> {
       appBar: AppBar(
         title: Text(l10n.notesTitle),
         actions: [
+          if (widget.onPasskey case final onPasskey?)
+            IconButton(
+              onPressed: onPasskey,
+              tooltip: l10n.passkeySettings,
+              icon: const Icon(Icons.fingerprint),
+            ),
           if (widget.onLock case final onLock?)
             IconButton(
               onPressed: onLock,

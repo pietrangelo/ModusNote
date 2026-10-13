@@ -11,7 +11,9 @@ import 'local_schema.dart';
 ///
 /// The header is the only vault data in clear, and it holds nothing but
 /// the salt, KDF costs, opaque ids and the sealed identity; the log and
-/// bundles are signed, and are re-verified every time the vault opens.
+/// bundles are signed, and are re-verified every time the vault opens. The
+/// passkey slot, when there is one, adds only the passkey's id, its PRF
+/// salt and the same secrets sealed again.
 final class SqliteVaultStore implements VaultStore {
   SqliteVaultStore(this._database) {
     migrateLocalDatabase(_database);
@@ -67,6 +69,29 @@ final class SqliteVaultStore implements VaultStore {
     ))
       _parse(() => KeyBundle.parse(row['bundle'] as Uint8List)),
   ];
+
+  @override
+  Future<PasskeySlot?> loadPasskey() async {
+    final rows = _database.select(
+      'SELECT passkey FROM vault_passkey WHERE slot = 0',
+    );
+    if (rows.isEmpty) return null;
+    return PasskeySlot.parse(rows.single['passkey'] as Uint8List);
+  }
+
+  @override
+  Future<void> savePasskey(PasskeySlot slot) async {
+    if (await loadHeader() == null) throw const NoVaultException();
+    _database.execute(
+      'INSERT OR REPLACE INTO vault_passkey (slot, passkey) VALUES (0, ?)',
+      [slot.toBytes()],
+    );
+  }
+
+  @override
+  Future<void> removePasskey() async {
+    _database.execute('DELETE FROM vault_passkey');
+  }
 
   static T _parse<T>(T Function() parse) {
     try {

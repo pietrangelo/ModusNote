@@ -82,3 +82,28 @@ final class InvalidSignatureException extends CryptographyException {
   @override
   String get message => 'invalid signature';
 }
+
+final class InvalidPasskeyCredentialException extends CryptographyException {
+  const InvalidPasskeyCredentialException();
+
+  @override
+  String get message => 'passkey credential id must be 16 to 1023 bytes';
+}
+
+/// The user dismissed the passkey prompt, or it timed out. Nothing changed;
+/// the passphrase still opens the vault.
+final class PasskeyCancelledException extends CryptographyException {
+  const PasskeyCancelledException();
+
+  @override
+  String get message => 'passkey request cancelled or timed out';
+}
+
+/// This browser, or the passkey the user picked, cannot evaluate the PRF
+/// extension, so no key can come from it.
+final class PasskeyUnsupportedException extends CryptographyException {
+  const PasskeyUnsupportedException();
+
+  @override
+  String get message => 'passkey cannot derive a key here';
+}

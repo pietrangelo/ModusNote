@@ -21,7 +21,8 @@ import 'vault_note_store.dart';
 typedef PasswordFactory = PasswordSecret Function(Uint8List utf8Bytes);
 
 /// The app's front door: creates the vault on first launch, asks for the
-/// passphrase afterwards, and shows the notes only while it is unlocked.
+/// passphrase (or the passkey, where one is set up) afterwards, and shows
+/// the notes only while it is unlocked.
 class VaultGate extends StatefulWidget {
   const VaultGate({
     required this.keeper,
@@ -63,9 +64,12 @@ final class _Checking extends _Stage {
 }
 
 final class _Locked extends _Stage {
-  const _Locked({required this.exists});
+  const _Locked({required this.exists, this.passkey = false});
 
   final bool exists;
+
+  /// A passkey is set up and the platform can use it.
+  final bool passkey;
 }
 
 final class _Open extends _Stage {
@@ -76,7 +80,15 @@ final class _Open extends _Stage {
   final AutoLock autoLock;
 }
 
-enum _Problem { tooShort, mismatch, wrong, damaged }
+enum _Problem {
+  tooShort,
+  mismatch,
+  wrong,
+  damaged,
+  passkeyCancelled,
+  passkeyRejected,
+  passkeyUnsupported,
+}
 
 class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
   _Stage _stage = const _Checking();
@@ -89,9 +101,16 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    widget.keeper.exists.then((exists) {
-      if (mounted) setState(() => _stage = _Locked(exists: exists));
-    });
+    _showLocked();
+  }
+
+  Future<void> _showLocked() async {
+    final keeper = widget.keeper;
+    final exists = await keeper.exists;
+    final passkey = exists && await keeper.hasPasskey;
+    if (mounted) {
+      setState(() => _stage = _Locked(exists: exists, passkey: passkey));
+    }
   }
 
   @override
@@ -126,6 +145,17 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
       setState(() => _problem = _Problem.tooShort);
       return;
     }
+    await _open(
+      () => creating
+          ? widget.keeper.create(password)
+          : widget.keeper.unlock(password),
+    );
+  }
+
+  /// The user confirms on the authenticator; no passphrase is typed.
+  Future<void> _unlockWithPasskey() => _open(widget.keeper.unlockWithPasskey);
+
+  Future<void> _open(Future<UnlockedVault> Function() opening) async {
     setState(() {
       _busy = true;
       _problem = null;
@@ -133,9 +163,7 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
     // Let the progress indicator paint before Argon2id holds the isolate.
     await Future<void>.delayed(Duration.zero);
     try {
-      final vault = creating
-          ? await widget.keeper.create(password)
-          : await widget.keeper.unlock(password);
+      final vault = await opening();
       final store = await VaultNoteStore.open(
         vault.engine,
         catalog: widget.catalog,
@@ -157,6 +185,14 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
       _fail(_Problem.damaged);
     } on MalformedSyncDataException {
       _fail(_Problem.damaged);
+    } on PasskeyCancelledException {
+      _fail(_Problem.passkeyCancelled);
+    } on PasskeyUnsupportedException {
+      _fail(_Problem.passkeyUnsupported);
+    } on PasskeyRejectedException {
+      _fail(_Problem.passkeyRejected);
+    } on NoPasskeyException {
+      _fail(_Problem.passkeyRejected);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -173,7 +209,62 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
       vault.lock();
       store.dispose();
       setState(() => _stage = const _Locked(exists: true));
+      _showLocked();
     }
+  }
+
+  /// Sets up or turns off the passkey of the open vault.
+  Future<void> _passkeySettings() async {
+    final keeper = widget.keeper;
+    final active = await keeper.hasPasskey;
+    if (!mounted) return;
+    final l10n = AppLocalizations.of(context);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        icon: const Icon(Icons.fingerprint),
+        title: Text(l10n.passkeySettings),
+        content: Text(active ? l10n.passkeyActiveBody : l10n.passkeySetupBody),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: Text(l10n.dialogClose),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: Text(
+              active ? l10n.passkeyRemoveAction : l10n.passkeySetupAction,
+            ),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    String outcome;
+    try {
+      if (active) {
+        await keeper.removePasskey();
+        outcome = l10n.passkeyRemoved;
+      } else {
+        final vault = switch (_stage) {
+          _Open(:final vault) => vault,
+          _ => throw const VaultLockedException(),
+        };
+        await keeper.enrollPasskey(vault);
+        outcome = l10n.passkeyReady;
+      }
+    } on PasskeyCancelledException {
+      outcome = l10n.passkeyCancelled;
+    } on PasskeyUnsupportedException {
+      outcome = l10n.passkeyUnsupported;
+    } on VaultLockedException {
+      // Locked while the user was at the authenticator: nothing was saved.
+      return;
+    }
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(outcome)));
   }
 
   /// Closes every screen opened over the notes first, so no decrypted
@@ -236,12 +327,21 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
         schemas: widget.catalog.current,
         store: store,
         onLock: _lock,
+        onPasskey: widget.keeper.offersPasskeys ? _passkeySettings : null,
       ),
     ),
-    _Locked(:final exists) => _form(context, creating: !exists),
+    _Locked(:final exists, :final passkey) => _form(
+      context,
+      creating: !exists,
+      passkey: passkey,
+    ),
   };
 
-  Widget _form(BuildContext context, {required bool creating}) {
+  Widget _form(
+    BuildContext context, {
+    required bool creating,
+    required bool passkey,
+  }) {
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
     final problem = switch (_problem) {
@@ -252,6 +352,9 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
       _Problem.mismatch => l10n.passphraseMismatch,
       _Problem.wrong => l10n.passphraseWrong,
       _Problem.damaged => l10n.vaultDamaged,
+      _Problem.passkeyCancelled => l10n.passkeyCancelled,
+      _Problem.passkeyRejected => l10n.passkeyRejected,
+      _Problem.passkeyUnsupported => l10n.passkeyUnsupported,
     };
     final submit = _busy ? null : () => _submit(creating: creating);
     return Scaffold(
@@ -323,6 +426,14 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
                             : l10n.vaultUnlockAction,
                       ),
                     ),
+                    if (passkey && !creating) ...[
+                      const SizedBox(height: Spacing.m),
+                      OutlinedButton.icon(
+                        onPressed: _busy ? null : _unlockWithPasskey,
+                        icon: const Icon(Icons.fingerprint),
+                        label: Text(l10n.passkeyUnlockAction),
+                      ),
+                    ],
                     if (_busy) ...[
                       const SizedBox(height: Spacing.l),
                       const Center(child: CircularProgressIndicator()),
