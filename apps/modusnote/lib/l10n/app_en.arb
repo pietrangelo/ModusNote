@@ -1172,5 +1172,230 @@
   "imageOpen": "Open picture",
   "@imageOpen": {
     "description": "Semantic label of a picture thumbnail."
+  },
+  "schemaBookLabel": "Book",
+  "@schemaBookLabel": {
+    "description": "Localization of the seed schema key schema.book.label."
+  },
+  "schemaBookFieldTitle": "Title",
+  "@schemaBookFieldTitle": {
+    "description": "Localization of the seed schema key schema.book.field.title."
+  },
+  "schemaBookFieldSynopsis": "Synopsis",
+  "@schemaBookFieldSynopsis": {
+    "description": "Localization of the seed schema key schema.book.field.synopsis."
+  },
+  "schemaBookFieldGenre": "Genre",
+  "@schemaBookFieldGenre": {
+    "description": "Localization of the seed schema key schema.book.field.genre."
+  },
+  "schemaBookFieldWordGoal": "Word goal",
+  "@schemaBookFieldWordGoal": {
+    "description": "Localization of the seed schema key schema.book.field.word_goal."
+  },
+  "schemaBookFieldAttachments": "Attachments",
+  "@schemaBookFieldAttachments": {
+    "description": "Localization of the seed schema key schema.book.field.attachments."
+  },
+  "schemaBookFieldTags": "Tags",
+  "@schemaBookFieldTags": {
+    "description": "Localization of the seed schema key schema.book.field.tags."
+  },
+  "schemaBookChapterLabel": "Chapter",
+  "@schemaBookChapterLabel": {
+    "description": "Localization of the seed schema key schema.book_chapter.label."
+  },
+  "schemaBookChapterFieldTitle": "Title",
+  "@schemaBookChapterFieldTitle": {
+    "description": "Localization of the seed schema key schema.book_chapter.field.title."
+  },
+  "schemaBookChapterFieldBody": "Text",
+  "@schemaBookChapterFieldBody": {
+    "description": "Localization of the seed schema key schema.book_chapter.field.body."
+  },
+  "schemaBookChapterFieldNumber": "Number",
+  "@schemaBookChapterFieldNumber": {
+    "description": "Localization of the seed schema key schema.book_chapter.field.number."
+  },
+  "schemaBookChapterFieldStatus": "Status",
+  "@schemaBookChapterFieldStatus": {
+    "description": "Localization of the seed schema key schema.book_chapter.field.status."
+  },
+  "schemaBookChapterFieldStatusIdea": "Idea",
+  "@schemaBookChapterFieldStatusIdea": {
+    "description": "Localization of the seed schema key schema.book_chapter.field.status.idea."
+  },
+  "schemaBookChapterFieldStatusDraft": "Draft",
+  "@schemaBookChapterFieldStatusDraft": {
+    "description": "Localization of the seed schema key schema.book_chapter.field.status.draft."
+  },
+  "schemaBookChapterFieldStatusRevised": "Revised",
+  "@schemaBookChapterFieldStatusRevised": {
+    "description": "Localization of the seed schema key schema.book_chapter.field.status.revised."
+  },
+  "schemaBookChapterFieldStatusFinal": "Final",
+  "@schemaBookChapterFieldStatusFinal": {
+    "description": "Localization of the seed schema key schema.book_chapter.field.status.final."
+  },
+  "schemaBookChapterFieldAttachments": "Attachments",
+  "@schemaBookChapterFieldAttachments": {
+    "description": "Localization of the seed schema key schema.book_chapter.field.attachments."
+  },
+  "schemaBookCharacterLabel": "Character",
+  "@schemaBookCharacterLabel": {
+    "description": "Localization of the seed schema key schema.book_character.label."
+  },
+  "schemaBookCharacterFieldName": "Name",
+  "@schemaBookCharacterFieldName": {
+    "description": "Localization of the seed schema key schema.book_character.field.name."
+  },
+  "schemaBookCharacterFieldProfile": "Profile",
+  "@schemaBookCharacterFieldProfile": {
+    "description": "Localization of the seed schema key schema.book_character.field.profile."
+  },
+  "schemaBookCharacterFieldRole": "Role",
+  "@schemaBookCharacterFieldRole": {
+    "description": "Localization of the seed schema key schema.book_character.field.role."
+  },
+  "schemaBookCharacterFieldRoleProtagonist": "Protagonist",
+  "@schemaBookCharacterFieldRoleProtagonist": {
+    "description": "Localization of the seed schema key schema.book_character.field.role.protagonist."
+  },
+  "schemaBookCharacterFieldRoleAntagonist": "Antagonist",
+  "@schemaBookCharacterFieldRoleAntagonist": {
+    "description": "Localization of the seed schema key schema.book_character.field.role.antagonist."
+  },
+  "schemaBookCharacterFieldRoleSupporting": "Supporting",
+  "@schemaBookCharacterFieldRoleSupporting": {
+    "description": "Localization of the seed schema key schema.book_character.field.role.supporting."
+  },
+  "schemaBookCharacterFieldRoleMinor": "Minor",
+  "@schemaBookCharacterFieldRoleMinor": {
+    "description": "Localization of the seed schema key schema.book_character.field.role.minor."
+  },
+  "schemaBookCharacterFieldAge": "Age",
+  "@schemaBookCharacterFieldAge": {
+    "description": "Localization of the seed schema key schema.book_character.field.age."
+  },
+  "schemaBookCharacterFieldGoal": "Goal",
+  "@schemaBookCharacterFieldGoal": {
+    "description": "Localization of the seed schema key schema.book_character.field.goal."
+  },
+  "schemaBookCharacterFieldConflict": "Conflict",
+  "@schemaBookCharacterFieldConflict": {
+    "description": "Localization of the seed schema key schema.book_character.field.conflict."
+  },
+  "schemaBookCharacterFieldArc": "Arc",
+  "@schemaBookCharacterFieldArc": {
+    "description": "Localization of the seed schema key schema.book_character.field.arc."
+  },
+  "schemaBookCharacterFieldAttachments": "Attachments",
+  "@schemaBookCharacterFieldAttachments": {
+    "description": "Localization of the seed schema key schema.book_character.field.attachments."
+  },
+  "schemaBookPlaceLabel": "Place",
+  "@schemaBookPlaceLabel": {
+    "description": "Localization of the seed schema key schema.book_place.label."
+  },
+  "schemaBookPlaceFieldName": "Name",
+  "@schemaBookPlaceFieldName": {
+    "description": "Localization of the seed schema key schema.book_place.field.name."
+  },
+  "schemaBookPlaceFieldDescription": "Description",
+  "@schemaBookPlaceFieldDescription": {
+    "description": "Localization of the seed schema key schema.book_place.field.description."
+  },
+  "schemaBookPlaceFieldKind": "Kind of place",
+  "@schemaBookPlaceFieldKind": {
+    "description": "Localization of the seed schema key schema.book_place.field.kind."
+  },
+  "schemaBookPlaceFieldPeriod": "Period",
+  "@schemaBookPlaceFieldPeriod": {
+    "description": "Localization of the seed schema key schema.book_place.field.period."
+  },
+  "schemaBookPlaceFieldAttachments": "Attachments",
+  "@schemaBookPlaceFieldAttachments": {
+    "description": "Localization of the seed schema key schema.book_place.field.attachments."
+  },
+  "iconBookmark": "Bookmark",
+  "@iconBookmark": {
+    "description": "Name of an icon a category can show."
+  },
+  "iconPerson": "Person",
+  "@iconPerson": {
+    "description": "Name of an icon a category can show."
+  },
+  "iconPlace": "Place",
+  "@iconPlace": {
+    "description": "Name of an icon a category can show."
+  },
+  "wordCount": "{count, plural, =1{1 word} other{{count} words}}",
+  "@wordCount": {
+    "description": "How many words a chapter or a book has.",
+    "placeholders": {
+      "count": {
+        "type": "int",
+        "format": "decimalPattern"
+      }
+    }
+  },
+  "bookProgress": "{written} of {goal} words",
+  "@bookProgress": {
+    "description": "Words written in a book's chapters against its goal.",
+    "placeholders": {
+      "written": {
+        "type": "int",
+        "format": "decimalPattern"
+      },
+      "goal": {
+        "type": "int",
+        "format": "decimalPattern"
+      }
+    }
+  },
+  "bookChapters": "Chapters",
+  "@bookChapters": {
+    "description": "Heading of a book's chapters, under the book."
+  },
+  "bookCharacters": "Characters",
+  "@bookCharacters": {
+    "description": "Heading of a book's characters, under the book."
+  },
+  "bookPlaces": "Places",
+  "@bookPlaces": {
+    "description": "Heading of a book's places, under the book."
+  },
+  "addChapter": "New chapter",
+  "@addChapter": {
+    "description": "Button: writes a new chapter of this book."
+  },
+  "addCharacter": "New character",
+  "@addCharacter": {
+    "description": "Button: writes a new character sheet for this book."
+  },
+  "addPlace": "New place",
+  "@addPlace": {
+    "description": "Button: writes a new place sheet for this book."
+  },
+  "bookNotFiled": "Put the book in a category: the chapters, characters and places in it will show here.",
+  "@bookNotFiled": {
+    "description": "Under a book that is in no category."
+  },
+  "commandPalette": "Search and commands",
+  "@commandPalette": {
+    "description": "Opens a box to find a note or run a command from the keyboard."
+  },
+  "paletteHint": "Search notes or commands…",
+  "@paletteHint": {
+    "description": "Hint of the command palette's search field."
+  },
+  "paletteNewNote": "New note: {type}",
+  "@paletteNewNote": {
+    "description": "Command palette: starts a new note of a type.",
+    "placeholders": {
+      "type": {
+        "type": "String"
+      }
+    }
   }
 }

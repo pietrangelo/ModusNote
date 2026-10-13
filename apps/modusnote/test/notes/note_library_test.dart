@@ -140,6 +140,8 @@ void main() {
   testWidgets('a type chip shows only notes of that type', (tester) async {
     await open(tester);
 
+    await tester.ensureVisible(find.widgetWithText(ChoiceChip, 'To-do'));
+    await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(ChoiceChip, 'To-do'));
     await tester.pumpAndSettle();
 
@@ -168,6 +170,8 @@ void main() {
   testWidgets('new note opens the editor on the filtered type', (tester) async {
     await open(tester);
 
+    await tester.ensureVisible(find.widgetWithText(ChoiceChip, 'Sogno'));
+    await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(ChoiceChip, 'Sogno'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Nuova nota'));
