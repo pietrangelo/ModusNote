@@ -13,6 +13,7 @@ import 'package:sqlite3/wasm.dart';
 import '../audio/note_playback.dart';
 import '../audio/note_recorder.dart';
 import '../audio/web_audio_player.dart';
+import '../sync/sync_config.dart';
 import '../vault/vault_gate.dart';
 import 'vault_wiring.dart';
 
@@ -47,13 +48,16 @@ Future<Widget> buildHome() async {
   final passkeys = await WebAuthnPasskeyPrf.isSupported()
       ? WebAuthnPasskeyPrf(sodium)
       : null;
+  final cloud = cloudWiring(SyncConfig.fromEnvironment());
   return VaultGate(
     keeper: vaultKeeper(
       sodium: sodium,
       database: database,
       kdf: KdfParameters.moderate,
+      server: cloud.server,
       passkeys: passkeys,
     ),
+    account: cloud.account,
     passwordFrom: (bytes) => SodiumPasswordSecret.fromUtf8Bytes(sodium, bytes),
     catalog: SeedSchemas.catalog,
     recorderFor: (engine) => NoteRecorder(

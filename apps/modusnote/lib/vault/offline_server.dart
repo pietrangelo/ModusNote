@@ -7,6 +7,14 @@ final class OfflineSyncServer implements SyncServer {
   const OfflineSyncServer();
 
   @override
+  Future<void> createWorkspace(WorkspaceId workspace) =>
+      throw const ServerUnavailableException();
+
+  @override
+  Future<void> appendMembership(MembershipRecord record) =>
+      throw const ServerUnavailableException();
+
+  @override
   Future<void> push(WorkspaceId workspace, List<SealedRow> rows) =>
       throw const ServerUnavailableException();
 
