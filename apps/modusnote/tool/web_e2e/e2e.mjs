@@ -159,7 +159,11 @@ async function scenario(browser, origin, mode) {
   // A passkey replaces the passphrase after the next reload.
   await page.getByRole('button', { name: 'Passkey unlock' }).click();
   await page.getByRole('button', { name: 'Set up passkey' }).click();
-  await page.getByText('Passkey ready. Next time you can unlock with it.').waitFor({ timeout: 30000 });
+  // The snackbar's text, not Flutter's aria-live announcement of it, which
+  // may or may not still be in the page.
+  await page
+    .locator('span', { hasText: 'Passkey ready. Next time you can unlock with it.' })
+    .waitFor({ timeout: 30000 });
   const { credentials } = await cdp.send('WebAuthn.getCredentials', { authenticatorId });
   check(credentials.length === 1, `expected one passkey, found ${credentials.length}`);
   await settle();
