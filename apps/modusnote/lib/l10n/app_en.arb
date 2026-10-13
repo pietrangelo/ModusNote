@@ -1021,19 +1021,28 @@
   "@categorySave": {
     "description": "Category dialog: keeps the name, icon and colour."
   },
-  "commandPalette": "Search and commands",
-  "@commandPalette": {
-    "description": "Opens a box to find a note or run a command from the keyboard."
+  "linkNote": "Link to a note",
+  "@linkNote": {
+    "description": "Markdown toolbar: picks another note and inserts a link to it."
   },
-  "paletteHint": "Search notes or commands…",
-  "@paletteHint": {
-    "description": "Hint of the command palette's search field."
+  "pickNoteToLink": "Link to which note?",
+  "@pickNoteToLink": {
+    "description": "Note picker title."
   },
-  "paletteNewNote": "New note: {type}",
-  "@paletteNewNote": {
-    "description": "Command palette: starts a new note of a type.",
-    "placeholders": {
-      "type": {"type": "String"}
-    }
+  "noNotesToLink": "No other notes yet.",
+  "@noNotesToLink": {
+    "description": "Note picker with nothing to offer."
+  },
+  "linksTitle": "Links",
+  "@linksTitle": {
+    "description": "Editor: notes this note links to."
+  },
+  "backlinksTitle": "Mentioned in",
+  "@backlinksTitle": {
+    "description": "Editor: notes that link to this one."
+  },
+  "linkUnavailable": "Note not available",
+  "@linkUnavailable": {
+    "description": "Editor: a link to a note that was deleted or is in the trash."
   }
 }

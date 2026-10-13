@@ -234,7 +234,10 @@
   "tintCyan": "Ciano",
   "tintRose": "Rosa",
   "categorySave": "Salva",
-  "commandPalette": "Cerca e comandi",
-  "paletteHint": "Cerca note o comandi…",
-  "paletteNewNote": "Nuova nota: {type}"
+  "linkNote": "Collega una nota",
+  "pickNoteToLink": "Quale nota collegare?",
+  "noNotesToLink": "Ancora nessun'altra nota.",
+  "linksTitle": "Collegamenti",
+  "backlinksTitle": "Citata in",
+  "linkUnavailable": "Nota non disponibile"
 }
