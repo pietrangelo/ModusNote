@@ -183,7 +183,8 @@ void main() {
     await tester.tap(find.text('Nuova nota'));
     await tester.pumpAndSettle();
     await tester.enterText(textInput('content'), 'Nota appena scritta');
-    await tester.tap(find.text('Salva'));
+    await tester.pump();
+    await tester.tap(find.byType(BackButton));
     await tester.pumpAndSettle();
 
     expect(find.byType(NoteEditorScreen), findsNothing);
