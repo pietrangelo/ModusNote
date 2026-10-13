@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:schema_dynamic_content/schema_dynamic_content.dart';
@@ -14,7 +16,11 @@ import 'note_title.dart';
 import 'schema_text.dart';
 import 'trash_screen.dart';
 
-/// Every note at a glance: search, a chip per note type, a card per note.
+/// Every note at a glance: search, categories, a chip per note type, a
+/// card per note, each opening on a page of its own. A window at least
+/// [wideFrom] wide shows three columns instead, as a desktop notes app
+/// does: note types, categories and the trash; the list of notes; and the
+/// open note beside it.
 class NoteLibraryScreen extends StatefulWidget {
   const NoteLibraryScreen({
     required this.schemas,
@@ -38,6 +44,9 @@ class NoteLibraryScreen extends StatefulWidget {
   /// Opens the passkey settings; null where passkeys are not offered.
   final VoidCallback? onPasskey;
 
+  /// The narrowest window that shows the three columns.
+  static const wideFrom = Extents.xxxl;
+
   @override
   State<NoteLibraryScreen> createState() => _NoteLibraryScreenState();
 }
@@ -51,6 +60,40 @@ class _NoteLibraryScreenState extends State<NoteLibraryScreen> {
   CategoryId? _category;
 
   CategoryId? get _selected => widget.store.categories.resolve(_category);
+
+  /// Three columns only: the open note, as its id or a [_NewNote].
+  Object? _opened;
+  var _editor = GlobalKey<NoteEditorScreenState>();
+  var _showTrash = false;
+
+  /// The notes the filters let through: type, category and its
+  /// subcategories, search.
+  List<DynamicEntry> _shown() {
+    final store = widget.store;
+    final selected = _selected;
+    final within = selected == null ? null : store.categories.subtree(selected);
+    return [
+      for (final entry in store.entries)
+        if ((_type == null || entry.schemaId == _type!.id) &&
+            (within == null || within.contains(store.categoryOf(entry.id))) &&
+            _search.matches(entry))
+          entry,
+    ];
+  }
+
+  /// Shows [opened] beside the list, once the open note is saved; a note
+  /// that cannot be saved, kept by the user, stays.
+  Future<void> _openBeside(Object? opened, {bool trash = false}) async {
+    if (opened != null && opened == _opened) return;
+    if (_editor.currentState case final editor?) {
+      if (!await editor.settle() || !mounted) return;
+    }
+    setState(() {
+      _opened = opened;
+      _showTrash = trash;
+      _editor = GlobalKey();
+    });
+  }
 
   SchemaDefinition? _schemaOf(DynamicEntry entry) {
     for (final schema in widget.schemas) {
@@ -118,39 +161,220 @@ class _NoteLibraryScreenState extends State<NoteLibraryScreen> {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) =>
+        constraints.maxWidth >= NoteLibraryScreen.wideFrom
+        ? _wide(context)
+        : _narrow(context),
+  );
+
+  List<Widget> _actions(AppLocalizations l10n, {bool trash = true}) => [
+    ?widget.cloud,
+    IconButton(
+      onPressed: _openCategories,
+      tooltip: l10n.categories,
+      icon: const Icon(Icons.folder_outlined),
+    ),
+    if (trash)
+      IconButton(
+        onPressed: _openTrash,
+        tooltip: l10n.trash,
+        icon: const Icon(Icons.delete_outline),
+      ),
+    if (widget.onPasskey case final onPasskey?)
+      IconButton(
+        onPressed: onPasskey,
+        tooltip: l10n.passkeySettings,
+        icon: const Icon(Icons.fingerprint),
+      ),
+    if (widget.onLock case final onLock?)
+      IconButton(
+        onPressed: onLock,
+        tooltip: l10n.lockVault,
+        icon: const Icon(Icons.lock_outline),
+      ),
+  ];
+
+  Widget _searchField(AppLocalizations l10n) => TextField(
+    decoration: InputDecoration(
+      hintText: l10n.searchHint,
+      prefixIcon: const Icon(Icons.search),
+    ),
+    onChanged: (query) => setState(() => _search = EntrySearch(query)),
+  );
+
+  /// A filter picked in the side column; the trash, if open, gives way to
+  /// the notes.
+  void _filter(void Function() change) {
+    setState(change);
+    if (_showTrash) unawaited(_openBeside(null));
+  }
+
+  Widget _wide(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final text = SchemaText(l10n);
+    final theme = Theme.of(context);
+    final divider = Border(right: BorderSide(color: theme.dividerColor));
+    return Scaffold(
+      body: SafeArea(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Material(
+              key: const ValueKey('pane-types'),
+              color: theme.colorScheme.surface,
+              shape: divider,
+              child: SizedBox(
+                width: Extents.l,
+                child: ListenableBuilder(
+                  listenable: widget.store,
+                  builder: (context, _) => _SideColumn(
+                    schemas: widget.schemas,
+                    tree: widget.store.categories,
+                    text: text,
+                    type: _type,
+                    category: _selected,
+                    trash: _showTrash,
+                    onAll: () => _filter(() {
+                      _type = null;
+                      _category = null;
+                    }),
+                    onType: (type) => _filter(() => _type = type),
+                    onCategory: (id) => _filter(() => _category = id),
+                    onTrash: () => unawaited(_openBeside(null, trash: true)),
+                    actions: _actions(l10n, trash: false),
+                  ),
+                ),
+              ),
+            ),
+            if (_showTrash)
+              Expanded(
+                child: TrashScreen(
+                  schemas: widget.schemas,
+                  store: widget.store,
+                ),
+              )
+            else ...[
+              DecoratedBox(
+                key: const ValueKey('pane-notes'),
+                decoration: BoxDecoration(border: divider),
+                child: SizedBox(
+                  width: Extents.xl,
+                  child: _noteColumn(context, l10n),
+                ),
+              ),
+              Expanded(child: _openNote(l10n)),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _noteColumn(BuildContext context, AppLocalizations l10n) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      Padding(
+        padding: const EdgeInsets.fromLTRB(
+          Spacing.m,
+          Spacing.m,
+          Spacing.m,
+          Spacing.s,
+        ),
+        child: _searchField(l10n),
+      ),
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: Spacing.m),
+        child: FilledButton.icon(
+          onPressed: () => unawaited(_openBeside(_NewNote())),
+          icon: const Icon(Icons.add),
+          label: Text(l10n.newNote),
+        ),
+      ),
+      const SizedBox(height: Spacing.s),
+      Expanded(
+        child: ListenableBuilder(
+          listenable: widget.store,
+          builder: (context, _) {
+            final shown = _shown();
+            if (shown.isEmpty) {
+              return Padding(
+                padding: const EdgeInsets.all(Spacing.l),
+                child: Text(
+                  widget.store.entries.isEmpty
+                      ? l10n.emptyLibrary
+                      : l10n.noResults,
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.labelMedium,
+                ),
+              );
+            }
+            return ListView.builder(
+              padding: const EdgeInsets.only(bottom: Spacing.xxl),
+              itemCount: shown.length,
+              itemBuilder: (context, index) {
+                final entry = shown[index];
+                return _NoteRow(
+                  key: ValueKey('note-row-${entry.id.value}'),
+                  entry: entry,
+                  schema: _schemaOf(entry),
+                  selected: entry.id == _opened,
+                  onTap: () => unawaited(_openBeside(entry.id)),
+                  onLongPress: () => _file(entry),
+                );
+              },
+            );
+          },
+        ),
+      ),
+    ],
+  );
+
+  /// The note open beside the list, or a word on how to open one.
+  Widget _openNote(AppLocalizations l10n) => ListenableBuilder(
+    listenable: widget.store,
+    builder: (context, _) {
+      final opened = _opened;
+      DynamicEntry? entry;
+      SchemaDefinition? schema;
+      if (opened is EntryId) {
+        entry = widget.store.entries
+            .where((entry) => entry.id == opened)
+            .firstOrNull;
+        schema = entry == null ? null : _schemaOf(entry);
+      } else if (opened is _NewNote) {
+        schema = _type ?? widget.schemas.last;
+      }
+      if (schema == null) {
+        return Center(
+          child: Text(
+            l10n.pickANote,
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.labelMedium,
+          ),
+        );
+      }
+      return NoteEditorScreen(
+        key: _editor,
+        schemas: widget.schemas,
+        store: widget.store,
+        initialSchema: schema,
+        entry: entry,
+        category: _selected,
+        onClose: () => setState(() {
+          _opened = null;
+          _editor = GlobalKey();
+        }),
+      );
+    },
+  );
+
+  Widget _narrow(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final text = SchemaText(l10n);
     final theme = Theme.of(context);
     return Scaffold(
-      appBar: AppBar(
-        title: Text(l10n.notesTitle),
-        actions: [
-          ?widget.cloud,
-          IconButton(
-            onPressed: _openCategories,
-            tooltip: l10n.categories,
-            icon: const Icon(Icons.folder_outlined),
-          ),
-          IconButton(
-            onPressed: _openTrash,
-            tooltip: l10n.trash,
-            icon: const Icon(Icons.delete_outline),
-          ),
-          if (widget.onPasskey case final onPasskey?)
-            IconButton(
-              onPressed: onPasskey,
-              tooltip: l10n.passkeySettings,
-              icon: const Icon(Icons.fingerprint),
-            ),
-          if (widget.onLock case final onLock?)
-            IconButton(
-              onPressed: onLock,
-              tooltip: l10n.lockVault,
-              icon: const Icon(Icons.lock_outline),
-            ),
-        ],
-      ),
+      appBar: AppBar(title: Text(l10n.notesTitle), actions: _actions(l10n)),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _open,
         icon: const Icon(Icons.add),
@@ -163,15 +387,7 @@ class _NoteLibraryScreenState extends State<NoteLibraryScreen> {
           final all = store.entries;
           final tree = store.categories;
           final selected = _selected;
-          final within = selected == null ? null : tree.subtree(selected);
-          final shown = [
-            for (final entry in all)
-              if ((_type == null || entry.schemaId == _type!.id) &&
-                  (within == null ||
-                      within.contains(store.categoryOf(entry.id))) &&
-                  _search.matches(entry))
-                entry,
-          ];
+          final shown = _shown();
           return CustomScrollView(
             slivers: [
               SliverPadding(
@@ -183,14 +399,7 @@ class _NoteLibraryScreenState extends State<NoteLibraryScreen> {
                 ),
                 sliver: SliverList.list(
                   children: [
-                    TextField(
-                      decoration: InputDecoration(
-                        hintText: l10n.searchHint,
-                        prefixIcon: const Icon(Icons.search),
-                      ),
-                      onChanged: (query) =>
-                          setState(() => _search = EntrySearch(query)),
-                    ),
+                    _searchField(l10n),
                     if (!tree.isEmpty) ...[
                       const SizedBox(height: Spacing.s),
                       _CategoryBar(
@@ -525,4 +734,175 @@ class _WholeLines extends StatelessWidget {
       );
     },
   );
+}
+
+/// A new note not saved yet, open beside the list.
+final class _NewNote {}
+
+/// The first column: every note, each type, the categories as a tree, the
+/// trash, and the vault's buttons at the foot.
+class _SideColumn extends StatelessWidget {
+  const _SideColumn({
+    required this.schemas,
+    required this.tree,
+    required this.text,
+    required this.type,
+    required this.category,
+    required this.trash,
+    required this.onAll,
+    required this.onType,
+    required this.onCategory,
+    required this.onTrash,
+    required this.actions,
+  });
+
+  final List<SchemaDefinition> schemas;
+  final CategoryTree tree;
+  final SchemaText text;
+  final SchemaDefinition? type;
+  final CategoryId? category;
+  final bool trash;
+  final VoidCallback onAll;
+  final ValueChanged<SchemaDefinition> onType;
+  final ValueChanged<CategoryId> onCategory;
+  final VoidCallback onTrash;
+  final List<Widget> actions;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final theme = Theme.of(context);
+    Widget heading(String label) => Padding(
+      padding: const EdgeInsets.fromLTRB(
+        Spacing.l,
+        Spacing.m,
+        Spacing.l,
+        Spacing.xs,
+      ),
+      child: Semantics(
+        header: true,
+        child: Text(label, style: theme.textTheme.labelSmall),
+      ),
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(
+            Spacing.l,
+            Spacing.l,
+            Spacing.l,
+            Spacing.m,
+          ),
+          child: Semantics(
+            header: true,
+            child: Text(l10n.notesTitle, style: theme.textTheme.headlineSmall),
+          ),
+        ),
+        Expanded(
+          child: ListView(
+            children: [
+              ListTile(
+                key: const ValueKey('nav-all'),
+                leading: const Icon(Icons.notes),
+                title: Text(l10n.allNotes),
+                selected: !trash && type == null && category == null,
+                onTap: onAll,
+              ),
+              heading(l10n.noteType),
+              for (final schema in schemas)
+                ListTile(
+                  key: ValueKey('nav-${schema.id.name}'),
+                  leading: Icon(
+                    NoteAppearance.icon(schema.icon),
+                    color: NoteAppearance.tint(schema.tint),
+                  ),
+                  title: Text(text.label(schema.label)),
+                  selected: !trash && type?.id == schema.id,
+                  onTap: () => onType(schema),
+                ),
+              if (!tree.isEmpty) ...[
+                heading(l10n.categories),
+                for (final node in tree.ordered)
+                  ListTile(
+                    key: ValueKey('nav-category-${node.id.value}'),
+                    contentPadding: EdgeInsetsDirectional.only(
+                      start: Spacing.m * tree.depthOf(node.id),
+                      end: Spacing.m,
+                    ),
+                    leading: Icon(
+                      CategoryAppearance.icon(node.icon),
+                      color: CategoryAppearance.tint(node.tint),
+                    ),
+                    title: Text(
+                      node.name.value,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    selected: !trash && category == node.id,
+                    onTap: () => onCategory(node.id),
+                  ),
+              ],
+              const Divider(),
+              ListTile(
+                key: const ValueKey('nav-trash'),
+                leading: const Icon(Icons.delete_outline),
+                title: Text(l10n.trash),
+                selected: trash,
+                onTap: onTrash,
+              ),
+            ],
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.all(Spacing.s),
+          child: Wrap(spacing: Spacing.xs, children: actions),
+        ),
+      ],
+    );
+  }
+}
+
+/// A note in the middle column: its type, title and date. A long press
+/// files it in a category, as on a card.
+class _NoteRow extends StatelessWidget {
+  const _NoteRow({
+    required this.entry,
+    required this.schema,
+    required this.selected,
+    required this.onTap,
+    required this.onLongPress,
+    super.key,
+  });
+
+  final DynamicEntry entry;
+  final SchemaDefinition? schema;
+  final bool selected;
+  final VoidCallback onTap;
+  final VoidCallback onLongPress;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final title = NoteTitle.of(entry, schema);
+    return ListTile(
+      leading: Icon(
+        NoteAppearance.icon(schema?.icon),
+        color: NoteAppearance.tint(schema?.tint),
+      ),
+      title: Text(
+        title.isEmpty ? l10n.untitled : title,
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+      ),
+      subtitle: Text(
+        MaterialLocalizations.of(context)
+            .formatMediumDate(entry.audit.updatedAt.toLocal()),
+        maxLines: 1,
+      ),
+      selected: selected,
+      onTap: onTap,
+      onLongPress: onLongPress,
+    );
+  }
 }

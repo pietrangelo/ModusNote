@@ -85,6 +85,11 @@ async function scenario(browser, origin, mode) {
     await settle();
     await page.keyboard.type(text);
   };
+  const typeInto = async (name, text) => {
+    await page.getByRole('textbox', { name }).click();
+    await settle();
+    await page.keyboard.type(text);
+  };
 
   await page.goto(origin);
   await semantics();
@@ -96,13 +101,14 @@ async function scenario(browser, origin, mode) {
 
   await page.getByText('New note').first().click();
   await settle();
-  // A quick note: its tags come first, folded open while empty, then the
-  // Markdown body, styled as it is typed. Leaving the page saves it.
-  await type(1, noteText);
+  // The window is wide enough for three columns: the note opens beside the
+  // list. A quick note's Markdown body is styled as it is typed, and
+  // closing the note saves it.
+  await typeInto(/^Content/, noteText);
   await page.keyboard.press('Enter');
   await page.keyboard.type('With `code` in the Markdown.');
   await page.getByText('Saved').waitFor({ timeout: 30000 });
-  await page.getByRole('button', { name: 'Back' }).click();
+  await page.getByRole('button', { name: 'Close' }).click();
   await page.getByText(noteText).first().waitFor({ timeout: 30000 });
   await settle();
 
@@ -112,14 +118,14 @@ async function scenario(browser, origin, mode) {
   await page.getByRole('button', { name: /Note type/ }).click();
   await page.getByLabel('Song', { exact: true }).click();
   await settle();
-  await type(0, songTitle);
+  await typeInto(/^Title/, songTitle);
   await page.getByRole('button', { name: 'Record' }).first().click();
   await page.getByText('Stop and attach').waitFor({ timeout: 30000 });
   await page.waitForTimeout(3000);
   await page.getByRole('button', { name: 'Stop and attach' }).click();
   await labelled(/Recording attached · 0:0[2-4]/, 30000);
   await page.getByText('Saved').waitFor({ timeout: 30000 });
-  await page.getByRole('button', { name: 'Back' }).click();
+  await page.getByRole('button', { name: 'Close' }).click();
   await page.getByText(songTitle).first().waitFor({ timeout: 30000 });
   await settle();
 
@@ -141,24 +147,23 @@ async function scenario(browser, origin, mode) {
   await page.getByRole('button', { name: 'Unlock' }).click();
   await page.getByText(noteText).first().waitFor({ timeout: 120000 });
 
-  // A saved note opens in the editor, with the formatting toolbar.
+  // A saved note opens beside the list, with the formatting toolbar.
   await page.getByText(noteText).first().click();
   await page.getByRole('button', { name: /^Bold/ }).waitFor({ timeout: 30000 });
   await page.getByText('Saved').waitFor({ timeout: 10000 });
-  await page.getByRole('button', { name: 'Back' }).click();
+  await page.getByRole('button', { name: 'Close' }).click();
   await settle();
 
   // The take decrypts, decodes and plays after the reload.
   await page.getByText(songTitle).first().click();
   const play = page.getByRole('button', { name: 'Play recording' });
   await play.waitFor({ timeout: 30000 });
-  // Let the page transition finish, or the tap lands on the moving route.
-  await page.waitForTimeout(1500);
+  await settle();
   await play.click();
   await page.getByRole('button', { name: 'Pause' }).waitFor({ timeout: 30000 });
   await labelled(/0:01 \/ 0:0[2-4]/, 10000);
   await page.getByRole('button', { name: 'Play recording' }).waitFor({ timeout: 10000 });
-  await page.getByRole('button', { name: 'Back' }).click();
+  await page.getByRole('button', { name: 'Close' }).click();
   await settle();
 
   // A passkey replaces the passphrase after the next reload.
