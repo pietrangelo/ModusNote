@@ -16,6 +16,7 @@ import '../audio/note_recorder.dart';
 import '../audio/web_audio_player.dart';
 import '../sync/sync_config.dart';
 import '../vault/vault_gate.dart';
+import 'browser_file_exchange.dart';
 import 'browser_image_chooser.dart';
 import 'vault_wiring.dart';
 
@@ -68,6 +69,7 @@ Future<Widget> buildHome() async {
           ),
     passwordFrom: (bytes) => SodiumPasswordSecret.fromUtf8Bytes(sodium, bytes),
     catalog: SeedSchemas.catalog,
+    files: BrowserFileExchange(),
     recorderFor: (engine) => NoteRecorder(
       capture: () => StreamingAudioCapture(
         microphone: RecordPcmMicrophone(),
