@@ -17,6 +17,7 @@ abstract final class NoteAppearance {
     NoteIcon.lightbulb => Icons.lightbulb_outline,
     NoteIcon.book => Icons.menu_book_outlined,
     NoteIcon.heart => Icons.favorite_border,
+    NoteIcon.page => Icons.article_outlined,
     null => Icons.description_outlined,
   };
 
@@ -26,7 +27,7 @@ abstract final class NoteAppearance {
     NoteTint.violet => ModusColors.rhythmVioletText,
     NoteTint.cyan => ModusColors.cadenceCyan,
     NoteTint.rose => ModusColors.lucidRose,
-    null => ModusColors.dustSilver,
+    NoteTint.silver || null => ModusColors.dustSilver,
   };
 
   /// How much of the tint colours a card: 1/φ⁴, the most that keeps every

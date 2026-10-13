@@ -89,8 +89,9 @@ abstract final class SeedSchemas {
     songSketchV1,
     dreamLogV1,
     taskV2,
-    quickNoteV1,
     documentV1,
+    // Last: the type a new note starts as.
+    quickNoteV1,
   ]);
 
   static final catalog = SchemaCatalog(current: all, migrations: [taskV1ToV2]);

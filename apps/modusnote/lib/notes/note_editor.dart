@@ -1,15 +1,18 @@
 import 'dart:async';
 import 'dart:math';
+import 'dart:typed_data';
 
 import 'package:blob_storage_media/blob_storage_media.dart';
 import 'package:flutter/material.dart';
 import 'package:schema_dynamic_content/schema_dynamic_content.dart';
 
+import '../attachments/open_in_browser.dart';
 import '../audio/recording_player_view.dart';
 import '../audio/recording_sheet.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../theme/golden_ratio.dart';
 import '../vault/auto_lock.dart';
+import 'attachments/attachments_input.dart';
 import 'dynamic_form_renderer.dart';
 import 'editor/markdown_commands.dart';
 import 'editor/markdown_controller.dart';
@@ -44,6 +47,7 @@ class NoteEditorScreen extends StatefulWidget {
     this.onClose,
     this.category,
     this.clock = DateTime.now,
+    this.openLink = openInBrowser,
     super.key,
   });
 
@@ -61,6 +65,9 @@ class NoteEditorScreen extends StatefulWidget {
   /// Where a new note is filed; an existing one stays where it is.
   final CategoryId? category;
   final DateTime Function() clock;
+
+  /// Opens a link the person confirmed; the browser outside tests.
+  final LinkOpener openLink;
 
   /// How long typing must pause before the note is saved.
   static const autosaveDelay = Duration(seconds: 1);
@@ -87,6 +94,9 @@ class NoteEditorScreenState extends State<NoteEditorScreen>
 
   /// Takes recorded since the last save; kept only once a save holds them.
   final _takes = <BlobId, KeyedRecording>{};
+
+  /// Pictures added since the last save, likewise.
+  final _pictures = <BlobId, KeyedImage>{};
 
   final _markdown = ValueNotifier<MarkdownEditingController?>(null);
   Timer? _timer;
@@ -199,13 +209,17 @@ class NoteEditorScreenState extends State<NoteEditorScreen>
         return _show(SaveState.incomplete);
     }
     final draft = _draft;
+    // A picture picked while this save runs waits for the next one.
+    final takes = _takes.values.toList();
+    final pictures = _pictures.values.toList();
     _show(SaveState.saving);
     // A save is not cut short by the vault locking itself.
     final release = AutoLockScope.maybeOf(context)?.hold();
     try {
       await widget.store.save(
         entry,
-        takes: _takes.values.toList(),
+        takes: takes,
+        pictures: pictures,
         newIn: _newIn,
       );
     } on Object {
@@ -214,7 +228,12 @@ class NoteEditorScreenState extends State<NoteEditorScreen>
       release?.call();
     }
     _saved = entry;
-    _takes.clear();
+    for (final take in takes) {
+      _takes.remove(take.id);
+    }
+    for (final picture in pictures) {
+      _pictures.remove(picture.id);
+    }
     _pendingViolations = const [];
     // Typing during the save leaves the note to be saved again.
     if (identical(draft, _draft)) _dirty = false;
@@ -324,6 +343,41 @@ class NoteEditorScreenState extends State<NoteEditorScreen>
     return take.id;
   }
 
+  /// Picks a picture and seals it; it joins the note at the next save.
+  Future<BlobId?> _addImage() async {
+    final images = widget.store.images;
+    if (images == null) return null;
+    final l10n = AppLocalizations.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    // The system's picker sends the app to the background: the vault must
+    // still be open when the picture comes back.
+    final release = AutoLockScope.maybeOf(context)?.hold();
+    try {
+      final image = await images.choose();
+      if (image == null) return null;
+      _pictures[image.id] = image;
+      return image.id;
+    } on UnsupportedImageException {
+      messenger.showSnackBar(SnackBar(content: Text(l10n.imageUnsupported)));
+    } on ImageTooLargeException {
+      messenger.showSnackBar(SnackBar(content: Text(l10n.imageUnsupported)));
+    } on Object {
+      messenger.showSnackBar(SnackBar(content: Text(l10n.imageAddFailed)));
+    } finally {
+      release?.call();
+    }
+    return null;
+  }
+
+  Future<Uint8List> _openImage(BlobId blob) {
+    final images = widget.store.images;
+    final image = _pictures[blob] ?? widget.store.imageOf(blob);
+    if (images == null || image == null) {
+      return Future.error(BlobNotFoundException(blob));
+    }
+    return images.open(image);
+  }
+
   SchemaDefinition? _schemaOf(DynamicEntry entry) {
     for (final schema in widget.schemas) {
       if (schema.id == entry.schemaId) return schema;
@@ -373,6 +427,7 @@ class NoteEditorScreenState extends State<NoteEditorScreen>
       initialSchema: schema,
       entry: entry,
       clock: widget.clock,
+      openLink: widget.openLink,
     );
     // A pushed route sits beside the library, not under it: it gets the
     // vault's auto-lock passed along explicitly.
@@ -408,8 +463,8 @@ class NoteEditorScreenState extends State<NoteEditorScreen>
     // Closed from outside (the vault locking): what was not saved goes,
     // since the keys to save it are being released.
     _timer?.cancel();
-    if (_takes.isNotEmpty) {
-      widget.store.discardTakes(_takes.values.toList());
+    if (_takes.isNotEmpty || _pictures.isNotEmpty) {
+      widget.store.discardTakes([..._takes.values, ..._pictures.values]);
     }
     // [_markdown] is left to the garbage collector: the Markdown field
     // clears it after this frame, which must not find it disposed.
@@ -511,6 +566,13 @@ class NoteEditorScreenState extends State<NoteEditorScreen>
                             : _record,
                         recordingLength: _lengthOf,
                         recordingPlayer: _playerOf,
+                        attachments: AttachmentHooks(
+                          addImage: widget.store.images == null
+                              ? null
+                              : _addImage,
+                          openImage: _openImage,
+                          openLink: widget.openLink,
+                        ),
                       ),
                       ListenableBuilder(
                         listenable: widget.store,

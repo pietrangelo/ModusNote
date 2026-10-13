@@ -10,11 +10,13 @@ import 'package:schema_dynamic_content/schema_dynamic_content.dart';
 import 'package:sodium/sodium_sumo.dart';
 import 'package:sqlite3/wasm.dart';
 
+import '../attachments/note_images.dart';
 import '../audio/note_playback.dart';
 import '../audio/note_recorder.dart';
 import '../audio/web_audio_player.dart';
 import '../sync/sync_config.dart';
 import '../vault/vault_gate.dart';
+import 'browser_image_chooser.dart';
 import 'vault_wiring.dart';
 
 /// The browser is another vault device. libsodium arrives as `sodium.js`
@@ -75,6 +77,12 @@ Future<Widget> buildHome() async {
       ),
       blobs: blobs,
       engine: engine,
+    ),
+    imagesFor: (engine, ensureLocal) => NoteImages(
+      blobs: blobs,
+      engine: engine,
+      chooser: BrowserImageChooser(),
+      ensureLocal: ensureLocal,
     ),
     playbackFor: (engine, ensureLocal) => NotePlayback(
       decoding: RecordingPlayback(

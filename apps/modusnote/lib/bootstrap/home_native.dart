@@ -11,17 +11,19 @@ import 'package:schema_dynamic_content/schema_dynamic_content.dart';
 import 'package:sodium/sodium_sumo.dart';
 import 'package:sqlite3/sqlite3.dart';
 
+import '../attachments/note_images.dart';
 import '../audio/note_playback.dart';
 import '../audio/note_recorder.dart';
 import '../sync/sync_config.dart';
 import '../audio/soloud_player.dart';
 import '../vault/vault_gate.dart';
+import 'gallery_image_chooser.dart';
 import 'vault_wiring.dart';
 
 /// libsodium is built by the `sodium` package's build hook and loaded once
 /// here; the vault lives in one SQLite file in the app's private support
 /// directory, which holds only envelopes and the sealed vault header, and
-/// recordings are `.enc` blobs beside it.
+/// recordings and pictures are `.enc` blobs beside it.
 Future<Widget> buildHome() async {
   final sodium = await SodiumSumoInit.init();
   final directory = await getApplicationSupportDirectory();
@@ -58,6 +60,12 @@ Future<Widget> buildHome() async {
       capture: createPlatformAudioCapture,
       blobs: blobs,
       engine: engine,
+    ),
+    imagesFor: (engine, ensureLocal) => NoteImages(
+      blobs: blobs,
+      engine: engine,
+      chooser: GalleryImageChooser(),
+      ensureLocal: ensureLocal,
     ),
     playbackFor: (engine, ensureLocal) => NotePlayback(
       decoding: RecordingPlayback(

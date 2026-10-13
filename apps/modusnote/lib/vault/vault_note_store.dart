@@ -3,14 +3,16 @@ import 'package:flutter/foundation.dart';
 import 'package:offline_sync/offline_sync.dart';
 import 'package:schema_dynamic_content/schema_dynamic_content.dart';
 
+import '../attachments/note_images.dart';
 import '../audio/note_playback.dart';
 import '../audio/note_recorder.dart';
 import '../notes/note_store.dart';
 
 /// [NoteStore] on the unlocked vault: each note is a [RecordedNoteCodec]
-/// document (the entry plus its recordings' metadata) signed and sealed by
-/// the [SyncEngine], one record per note. Recordings themselves are
-/// encrypted blobs beside it, deleted when no note references them.
+/// document (the entry plus the metadata of its recordings and pictures)
+/// signed and sealed by the [SyncEngine], one record per note. Recordings
+/// and pictures themselves are encrypted blobs beside it, deleted when no
+/// note references them.
 ///
 /// Categories are records of their own ([CategoryCodec], told apart by
 /// their first byte), sealed the same way; which category a note is in
@@ -24,6 +26,7 @@ final class VaultNoteStore extends ChangeNotifier implements NoteStore {
     this._catalog,
     this.recorder,
     this.playback,
+    this.images,
     this._clock,
   );
 
@@ -32,9 +35,17 @@ final class VaultNoteStore extends ChangeNotifier implements NoteStore {
     required SchemaCatalog catalog,
     NoteRecorder? recorder,
     NotePlayback? playback,
+    NoteImages? images,
     DateTime Function() clock = DateTime.now,
   }) async {
-    final store = VaultNoteStore._(engine, catalog, recorder, playback, clock);
+    final store = VaultNoteStore._(
+      engine,
+      catalog,
+      recorder,
+      playback,
+      images,
+      clock,
+    );
     await store._load();
     return store;
   }
@@ -51,6 +62,9 @@ final class VaultNoteStore extends ChangeNotifier implements NoteStore {
 
   @override
   final NotePlayback? playback;
+
+  @override
+  final NoteImages? images;
   var _unreadable = 0;
 
   /// Called after each saved change, once it is queued for the server.
@@ -68,15 +82,24 @@ final class VaultNoteStore extends ChangeNotifier implements NoteStore {
   @override
   List<RecordedNote> get trash => NoteOrder.trash(_notes.values);
 
-  /// Every recording the notes reference, in the trash or not.
-  Iterable<KeyedRecording> get recordings => [
-    for (final note in _notes.values) ...note.recordings.values,
+  /// Every blob the notes reference, recordings and pictures, in the
+  /// trash or not.
+  Iterable<KeyedBlob> get blobs => [
+    for (final note in _notes.values) ...note.blobs,
   ];
 
   @override
   KeyedRecording? recordingOf(BlobId id) {
     for (final note in _notes.values) {
       if (note.recordings[id] case final take?) return take;
+    }
+    return null;
+  }
+
+  @override
+  KeyedImage? imageOf(BlobId id) {
+    for (final note in _notes.values) {
+      if (note.images[id] case final image?) return image;
     }
     return null;
   }
@@ -92,26 +115,33 @@ final class VaultNoteStore extends ChangeNotifier implements NoteStore {
   Future<void> save(
     DynamicEntry entry, {
     Iterable<KeyedRecording> takes = const [],
+    Iterable<KeyedImage> pictures = const [],
     CategoryId? newIn,
   }) async {
     final before = _notes[entry.id];
     // Saving is keeping: an edit of a note another device has since put in
     // the trash brings it back.
     final after = before == null
-        ? RecordedNote.compose(entry, known: takes, category: newIn)
-        : before.edited(entry, takes: takes).restored();
+        ? RecordedNote.compose(
+            entry,
+            known: takes,
+            pictures: pictures,
+            category: newIn,
+          )
+        : before.edited(entry, takes: takes, pictures: pictures).restored();
     await _put(after);
     // Only once the note no longer points at them.
+    final kept = {for (final blob in after.blobs) blob.id};
     await _delete({
       if (before != null)
         ...RecordedNote.released(before: before, after: after),
-      for (final take in takes)
-        if (!after.recordings.containsKey(take.id)) take.id,
+      for (final blob in [...takes, ...pictures])
+        if (!kept.contains(blob.id)) blob.id,
     });
   }
 
   @override
-  Future<void> discardTakes(Iterable<KeyedRecording> takes) =>
+  Future<void> discardTakes(Iterable<KeyedBlob> takes) =>
       _delete({for (final take in takes) take.id});
 
   @override
@@ -204,18 +234,19 @@ final class VaultNoteStore extends ChangeNotifier implements NoteStore {
     onWrite?.call();
   }
 
-  /// Recordings of [gone] that no remaining note references.
+  /// Recordings and pictures of [gone] that no remaining note references.
   Set<BlobId> _orphaned(Iterable<RecordedNote> gone) {
-    final kept = {for (final take in recordings) take.id};
+    final kept = {for (final blob in blobs) blob.id};
     return {
       for (final note in gone)
-        for (final id in note.recordings.keys)
-          if (!kept.contains(id)) id,
+        for (final blob in note.blobs)
+          if (!kept.contains(blob.id)) blob.id,
     };
   }
 
   Future<void> _delete(Set<BlobId> ids) async {
-    final blobs = recorder?.blobs;
+    // Recordings and pictures share one store.
+    final blobs = recorder?.blobs ?? images?.blobs;
     if (blobs == null) return;
     for (final id in ids) {
       await blobs.delete(id);

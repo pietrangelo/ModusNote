@@ -2,11 +2,12 @@ import 'package:blob_storage_media/blob_storage_media.dart';
 import 'package:flutter/foundation.dart';
 import 'package:schema_dynamic_content/schema_dynamic_content.dart';
 
+import '../attachments/note_images.dart';
 import '../audio/note_playback.dart';
 import '../audio/note_recorder.dart';
 
 /// Where the UI reads and writes notes. The screens see only decrypted
-/// entries and the metadata of their recordings.
+/// entries and the metadata of their recordings and pictures.
 abstract interface class NoteStore implements Listenable {
   /// Notes outside the trash, most recently changed first.
   List<DynamicEntry> get entries;
@@ -17,6 +18,8 @@ abstract interface class NoteStore implements Listenable {
 
   KeyedRecording? recordingOf(BlobId id);
 
+  KeyedImage? imageOf(BlobId id);
+
   /// Records takes for audio fields; null where there is nowhere to keep
   /// them (the web preview), which turns the record button off.
   NoteRecorder? get recorder;
@@ -25,13 +28,18 @@ abstract interface class NoteStore implements Listenable {
   /// them with, which hides the player.
   NotePlayback? get playback;
 
-  /// Saves [entry] with the [takes] recorded while editing it. Takes it
-  /// does not reference, and recordings it no longer references, are
-  /// deleted. A new note is filed in [newIn]; an existing one stays where
-  /// it is.
+  /// Adds pictures to notes and opens them; null where there is nowhere to
+  /// keep them (the web preview), which turns the add button off.
+  NoteImages? get images;
+
+  /// Saves [entry] with the [takes] recorded and the [pictures] added
+  /// while editing it. Those it does not reference, and recordings and
+  /// pictures it no longer references, are deleted. A new note is filed
+  /// in [newIn]; an existing one stays where it is.
   Future<void> save(
     DynamicEntry entry, {
     Iterable<KeyedRecording> takes = const [],
+    Iterable<KeyedImage> pictures = const [],
     CategoryId? newIn,
   });
 
@@ -54,8 +62,9 @@ abstract interface class NoteStore implements Listenable {
   /// Files note [id] in [category] (null: in none), in the trash or not.
   Future<void> file(EntryId id, CategoryId? category);
 
-  /// Deletes takes recorded in an edit that was abandoned.
-  Future<void> discardTakes(Iterable<KeyedRecording> takes);
+  /// Deletes takes recorded, and pictures added, in an edit that was
+  /// abandoned.
+  Future<void> discardTakes(Iterable<KeyedBlob> takes);
 
   /// Moves a note to the trash, on every device of the workspace.
   Future<void> moveToTrash(EntryId id);
@@ -94,20 +103,38 @@ final class InMemoryNoteStore extends ChangeNotifier implements NoteStore {
   }
 
   @override
+  KeyedImage? imageOf(BlobId id) {
+    for (final note in _notes.values) {
+      if (note.images[id] case final image?) return image;
+    }
+    return null;
+  }
+
+  @override
   NoteRecorder? get recorder => null;
 
   @override
   NotePlayback? get playback => null;
 
   @override
+  NoteImages? get images => null;
+
+  @override
   Future<void> save(
     DynamicEntry entry, {
     Iterable<KeyedRecording> takes = const [],
+    Iterable<KeyedImage> pictures = const [],
     CategoryId? newIn,
   }) async {
     _notes[entry.id] = switch (_notes[entry.id]) {
-      null => RecordedNote.compose(entry, known: takes, category: newIn),
-      final before => before.edited(entry, takes: takes).restored(),
+      null => RecordedNote.compose(
+        entry,
+        known: takes,
+        pictures: pictures,
+        category: newIn,
+      ),
+      final before =>
+        before.edited(entry, takes: takes, pictures: pictures).restored(),
     };
     notifyListeners();
   }
@@ -154,7 +181,7 @@ final class InMemoryNoteStore extends ChangeNotifier implements NoteStore {
   }
 
   @override
-  Future<void> discardTakes(Iterable<KeyedRecording> takes) async {}
+  Future<void> discardTakes(Iterable<KeyedBlob> takes) async {}
 
   @override
   Future<void> moveToTrash(EntryId id) async {

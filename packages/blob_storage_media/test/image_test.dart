@@ -72,7 +72,7 @@ KeyedImage picture(String id, {int epoch = 0, int width = 640}) => KeyedImage(
       keyId: SubkeyId.fromBytes(List.filled(SubkeyId.length, 9)),
       plaintextLength: 5000,
     ),
-    info: ImageInfo(ImageFormat.jpeg, width, 480),
+    info: ImageHeader(ImageFormat.jpeg, width, 480),
     addedAt: at,
   ),
 );
@@ -111,28 +111,31 @@ void main() {
     test('reads the format and size of each kind', () {
       expect(
         ImageProbe.probe(png(640, 480)),
-        ImageInfo(ImageFormat.png, 640, 480),
+        ImageHeader(ImageFormat.png, 640, 480),
       );
-      expect(ImageProbe.probe(gif(32, 16)), ImageInfo(ImageFormat.gif, 32, 16));
+      expect(
+        ImageProbe.probe(gif(32, 16)),
+        ImageHeader(ImageFormat.gif, 32, 16),
+      );
       expect(
         ImageProbe.probe(jpeg(4032, 3024)),
-        ImageInfo(ImageFormat.jpeg, 4032, 3024),
+        ImageHeader(ImageFormat.jpeg, 4032, 3024),
       );
       expect(
         ImageProbe.probe(jpeg(100, 50, frame: 0xC0)),
-        ImageInfo(ImageFormat.jpeg, 100, 50),
+        ImageHeader(ImageFormat.jpeg, 100, 50),
       );
       expect(
         ImageProbe.probe(webpLossy(300, 200)),
-        ImageInfo(ImageFormat.webp, 300, 200),
+        ImageHeader(ImageFormat.webp, 300, 200),
       );
       expect(
         ImageProbe.probe(webpLossless(300, 200)),
-        ImageInfo(ImageFormat.webp, 300, 200),
+        ImageHeader(ImageFormat.webp, 300, 200),
       );
       expect(
         ImageProbe.probe(webpExtended(16000, 2000)),
-        ImageInfo(ImageFormat.webp, 16000, 2000),
+        ImageHeader(ImageFormat.webp, 16000, 2000),
       );
     });
 
@@ -231,7 +234,7 @@ void main() {
         at: at,
       );
 
-      expect(sealed.info, ImageInfo(ImageFormat.png, 640, 480));
+      expect(sealed.info, ImageHeader(ImageFormat.png, 640, 480));
       expect(sealed.blob.plaintextLength, bytes.length);
       expect(sealed.addedAt, at);
       final stored = store.committed[BlobId('photo')]!;
@@ -265,7 +268,7 @@ void main() {
         // A member describes it as smaller, hoping a decoder trusts that.
         final lying = ImageMetadata(
           blob: sealed.blob,
-          info: ImageInfo(ImageFormat.png, 64, 48),
+          info: ImageHeader(ImageFormat.png, 64, 48),
           addedAt: at,
         );
         await expectLater(
@@ -426,7 +429,7 @@ void main() {
           epoch: KeyEpoch(0),
           metadata: ImageMetadata(
             blob: picture('a1').blob,
-            info: ImageInfo(ImageFormat.png, 5000, 5000),
+            info: ImageHeader(ImageFormat.png, 5000, 5000),
             addedAt: at,
           ),
         );
