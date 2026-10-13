@@ -147,8 +147,14 @@ async function scenario(browser, origin, mode) {
   await page.getByRole('button', { name: 'Unlock' }).click();
   await page.getByText(noteText).first().waitFor({ timeout: 120000 });
 
-  // A saved note opens beside the list, with the formatting toolbar.
-  await page.getByText(noteText).first().click();
+  // The command palette finds a saved note from the keyboard; it opens
+  // beside the list, with the formatting toolbar.
+  await page.keyboard.press('Control+KeyP');
+  await page.getByRole('textbox', { name: /Search notes or commands/ }).waitFor({ timeout: 10000 });
+  await settle();
+  await page.keyboard.type(noteText);
+  await settle();
+  await page.keyboard.press('Enter');
   await page.getByRole('button', { name: /^Bold/ }).waitFor({ timeout: 30000 });
   await page.getByText('Saved').waitFor({ timeout: 10000 });
   await page.getByRole('button', { name: 'Close' }).click();

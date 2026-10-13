@@ -1020,5 +1020,20 @@
   "categorySave": "Save",
   "@categorySave": {
     "description": "Category dialog: keeps the name, icon and colour."
+  },
+  "commandPalette": "Search and commands",
+  "@commandPalette": {
+    "description": "Opens a box to find a note or run a command from the keyboard."
+  },
+  "paletteHint": "Search notes or commands…",
+  "@paletteHint": {
+    "description": "Hint of the command palette's search field."
+  },
+  "paletteNewNote": "New note: {type}",
+  "@paletteNewNote": {
+    "description": "Command palette: starts a new note of a type.",
+    "placeholders": {
+      "type": {"type": "String"}
+    }
   }
 }
