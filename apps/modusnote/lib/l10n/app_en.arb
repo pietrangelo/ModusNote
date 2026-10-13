@@ -32,21 +32,9 @@
   "@untitled": {
     "description": "Card title of a note with no text yet."
   },
-  "save": "Save",
-  "@save": {
-    "description": "Saves the note being edited."
-  },
   "noteType": "Note type",
   "@noteType": {
     "description": "Label of the note type switcher in the editor."
-  },
-  "fixErrors": "Fix the highlighted fields to save.",
-  "@fixErrors": {
-    "description": "Shown when saving a note that does not satisfy its type."
-  },
-  "noteSaved": "Note saved.",
-  "@noteSaved": {
-    "description": "Confirmation after saving a note."
   },
   "chooseDate": "Choose a date",
   "@chooseDate": {
@@ -485,18 +473,6 @@
   "@recordingDamaged": {
     "description": "Audio player in a note's audio field."
   },
-  "markdownWrite": "Write",
-  "@markdownWrite": {
-    "description": "Tab of a Markdown field that shows the text to edit."
-  },
-  "markdownPreview": "Preview",
-  "@markdownPreview": {
-    "description": "Tab of a Markdown field that shows the formatted text."
-  },
-  "markdownEmpty": "Nothing to show yet.",
-  "@markdownEmpty": {
-    "description": "Preview of an empty Markdown field."
-  },
   "markdownImage": "Image not loaded",
   "@markdownImage": {
     "description": "Accessibility label of an image in a note, which is never downloaded."
@@ -797,5 +773,97 @@
         "format": "yMMMd"
       }
     }
+  },
+  "markdownHeading": "Heading",
+  "@markdownHeading": {
+    "description": "Markdown toolbar: cycles a line through heading levels."
+  },
+  "markdownBold": "Bold",
+  "@markdownBold": {
+    "description": "Markdown toolbar."
+  },
+  "markdownItalic": "Italic",
+  "@markdownItalic": {
+    "description": "Markdown toolbar."
+  },
+  "markdownStrike": "Strikethrough",
+  "@markdownStrike": {
+    "description": "Markdown toolbar."
+  },
+  "markdownTasks": "Task list",
+  "@markdownTasks": {
+    "description": "Markdown toolbar."
+  },
+  "markdownBullets": "Bulleted list",
+  "@markdownBullets": {
+    "description": "Markdown toolbar."
+  },
+  "markdownNumbered": "Numbered list",
+  "@markdownNumbered": {
+    "description": "Markdown toolbar."
+  },
+  "markdownQuote": "Quote",
+  "@markdownQuote": {
+    "description": "Markdown toolbar."
+  },
+  "markdownCode": "Code",
+  "@markdownCode": {
+    "description": "Markdown toolbar: inline code."
+  },
+  "markdownCodeBlock": "Code block",
+  "@markdownCodeBlock": {
+    "description": "Markdown toolbar."
+  },
+  "markdownLink": "Link",
+  "@markdownLink": {
+    "description": "Markdown toolbar: inserts a link; it is never opened."
+  },
+  "markdownRule": "Divider",
+  "@markdownRule": {
+    "description": "Markdown toolbar: horizontal rule."
+  },
+  "editorTitleHint": "Title",
+  "@editorTitleHint": {
+    "description": "Editor: hint in the empty title."
+  },
+  "editorBodyHint": "Start writing…",
+  "@editorBodyHint": {
+    "description": "Editor: hint in the empty body."
+  },
+  "editorDetails": "Details",
+  "@editorDetails": {
+    "description": "Editor: the note's other fields, folded under the title."
+  },
+  "editorSaved": "Saved",
+  "@editorSaved": {
+    "description": "Editor: everything written is saved."
+  },
+  "editorSaving": "Saving…",
+  "@editorSaving": {
+    "description": "Editor: a save is under way."
+  },
+  "editorIncomplete": "Not saved: fields missing",
+  "@editorIncomplete": {
+    "description": "Editor: the note cannot be saved until required fields are filled."
+  },
+  "editorSaveFailed": "Couldn't save",
+  "@editorSaveFailed": {
+    "description": "Editor: the last save failed."
+  },
+  "editorLeaveTitle": "This note can't be saved yet",
+  "@editorLeaveTitle": {
+    "description": "Leaving a note with fields missing."
+  },
+  "editorLeaveBody": "Fill in the highlighted fields, or discard your changes.",
+  "@editorLeaveBody": {
+    "description": "Leaving a note with fields missing."
+  },
+  "editorKeepWriting": "Keep writing",
+  "@editorKeepWriting": {
+    "description": "Leaving a note with fields missing: stays."
+  },
+  "editorDiscard": "Discard",
+  "@editorDiscard": {
+    "description": "Leaving a note with fields missing: drops the unsaved changes."
   }
 }

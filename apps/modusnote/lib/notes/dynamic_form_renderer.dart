@@ -6,8 +6,8 @@ import '../audio/recording_sheet.dart' show formatLength;
 import '../l10n/generated/app_localizations.dart';
 import '../theme/golden_ratio.dart';
 import '../theme/modus_colors.dart';
-import 'markdown/markdown_document.dart';
-import 'markdown/markdown_view.dart';
+import 'editor/markdown_controller.dart';
+import 'editor/markdown_toolbar.dart';
 import 'schema_text.dart';
 
 /// What the user has entered so far. [unreadable] holds fields whose input
@@ -27,9 +27,16 @@ final class FormDraft {
 /// field, chosen by its [FieldType]. Nothing here knows about songs or
 /// tasks; a new schema needs no new widget.
 ///
+/// It is laid out as a page to write on, the way Standard Notes and
+/// Notesnook do it: the first one-line text is the title, large and
+/// without a frame; the first long text (or else the first list of tasks)
+/// is the body, also frameless; recordings stay in sight above it; every
+/// other field folds under the title as the note's details.
+///
 /// Every value is shown through text widgets, never parsed as HTML, so
-/// content synced from someone else cannot run as code. Markdown fields
-/// also have a preview, built from widgets by [MarkdownView].
+/// content synced from someone else cannot run as code. A Markdown body
+/// is rendered as it is typed, in the field itself
+/// ([MarkdownEditingController]).
 class DynamicFormRenderer extends StatefulWidget {
   const DynamicFormRenderer({
     required this.schema,
@@ -39,6 +46,8 @@ class DynamicFormRenderer extends StatefulWidget {
     this.onRecordAudio,
     this.recordingLength,
     this.recordingPlayer,
+    this.markdownTarget,
+    this.autofocus = false,
     super.key,
   });
 
@@ -58,6 +67,13 @@ class DynamicFormRenderer extends StatefulWidget {
   /// The player for an attached recording, or null where it cannot be
   /// played; the field then shows only its length.
   final Widget? Function(BlobId blob)? recordingPlayer;
+
+  /// Set to the Markdown body's controller, for a formatting toolbar
+  /// outside the form; null when the body is not Markdown.
+  final ValueNotifier<MarkdownEditingController?>? markdownTarget;
+
+  /// Puts the cursor in the title, or in the body when there is none.
+  final bool autofocus;
 
   @override
   State<DynamicFormRenderer> createState() => _DynamicFormRendererState();
@@ -83,21 +99,96 @@ class _DynamicFormRendererState extends State<DynamicFormRenderer> {
     widget.onChanged(FormDraft(_values, _unreadable));
   }
 
+  late final _layout = _PageLayout.of(widget.schema);
+  late var _detailsOpen =
+      _layout.details.every((field) => widget.values[field.key] == null) ||
+      _layout.details.any(_hasViolation);
+
+  bool _hasViolation(FieldDefinition field) =>
+      widget.violations.any((v) => v.field == field.key);
+
+  @override
+  void didUpdateWidget(DynamicFormRenderer old) {
+    super.didUpdateWidget(old);
+    // Errors in a folded detail must be seen.
+    if (!_detailsOpen && _layout.details.any(_hasViolation)) {
+      _detailsOpen = true;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final text = SchemaText(l10n);
+    Widget keyed(FieldDefinition field, Widget child) =>
+        KeyedSubtree(key: ValueKey('field-${field.key}'), child: child);
+    final title = _layout.title;
+    final body = _layout.body;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        for (final field in _ordered(widget.schema))
-          KeyedSubtree(
-            key: ValueKey('field-${field.key}'),
-            child: Padding(
+        if (title != null)
+          keyed(
+            title,
+            _TitleInput(
+              label: text.label(title.label),
+              error: _errorFor(title.key, text),
+              value: _values[title.key],
+              autofocus: widget.autofocus,
+              onChanged: (v) => _set(title.key, v),
+            ),
+          ),
+        if (_layout.details.isNotEmpty) ...[
+          _DetailsHeader(
+            open: _detailsOpen,
+            onToggle: () => setState(() => _detailsOpen = !_detailsOpen),
+          ),
+          Visibility(
+            visible: _detailsOpen,
+            maintainState: true,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (final field in _layout.details)
+                  keyed(
+                    field,
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: Spacing.l),
+                      child: _input(field, text, l10n),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+        for (final field in _layout.recordings)
+          keyed(
+            field,
+            Padding(
               padding: const EdgeInsets.only(bottom: Spacing.l),
               child: _input(field, text, l10n),
             ),
           ),
+        if (body != null)
+          keyed(body, switch (body.type) {
+            MarkdownFieldType() => _MarkdownInput(
+              label: text.label(body.label),
+              hint: l10n.editorBodyHint,
+              error: _errorFor(body.key, text),
+              value: _values[body.key],
+              target: widget.markdownTarget,
+              autofocus: widget.autofocus && title == null,
+              onChanged: (v) => _set(body.key, v),
+            ),
+            ChecklistFieldType() => _input(body, text, l10n),
+            _ => _BodyInput(
+              label: text.label(body.label),
+              error: _errorFor(body.key, text),
+              value: _values[body.key],
+              autofocus: widget.autofocus && title == null,
+              onChanged: (v) => _set(body.key, v),
+            ),
+          }),
       ],
     );
   }
@@ -124,6 +215,7 @@ class _DynamicFormRendererState extends State<DynamicFormRenderer> {
       ),
       MarkdownFieldType() => _MarkdownInput(
         label: label,
+        hint: label,
         error: error,
         value: value,
         onChanged: set,
@@ -284,34 +376,76 @@ class _TextInputState extends State<_TextInput> {
   );
 }
 
-/// A Markdown field: the text to edit, or its preview. A note that
-/// already has text opens on the preview, since it is usually opened to
-/// be read.
-class _MarkdownInput extends StatefulWidget {
-  const _MarkdownInput({
+/// The page layout of a schema: which field is the title, which the
+/// body, and what is left as details, in the order of [_ordered].
+final class _PageLayout {
+  _PageLayout(this.title, this.body, this.details, this.recordings);
+
+  factory _PageLayout.of(SchemaDefinition schema) {
+    final fields = _DynamicFormRendererState._ordered(schema);
+    FieldDefinition? first(bool Function(FieldType) test) {
+      for (final field in fields) {
+        if (test(field.type)) return field;
+      }
+      return null;
+    }
+
+    final title = first((type) => type is TextFieldType);
+    final body =
+        first(
+          (type) => type is MarkdownFieldType || type is RichTextFieldType,
+        ) ??
+        first((type) => type is ChecklistFieldType);
+    bool rest(FieldDefinition field) => field != title && field != body;
+    return _PageLayout(
+      title,
+      body,
+      [
+        for (final field in fields)
+          if (rest(field) && field.type is! AudioBlobFieldType) field,
+      ],
+      [
+        for (final field in fields)
+          if (rest(field) && field.type is AudioBlobFieldType) field,
+      ],
+    );
+  }
+
+  final FieldDefinition? title;
+  final FieldDefinition? body;
+  final List<FieldDefinition> details;
+
+  /// Recordings: content, not details, so they never fold away.
+  final List<FieldDefinition> recordings;
+}
+
+/// The note's title: large, without a frame, its label as the hint.
+class _TitleInput extends StatefulWidget {
+  const _TitleInput({
     required this.label,
     required this.error,
     required this.value,
+    required this.autofocus,
     required this.onChanged,
   });
 
   final String label;
   final String? error;
   final FieldValue? value;
+  final bool autofocus;
   final ValueChanged<FieldValue?> onChanged;
 
   @override
-  State<_MarkdownInput> createState() => _MarkdownInputState();
+  State<_TitleInput> createState() => _TitleInputState();
 }
 
-class _MarkdownInputState extends State<_MarkdownInput> {
+class _TitleInputState extends State<_TitleInput> {
   late final _controller = TextEditingController(
     text: switch (widget.value) {
       TextValue(:final text) => text,
       _ => '',
     },
   );
-  late var _preview = _controller.text.trim().isNotEmpty;
 
   @override
   void dispose() {
@@ -320,62 +454,188 @@ class _MarkdownInputState extends State<_MarkdownInput> {
   }
 
   @override
-  Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
-    final theme = Theme.of(context);
-    final decoration = InputDecoration(
-      labelText: widget.label,
+  Widget build(BuildContext context) => TextField(
+    controller: _controller,
+    autofocus: widget.autofocus,
+    style: Theme.of(context).textTheme.headlineSmall,
+    decoration: InputDecoration(
+      hintText: widget.label,
       errorText: widget.error,
-    );
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      spacing: Spacing.s,
-      children: [
-        SegmentedButton<bool>(
-          segments: [
-            ButtonSegment(
-              value: false,
-              label: Text(l10n.markdownWrite),
-              icon: const Icon(Icons.edit_outlined, size: IconSizes.inline),
-            ),
-            ButtonSegment(
-              value: true,
-              label: Text(l10n.markdownPreview),
-              icon: const Icon(
-                Icons.visibility_outlined,
-                size: IconSizes.inline,
-              ),
-            ),
-          ],
-          selected: {_preview},
-          showSelectedIcon: false,
-          onSelectionChanged: (selected) =>
-              setState(() => _preview = selected.single),
-        ),
-        if (_preview)
-          InputDecorator(
-            key: const ValueKey('markdown-preview'),
-            decoration: decoration,
-            isEmpty: false,
-            child: _controller.text.trim().isEmpty
-                ? Text(l10n.markdownEmpty, style: theme.textTheme.labelMedium)
-                : MarkdownView(
-                    document: MarkdownDocument.parse(_controller.text),
-                  ),
-          )
-        else
-          TextField(
-            controller: _controller,
-            decoration: decoration,
-            minLines: 3,
-            maxLines: null,
-            keyboardType: TextInputType.multiline,
-            onChanged: (text) =>
-                widget.onChanged(text.isEmpty ? null : TextValue(text)),
-          ),
-      ],
-    );
+      border: InputBorder.none,
+      enabledBorder: InputBorder.none,
+      focusedBorder: InputBorder.none,
+    ),
+    textInputAction: TextInputAction.next,
+    onChanged: (text) =>
+        widget.onChanged(text.isEmpty ? null : TextValue(text)),
+  );
+}
+
+/// Folds the details of a note away under its title.
+class _DetailsHeader extends StatelessWidget {
+  const _DetailsHeader({required this.open, required this.onToggle});
+
+  final bool open;
+  final VoidCallback onToggle;
+
+  @override
+  Widget build(BuildContext context) => Align(
+    alignment: Alignment.centerLeft,
+    child: TextButton.icon(
+      key: const ValueKey('details-toggle'),
+      onPressed: onToggle,
+      icon: Icon(
+        open ? Icons.expand_less : Icons.expand_more,
+        size: IconSizes.inline,
+      ),
+      label: Text(AppLocalizations.of(context).editorDetails),
+    ),
+  );
+}
+
+/// A long plain text as the body of the page, without a frame.
+class _BodyInput extends StatefulWidget {
+  const _BodyInput({
+    required this.label,
+    required this.error,
+    required this.value,
+    required this.autofocus,
+    required this.onChanged,
+  });
+
+  final String label;
+  final String? error;
+  final FieldValue? value;
+  final bool autofocus;
+  final ValueChanged<FieldValue?> onChanged;
+
+  @override
+  State<_BodyInput> createState() => _BodyInputState();
+}
+
+class _BodyInputState extends State<_BodyInput> {
+  late final _controller = TextEditingController(
+    text: switch (widget.value) {
+      TextValue(:final text) => text,
+      _ => '',
+    },
+  );
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
   }
+
+  @override
+  Widget build(BuildContext context) => TextField(
+    controller: _controller,
+    autofocus: widget.autofocus,
+    decoration: _pageDecoration(widget.label, widget.error),
+    minLines: 8,
+    maxLines: null,
+    keyboardType: TextInputType.multiline,
+    onChanged: (text) =>
+        widget.onChanged(text.isEmpty ? null : TextValue(text)),
+  );
+}
+
+InputDecoration _pageDecoration(String hint, String? error) => InputDecoration(
+  hintText: hint,
+  errorText: error,
+  border: InputBorder.none,
+  enabledBorder: InputBorder.none,
+  focusedBorder: InputBorder.none,
+);
+
+/// A Markdown field, rendered as it is typed: bold looks bold, a heading
+/// is large, list markers stand out and their syntax is dimmed, all in
+/// the text being edited, with no separate preview. Enter continues a
+/// list. Formatting comes from the keyboard shortcuts here and from a
+/// toolbar bound through [target].
+class _MarkdownInput extends StatefulWidget {
+  const _MarkdownInput({
+    required this.label,
+    required this.hint,
+    required this.error,
+    required this.value,
+    required this.onChanged,
+    this.target,
+    this.autofocus = false,
+  });
+
+  final String label;
+  final String hint;
+  final String? error;
+  final FieldValue? value;
+  final ValueChanged<FieldValue?> onChanged;
+  final ValueNotifier<MarkdownEditingController?>? target;
+  final bool autofocus;
+
+  @override
+  State<_MarkdownInput> createState() => _MarkdownInputState();
+}
+
+class _MarkdownInputState extends State<_MarkdownInput> {
+  late final _controller = MarkdownEditingController(
+    text: switch (widget.value) {
+      TextValue(:final text) => text,
+      _ => '',
+    },
+  );
+  late var _reported = _controller.text;
+
+  @override
+  void initState() {
+    super.initState();
+    // Typing, toolbar buttons and shortcuts all change the text here.
+    _controller.addListener(_report);
+    // The toolbar is outside this form: tell it after this frame is built.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) widget.target?.value = _controller;
+    });
+  }
+
+  void _report() {
+    final text = _controller.text;
+    if (text == _reported) return;
+    _reported = text;
+    widget.onChanged(text.isEmpty ? null : TextValue(text));
+  }
+
+  @override
+  void dispose() {
+    // Taken off the toolbar after this frame, when nothing is building.
+    if (widget.target case final target? when target.value == _controller) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (target.value == _controller) target.value = null;
+        _controller.dispose();
+      });
+    } else {
+      _controller.dispose();
+    }
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => CallbackShortcuts(
+    bindings: {
+      for (final action in MarkdownAction.all)
+        action.activator: () => _controller.apply(action.command),
+    },
+    child: Semantics(
+      label: widget.label,
+      child: TextField(
+        controller: _controller,
+        autofocus: widget.autofocus,
+        decoration: _pageDecoration(widget.hint, widget.error),
+        minLines: 8,
+        maxLines: null,
+        keyboardType: TextInputType.multiline,
+        inputFormatters: const [MarkdownListFormatter()],
+      ),
+    ),
+  );
 }
 
 /// A list of tasks, one line each. Enter after a task adds a new one

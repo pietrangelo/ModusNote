@@ -116,7 +116,8 @@ void main() {
     await tester.tap(find.text('Nuova nota'));
     await tester.pumpAndSettle();
     await tester.enterText(textInput('content'), 'Da buttare');
-    await tester.tap(find.text('Salva'));
+    await tester.pump();
+    await tester.tap(find.byType(BackButton));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Da buttare'));
     await tester.pumpAndSettle();
@@ -169,7 +170,7 @@ void main() {
       await tester.tap(find.text('Nuova nota'));
       await tester.pumpAndSettle();
       // Focus without a tap, so only the typing counts as activity.
-      await tester.showKeyboard(find.byType(EditableText).first);
+      await tester.showKeyboard(textInput('content'));
 
       for (var i = 0; i < 3; i++) {
         await tester.pump(const Duration(seconds: 50));
