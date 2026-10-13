@@ -12,6 +12,7 @@ export 'src/application/vault_keeper.dart';
 export 'src/core/conflict_resolver.dart';
 export 'src/core/local_record.dart';
 export 'src/core/outbox.dart';
+export 'src/core/passkey_slot.dart';
 export 'src/core/record_revision.dart';
 export 'src/core/sync_exception.dart';
 export 'src/core/sync_row.dart';

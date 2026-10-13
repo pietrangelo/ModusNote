@@ -90,3 +90,21 @@ final class VaultLockedException extends VaultException {
   @override
   String get message => 'vault is locked';
 }
+
+/// No passkey is enrolled for this vault on this device.
+final class NoPasskeyException extends VaultException {
+  const NoPasskeyException();
+
+  @override
+  String get message => 'no passkey enrolled on this device';
+}
+
+/// The passkey's key does not open the vault: another passkey answered, or
+/// the slot or the header around it was altered. Like a wrong passphrase,
+/// the cases are indistinguishable by design.
+final class PasskeyRejectedException extends VaultException {
+  const PasskeyRejectedException();
+
+  @override
+  String get message => 'passkey does not open this vault';
+}

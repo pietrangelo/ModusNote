@@ -102,6 +102,7 @@ final class FakeClock implements Clock {
 /// Where the vault header and its signed log live on the device.
 final class FakeVaultStore implements VaultStore {
   VaultHeader? header;
+  PasskeySlot? passkey;
   final membership = <MembershipRecord>[];
   final bundles = <KeyBundle>[];
 
@@ -124,4 +125,16 @@ final class FakeVaultStore implements VaultStore {
 
   @override
   Future<List<KeyBundle>> loadKeyBundles() async => [...bundles];
+
+  @override
+  Future<PasskeySlot?> loadPasskey() async => passkey;
+
+  @override
+  Future<void> savePasskey(PasskeySlot slot) async {
+    if (header == null) throw const NoVaultException();
+    passkey = slot;
+  }
+
+  @override
+  Future<void> removePasskey() async => passkey = null;
 }

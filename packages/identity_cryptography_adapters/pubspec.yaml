@@ -10,6 +10,7 @@ dependencies:
   identity_cryptography: any
   meta: ^1.16.0
   sodium: ^4.1.1
+  web: ^1.1.1
 
 dev_dependencies:
   glados: ^1.1.7
