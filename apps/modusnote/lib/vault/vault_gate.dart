@@ -402,6 +402,8 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
       :final sync,
     )) {
       _stopWatching();
+      // An undo offered on the way out would write with released keys.
+      ScaffoldMessenger.maybeOf(context)?.clearSnackBars();
       // The sync stops before the keys it works with are released.
       sync?.dispose();
       widget.account?.detach();
