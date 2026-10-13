@@ -1,4 +1,5 @@
 import 'package:flutter/services.dart';
+import 'package:schema_dynamic_content/schema_dynamic_content.dart';
 
 /// The formatting a Markdown field offers, as edits of the text being
 /// written: the toolbar and the keyboard shortcuts both call these. Each
@@ -52,6 +53,28 @@ abstract final class MarkdownCommands {
         baseOffset: before.length,
         extentOffset: before.length + address.length,
       ),
+    );
+  }
+
+  /// A link to note [target] in place of the selection, reading the
+  /// selected words or, with none, the note's [title]; the cursor goes
+  /// after it.
+  static TextEditingValue noteLink(
+    TextEditingValue value, {
+    required String title,
+    required EntryId target,
+  }) {
+    if (!_valid(value)) return value;
+    final selection = value.selection;
+    final selected = selection.textInside(value.text);
+    final link = NoteLinks.markdown(
+      selected.trim().isEmpty ? title : selected,
+      target,
+    );
+    final before = '${selection.textBefore(value.text)}$link';
+    return TextEditingValue(
+      text: '$before${selection.textAfter(value.text)}',
+      selection: TextSelection.collapsed(offset: before.length),
     );
   }
 
