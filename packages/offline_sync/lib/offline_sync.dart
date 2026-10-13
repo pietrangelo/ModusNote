@@ -10,6 +10,7 @@ export 'src/application/revision_authenticator.dart';
 export 'src/application/sync_engine.dart';
 export 'src/application/vault_keeper.dart';
 export 'src/core/conflict_resolver.dart';
+export 'src/core/device_link.dart';
 export 'src/core/local_record.dart';
 export 'src/core/outbox.dart';
 export 'src/core/passkey_slot.dart';

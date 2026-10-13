@@ -159,6 +159,53 @@ void main() {
     });
   });
 
+  group('granting again', () {
+    test('a member whose keys never arrived receives every epoch', () {
+      invite(carol, Role.editor);
+      final revoked = administration.revoke(
+        alice.ledger,
+        alice.keyring,
+        owner: alice.identity,
+        member: carol.id,
+      );
+      alice.ledger = revoked.ledger;
+      server.publish(revoked);
+      // Bob's record went out; the bundle with his keys did not.
+      final update = administration.invite(
+        alice.ledger,
+        alice.keyring,
+        owner: alice.identity,
+        invitee: bob.publicIdentity,
+        role: Role.owner,
+      );
+      alice.ledger = update.ledger;
+      server.log.add(update.record.toBytes());
+      bob.join(invitation, server.records);
+
+      final again = administration.grantAll(
+        alice.ledger,
+        alice.keyring,
+        issuer: alice.identity,
+        recipient: bob.id,
+      );
+      bob.sync(server.records, [again]);
+
+      expect(bob.keyring.epochs, [KeyEpoch.initial, KeyEpoch(1)]);
+    });
+
+    test('someone outside the workspace is granted nothing', () {
+      expect(
+        () => administration.grantAll(
+          alice.ledger,
+          alice.keyring,
+          issuer: alice.identity,
+          recipient: bob.id,
+        ),
+        throwsA(isA<NotAMemberException>()),
+      );
+    });
+  });
+
   group('revoking', () {
     test('rotates the GroupKey and grants it only to who remains', () {
       invite(bob, Role.editor);

@@ -185,3 +185,71 @@ select pg_temp.check(
   'an account can leave on its own'
 );
 commit;
+
+-- Device links: one account's devices meet; nobody else sees them.
+begin;
+select pg_temp.act_as(:alice);
+insert into public.device_links (link_id, kind, payload)
+values (repeat('a', 32), 'offer', '\x01'), (repeat('a', 32), 'answer', '\x02');
+select pg_temp.check(
+  (select count(*) from public.device_links) = 2,
+  'an account reads back its own link rows'
+);
+select pg_temp.check(
+  (select bool_and(user_id = :alice::uuid) from public.device_links),
+  'link rows belong to the account that posted them'
+);
+select pg_temp.refused($q$
+  insert into public.device_links (link_id, kind, payload, user_id)
+  values (repeat('b', 32), 'offer', '\x01', '00000000-0000-0000-0000-00000000000b')
+$q$);
+select pg_temp.refused($q$
+  insert into public.device_links (link_id, kind, payload, created_at)
+  values (repeat('b', 32), 'offer', '\x01', now() + interval '1 year')
+$q$);
+select pg_temp.check(true, 'an account posts neither as another nor into the future');
+select pg_temp.refused($q$ update public.device_links set payload = '\x03' $q$);
+select pg_temp.check(true, 'link rows are never rewritten');
+commit;
+
+begin;
+select pg_temp.act_as(:mallory);
+select pg_temp.check(
+  (select count(*) from public.device_links) = 0,
+  'another account sees no link rows'
+);
+delete from public.device_links;
+commit;
+
+begin;
+select pg_temp.act_as(:alice);
+select pg_temp.check(
+  (select count(*) from public.device_links) = 2,
+  'another account cannot delete them either'
+);
+commit;
+
+begin;
+-- A row from twenty minutes ago, as the clock would leave it.
+update public.device_links set created_at = now() - interval '20 minutes'
+where kind = 'offer';
+select pg_temp.act_as(:alice);
+select pg_temp.check(
+  (select count(*) from public.device_links where kind = 'offer') = 0,
+  'a link row is unreadable after a quarter of an hour'
+);
+delete from public.device_links where link_id = repeat('a', 32);
+commit;
+
+begin;
+select pg_temp.check(
+  (select count(*) from public.device_links where kind = 'answer') = 0,
+  'an account deletes its own link rows'
+);
+commit;
+
+begin;
+set local role anon;
+select pg_temp.refused($q$ select * from public.device_links $q$);
+select pg_temp.check(true, 'the anonymous role cannot reach device links');
+commit;

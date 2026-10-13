@@ -155,6 +155,133 @@ void main() {
     });
   });
 
+  group('device links', () {
+    final link = LinkId.parse('ffeeddccbbaa99887766554433221100');
+    final offer = LinkOffer(
+      id: link,
+      salt: Salt.fromBytes(List.filled(Salt.length, 5)),
+      sealedInvitation: EncryptedEnvelope(
+        nonce: Nonce.fromBytes(List.filled(Nonce.length, 6)),
+        ciphertext: List.filled(
+          LinkOffer.invitationLength + EncryptedEnvelope.tagLength,
+          7,
+        ),
+      ),
+    );
+    LinkAnswer answer(int marker, [LinkId? id]) => LinkAnswer(
+      id: id ?? link,
+      sealedIdentity: EncryptedEnvelope(
+        nonce: Nonce.fromBytes(List.filled(Nonce.length, marker)),
+        ciphertext: List.filled(
+          PublicIdentity.length + EncryptedEnvelope.tagLength,
+          marker,
+        ),
+      ),
+    );
+    Map<String, Object?> wire(LinkId id, List<int> payload) => {
+      'link_id': id.hex,
+      'payload': '\\x${hex(payload)}',
+    };
+
+    test('an offer and an answer are posted as opaque rows', () async {
+      respond = (_) => http.Response('', 201);
+
+      await server().postOffer(offer);
+      await server().postAnswer(answer(1));
+
+      final [posted, answered] = requests;
+      expect(posted.url.path, '/rest/v1/device_links');
+      expect(jsonDecode(posted.body), [
+        {
+          'link_id': link.hex,
+          'kind': 'offer',
+          'payload': '\\x${hex(offer.toBytes())}',
+        },
+      ]);
+      expect(jsonDecode(answered.body), [
+        {
+          'link_id': link.hex,
+          'kind': 'answer',
+          'payload': '\\x${hex(answer(1).toBytes())}',
+        },
+      ]);
+    });
+
+    test('the newest offer is read back', () async {
+      respond = (_) =>
+          http.Response(jsonEncode([wire(link, offer.toBytes())]), 200);
+
+      expect(await server().latestOffer(), offer);
+      final query = requests.single.url.queryParameters;
+      expect(query['kind'], 'eq.offer');
+      expect(query['order'], 'id.desc');
+      expect(query['limit'], '1');
+    });
+
+    test('no offer reads as none', () async {
+      expect(await server().latestOffer(), isNull);
+    });
+
+    test('the answers to one link are read in order', () async {
+      respond = (_) => http.Response(
+        jsonEncode([
+          wire(link, answer(1).toBytes()),
+          wire(link, answer(2).toBytes()),
+        ]),
+        200,
+      );
+
+      expect(await server().answers(link), [answer(1), answer(2)]);
+      final query = requests.single.url.queryParameters;
+      expect(query['link_id'], 'eq.${link.hex}');
+      expect(query['kind'], 'eq.answer');
+    });
+
+    test('closing a link deletes its rows', () async {
+      respond = (_) => http.Response('', 204);
+
+      await server().close(link);
+
+      expect(requests.single.method, 'DELETE');
+      expect(requests.single.url.queryParameters, {
+        'link_id': 'eq.${link.hex}',
+      });
+    });
+
+    group('adversary', () {
+      final elsewhere = LinkId.parse('00000000000000000000000000000001');
+
+      test('garbage or a payload naming another link is dropped', () async {
+        respond = (request) => http.Response(
+          jsonEncode([
+            wire(link, [1, 2, 3]),
+            {'link_id': link.hex, 'payload': 'not bytea'},
+            wire(link, answer(3, elsewhere).toBytes()),
+            wire(link, offer.toBytes()),
+            wire(link, answer(4).toBytes()),
+          ]),
+          200,
+        );
+
+        expect(await server().answers(link), [answer(4)]);
+      });
+
+      test('an offer whose row names another link is no offer', () async {
+        respond = (_) =>
+            http.Response(jsonEncode([wire(elsewhere, offer.toBytes())]), 200);
+
+        expect(await server().latestOffer(), isNull);
+      });
+
+      test('an answer is not taken for an offer', () async {
+        respond = (_) =>
+            http.Response(jsonEncode([wire(link, answer(1).toBytes())]), 200);
+
+        expect(await server().latestOffer(), isNull);
+      });
+    });
+  });
+
   group('availability', () {
     test('network errors, timeouts and 5xx mean offline', () async {
       for (final failure in <FutureOr<http.Response> Function(http.Request)>[

@@ -108,3 +108,20 @@ final class PasskeyRejectedException extends VaultException {
   @override
   String get message => 'passkey does not open this vault';
 }
+
+/// No offer of this account opens with the code: mistyped, or expired, or
+/// another offer was made since. Indistinguishable by design.
+final class LinkCodeRejectedException extends VaultException {
+  const LinkCodeRejectedException();
+
+  @override
+  String get message => 'no link offer opens with this code';
+}
+
+/// The link was not completed in time; a new code is needed.
+final class LinkExpiredException extends VaultException {
+  const LinkExpiredException();
+
+  @override
+  String get message => 'device link expired';
+}

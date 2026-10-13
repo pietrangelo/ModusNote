@@ -1,6 +1,7 @@
 import 'package:collaboration_access_control/collaboration_access_control.dart';
 import 'package:identity_cryptography/identity_cryptography.dart';
 
+import '../core/device_link.dart';
 import '../core/outbox.dart';
 import '../core/passkey_slot.dart';
 import '../core/record_revision.dart';
@@ -36,6 +37,28 @@ abstract interface class SyncServer {
     WorkspaceId workspace, {
     required int after,
   });
+
+  /// Appends a signed bundle of GroupKey grants to its workspace.
+  Future<void> appendKeyBundle(KeyBundle bundle);
+}
+
+/// Port: where two devices of the same account meet to link (Supabase in
+/// production). The server relays two sealed messages and learns nothing
+/// but their size and the link's random id; every method throws
+/// [ServerUnavailableException] when it cannot be reached.
+abstract interface class DeviceLinkChannel {
+  Future<void> postOffer(LinkOffer offer);
+
+  /// The newest offer this account posted in the last few minutes.
+  Future<LinkOffer?> latestOffer();
+
+  Future<void> postAnswer(LinkAnswer answer);
+
+  /// The answers posted for [link], oldest first.
+  Future<List<LinkAnswer>> answers(LinkId link);
+
+  /// Removes what was posted for [link], once it is done with.
+  Future<void> close(LinkId link);
 }
 
 enum SyncStream {
@@ -82,6 +105,14 @@ abstract interface class VaultStore {
   Future<List<MembershipRecord>> loadMembership();
 
   Future<List<KeyBundle>> loadKeyBundles();
+
+  /// Keeps membership records verified after the vault was created; a
+  /// sequence already stored is left as it is.
+  Future<void> appendMembership(List<MembershipRecord> records);
+
+  /// Keeps key bundles that granted this device GroupKeys after the vault
+  /// was created.
+  Future<void> appendKeyBundles(List<KeyBundle> bundles);
 
   /// The passkey enrolled on this device, if any.
   Future<PasskeySlot?> loadPasskey();

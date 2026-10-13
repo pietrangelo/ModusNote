@@ -187,6 +187,20 @@ final class WorkspaceAdministration {
     grants: [for (final recipient in recipients) (epoch, recipient)],
   );
 
+  /// Grants every epoch [keyring] holds to [recipient], already a member:
+  /// how a device whose admission was cut short gets its keys again.
+  KeyBundle grantAll(
+    VerifiedLedger ledger,
+    GroupKeyring keyring, {
+    required IdentityKeyPair issuer,
+    required MemberId recipient,
+  }) => _issue(
+    ledger,
+    keyring,
+    issuer: issuer,
+    grants: [for (final epoch in keyring.epochs) (epoch, recipient)],
+  );
+
   /// Verifies [bundle] and adds the keys it grants to [me] to [keyring].
   ///
   /// The issuer must have been an owner at the log position the bundle

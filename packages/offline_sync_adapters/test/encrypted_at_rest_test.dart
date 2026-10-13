@@ -40,6 +40,10 @@ final class _OfflineServer implements SyncServer {
     WorkspaceId workspace, {
     required int after,
   }) => throw const ServerUnavailableException();
+
+  @override
+  Future<void> appendKeyBundle(KeyBundle bundle) =>
+      throw const ServerUnavailableException();
 }
 
 final class _Clock implements Clock {

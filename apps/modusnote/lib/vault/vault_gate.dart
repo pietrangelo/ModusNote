@@ -16,16 +16,19 @@ import '../l10n/generated/app_localizations.dart';
 import '../notes/note_library.dart';
 import '../sync/blob_sync.dart';
 import '../sync/cloud_sheet.dart';
+import '../sync/link_device_sheet.dart';
 import '../sync/sync_controller.dart';
 import '../theme/golden_ratio.dart';
 import '../theme/modus_colors.dart';
 import 'auto_lock.dart';
+import 'join_vault.dart';
 import 'vault_note_store.dart';
 
 /// Moves a UTF-8 passphrase into native memory and wipes the buffer.
 typedef PasswordFactory = PasswordSecret Function(Uint8List utf8Bytes);
 
-/// The app's front door: creates the vault on first launch, asks for the
+/// The app's front door: creates the vault on first launch (or joins the
+/// vault of another device of the same account), asks for the
 /// passphrase (or the passkey, where one is set up) afterwards, and shows
 /// the notes only while it is unlocked.
 class VaultGate extends StatefulWidget {
@@ -103,6 +106,11 @@ final class _Locked extends _Stage {
   final bool passkey;
 }
 
+/// First launch, joining another device's vault instead of creating one.
+final class _Joining extends _Stage {
+  const _Joining();
+}
+
 final class _Open extends _Stage {
   const _Open(this.vault, this.store, this.autoLock, this.sync);
 
@@ -136,6 +144,10 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
   final _passphrase = TextEditingController();
   final _confirmation = TextEditingController();
 
+  /// The session signed in while joining, before a vault exists to seal it
+  /// in; it goes into the new vault the moment there is one.
+  SupabaseSession? _joinSession;
+
   @override
   void initState() {
     super.initState();
@@ -161,7 +173,10 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
       widget.account?.detach();
       autoLock.dispose();
       vault.lock();
+    } else if (_stage is _Joining) {
+      widget.account?.detach();
     }
+    _joinSession = null;
     _passphrase.dispose();
     _confirmation.dispose();
     super.dispose();
@@ -250,6 +265,63 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
       _fail(_Problem.passkeyRejected);
     } finally {
       if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  void _startJoining() {
+    widget.account!.attach(
+      null,
+      persist: (session) async => _joinSession = session,
+    );
+    setState(() {
+      _problem = null;
+      _stage = const _Joining();
+    });
+  }
+
+  void _stopJoining() {
+    widget.account?.detach();
+    _joinSession = null;
+    setState(() => _stage = const _Locked(exists: false));
+  }
+
+  /// Both secrets move into native memory before anything else happens.
+  Future<LinkRequest> _join(LinkCode code, Uint8List passphrase) async {
+    final password = widget.passwordFrom(passphrase);
+    final PasswordSecret secret;
+    try {
+      secret = widget.passwordFrom(code.toBytes());
+    } catch (_) {
+      password.dispose();
+      rethrow;
+    }
+    return widget.keeper.join(code: secret, passphrase: password);
+  }
+
+  Future<void> _joined(UnlockedVault vault) {
+    final session = _joinSession;
+    _joinSession = null;
+    return _open(() async {
+      if (session != null) {
+        await widget.keeper.saveSetting(
+          vault,
+          _sessionSetting,
+          session.toBytes(),
+        );
+      }
+      return vault;
+    });
+  }
+
+  /// Shows a code for another device of this account and admits it.
+  Future<void> _linkDevice() async {
+    if (_stage case _Open(:final vault, :final sync)) {
+      await LinkDeviceSheet.show(
+        context,
+        offer: (code) =>
+            widget.keeper.offerLink(vault, widget.passwordFrom(code.toBytes())),
+        onLinked: sync?.syncNow,
+      );
     }
   }
 
@@ -455,10 +527,21 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
       child: NoteLibraryScreen(
         schemas: widget.catalog.current,
         store: store,
-        cloud: sync == null ? null : CloudButton(sync: sync),
+        cloud: sync == null
+            ? null
+            : CloudButton(
+                sync: sync,
+                onLinkDevice: widget.keeper.offersLinking ? _linkDevice : null,
+              ),
         onLock: _lock,
         onPasskey: widget.keeper.offersPasskeys ? _passkeySettings : null,
       ),
+    ),
+    _Joining() => JoinVaultScreen(
+      account: widget.account!,
+      join: _join,
+      onJoined: _joined,
+      onBack: _stopJoining,
     ),
     _Locked(:final exists, :final passkey) => _form(
       context,
@@ -556,6 +639,17 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
                             : l10n.vaultUnlockAction,
                       ),
                     ),
+                    if (creating &&
+                        widget.keeper.offersLinking &&
+                        widget.account != null) ...[
+                      const SizedBox(height: Spacing.m),
+                      OutlinedButton.icon(
+                        key: const ValueKey('join-vault'),
+                        onPressed: _busy ? null : _startJoining,
+                        icon: const Icon(Icons.devices_outlined),
+                        label: Text(l10n.joinVaultAction),
+                      ),
+                    ],
                     if (passkey && !creating) ...[
                       const SizedBox(height: Spacing.m),
                       OutlinedButton.icon(

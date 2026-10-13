@@ -257,6 +257,99 @@ void main() {
       );
     });
 
+    group('linking devices of one account', () {
+      late SodiumSumo sodium;
+      // A fresh account per test: offers are per account.
+      late String account;
+
+      setUpAll(() async => sodium = await SodiumSumoInit.init());
+      setUp(
+        () => account =
+            '${_hex(4)}-${_hex(2)}-4${_hex(2).substring(1)}-'
+            '8${_hex(2).substring(1)}-${_hex(6)}',
+      );
+
+      PasswordSecret secret(List<int> utf8Bytes) =>
+          SodiumPasswordSecret.fromUtf8Bytes(
+            sodium,
+            Uint8List.fromList(utf8Bytes),
+          );
+
+      VaultKeeper keeperFor(String user) {
+        final database = sqlite3.openInMemory();
+        addTearDown(database.close);
+        final server = serverFor(user);
+        return VaultKeeper(
+          vaults: SqliteVaultStore(database),
+          records: (workspace) =>
+              SqliteLocalRecordStore(database, workspace: workspace),
+          server: server,
+          identities: SodiumIdentityService(sodium),
+          keys: SodiumKeyDerivationService(sodium),
+          subkeys: SodiumSubkeyDerivationService(sodium),
+          envelopes: SodiumEnvelopeEncryptor(sodium),
+          encapsulation: SodiumKeyEncapsulation(sodium),
+          clock: _Clock(),
+          random: Random.secure(),
+          kdf: KdfParameters.interactive,
+          links: server,
+        );
+      }
+
+      final code = LinkCode.tryParse('K7MQ4-XT9AB')!;
+
+      test(
+        'a second device joins through the server and reads the notes',
+        () async {
+          final phone = keeperFor(account);
+          final founder = await phone.create(secret(utf8.encode('frase uno')));
+          addTearDown(founder.lock);
+          final note = RecordId.parse(_hex(16));
+          await founder.engine.write(
+            note,
+            RevisionContents(Uint8List.fromList(utf8.encode('condivisa'))),
+          );
+          await founder.engine.sync();
+
+          final offering = await phone.offerLink(
+            founder,
+            secret(code.toBytes()),
+          );
+          final browser = keeperFor(account);
+          final request = await browser.join(
+            code: secret(code.toBytes()),
+            passphrase: secret(utf8.encode('frase due')),
+          );
+          expect(await offering.poll(), isNotNull);
+          final joined = await request.poll();
+          addTearDown(() => joined?.lock());
+          await joined!.engine.sync();
+
+          expect(switch (await joined.engine.read(note)) {
+            RevisionContents(:final bytes) => utf8.decode(bytes),
+            _ => null,
+          }, 'condivisa');
+          expect(await serverFor(account).latestOffer(), isNull);
+        },
+      );
+
+      test('another account never sees the offer', () async {
+        final phone = keeperFor(account);
+        final founder = await phone.create(secret(utf8.encode('frase uno')));
+        addTearDown(founder.lock);
+        final offering = await phone.offerLink(founder, secret(code.toBytes()));
+        addTearDown(offering.cancel);
+
+        await expectLater(
+          keeperFor(bob).join(
+            code: secret(code.toBytes()),
+            passphrase: secret(utf8.encode('frase due')),
+          ),
+          throwsA(isA<LinkCodeRejectedException>()),
+        );
+      });
+    });
+
     test('an account added by a manager reads and appends', () async {
       final workspace = await foundWorkspace();
       await serverFor(alice).push(workspace, [sealedRow(1)]);
