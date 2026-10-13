@@ -4,11 +4,12 @@ import 'package:test/test.dart';
 import 'fixtures.dart';
 
 void main() {
-  test('ships the four reference types', () {
+  test('ships the reference types', () {
     expect(SeedSchemas.all.map((s) => s.id.name), [
       'song_sketch',
       'dream_log',
       'task',
+      'document',
       'quick_note',
     ]);
   });
@@ -64,6 +65,20 @@ void main() {
     expect(s.fields.map((f) => f.key.value), ['content', 'tags']);
     expect(s.fieldFor(key('content'))!.type, isA<MarkdownFieldType>());
     expect(s.fieldFor(key('tags'))!.type, isA<TagListFieldType>());
+  });
+
+  test('document_v1 matches the spec', () {
+    final s = SeedSchemas.documentV1;
+    expect(s.fields.map((f) => f.key.value), [
+      'title',
+      'body',
+      'attachments',
+      'tags',
+    ]);
+    expect(s.fieldFor(key('title'))!.required, isTrue);
+    expect(s.fieldFor(key('body'))!.type, isA<MarkdownFieldType>());
+    expect(s.fieldFor(key('attachments'))!.type, isA<AttachmentsFieldType>());
+    expect((s.icon, s.tint), (NoteIcon.page, NoteTint.silver));
   });
 
   test('every seed label is a localization key under its schema', () {

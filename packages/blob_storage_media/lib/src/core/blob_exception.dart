@@ -73,6 +73,23 @@ final class UnsupportedAudioFormatException extends BlobException {
   String get message => 'no decoder for this audio format';
 }
 
+/// Bytes that are not a PNG, JPEG, GIF or WebP picture whose size can be
+/// read from its header.
+final class UnsupportedImageException extends BlobException {
+  const UnsupportedImageException();
+
+  @override
+  String get message => 'not a picture this app keeps';
+}
+
+/// A picture past `ImageProbe.maxBytes` or the limits in pixels.
+final class ImageTooLargeException extends BlobException {
+  const ImageTooLargeException();
+
+  @override
+  String get message => 'picture too large';
+}
+
 /// A recording longer than playback holds in memory
 /// (`DecodedAudio.maxDuration`).
 final class RecordingTooLongException extends BlobException {

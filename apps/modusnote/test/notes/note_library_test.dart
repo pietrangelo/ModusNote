@@ -82,6 +82,9 @@ void main() {
 
   testWidgets('each card wears its type\'s icon and colour', (tester) async {
     await open(tester);
+    // Tall enough for every card below the type filters.
+    tester.view.physicalSize = const Size(1080, 4680);
+    await tester.pumpAndSettle();
     Finder cardOf(String text) =>
         find.ancestor(of: find.text(text), matching: find.byType(Card));
 

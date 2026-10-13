@@ -90,6 +90,10 @@ abstract final class SchemaCodec {
       'kind': 'checklist',
       'maxItems': maxItems,
     },
+    AttachmentsFieldType(:final maxItems) => {
+      'kind': 'attachments',
+      'maxItems': maxItems,
+    },
   };
 
   static SchemaDefinition _decodeSchema(JsonObject json) {
@@ -191,6 +195,10 @@ abstract final class SchemaCodec {
       'checklist' => (
         {'maxItems'},
         () => ChecklistFieldType(maxItems: json.integer('maxItems')),
+      ),
+      'attachments' => (
+        {'maxItems'},
+        () => AttachmentsFieldType(maxItems: json.integer('maxItems')),
       ),
       _ => throw SchemaFormatException('unknown field kind "$kind"'),
     };

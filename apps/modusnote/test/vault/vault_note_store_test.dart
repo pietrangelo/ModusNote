@@ -1,10 +1,13 @@
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:modusnote/attachments/note_images.dart';
 import 'package:modusnote/vault/vault_note_store.dart';
 import 'package:offline_sync/offline_sync.dart';
 import 'package:schema_dynamic_content/schema_dynamic_content.dart';
 
+import '../audio/fake_capture.dart';
+import '../notes/image_support.dart';
 import 'support.dart';
 
 DynamicEntry quickNote(String id, String content, DateTime at) =>
@@ -384,6 +387,93 @@ void main() {
 
       expect(store.categories.length, 1);
       expect(store.categoryOf(EntryId(first)), isNull);
+    });
+  });
+
+  group('pictures', () {
+    DynamicEntry page(List<BlobId> images) => switch (DynamicEntry.create(
+      schema: SeedSchemas.documentV1,
+      id: EntryId(first),
+      attributes: {
+        FieldKey('title'): const TextValue('Pagina'),
+        if (images.isNotEmpty)
+          FieldKey('attachments'): AttachmentsValue([
+            for (final image in images) ImageAttachment(image),
+          ]),
+      },
+      at: DateTime.utc(2026, 10, 13),
+    )) {
+      Valid(:final value) => value,
+      Invalid(:final violations) => throw StateError('$violations'),
+    };
+
+    test('come back with the page after locking, and go when it goes '
+        'for good', () async {
+      final database = memoryDatabase();
+      addTearDown(database.close);
+      final storage = memoryBlobs();
+      final created = await keeperOn(database)
+          .create(passphrase('frase lunga'));
+      NoteImages imagesOf(UnlockedVault vault) => NoteImages(
+        blobs: storage.blobs,
+        engine: vault.engine,
+        chooser: FakeChooser(),
+      );
+      final store = await VaultNoteStore.open(
+        created.engine,
+        catalog: SeedSchemas.catalog,
+        images: imagesOf(created),
+      );
+      final image = (await store.images!.choose())!;
+      await store.save(page([image.id]), pictures: [image]);
+      created.lock();
+
+      final unlocked = await keeperOn(database)
+          .unlock(passphrase('frase lunga'));
+      addTearDown(unlocked.lock);
+      final reopened = await VaultNoteStore.open(
+        unlocked.engine,
+        catalog: SeedSchemas.catalog,
+        images: imagesOf(unlocked),
+      );
+      expect(reopened.imageOf(image.id), image);
+      expect(await reopened.images!.open(image), pixel);
+
+      await reopened.moveToTrash(EntryId(first));
+      expect(
+        storage.files.file('/blobs/${image.id.value}.enc').existsSync(),
+        isTrue,
+      );
+      await reopened.deleteForever(EntryId(first));
+      expect(
+        storage.files.file('/blobs/${image.id.value}.enc').existsSync(),
+        isFalse,
+      );
+    });
+
+    test('a picture added and left out of the save is deleted', () async {
+      final database = memoryDatabase();
+      addTearDown(database.close);
+      final storage = memoryBlobs();
+      final vault = await keeperOn(database).create(passphrase('frase lunga'));
+      addTearDown(vault.lock);
+      final store = await VaultNoteStore.open(
+        vault.engine,
+        catalog: SeedSchemas.catalog,
+        images: NoteImages(
+          blobs: storage.blobs,
+          engine: vault.engine,
+          chooser: FakeChooser(),
+        ),
+      );
+      final image = (await store.images!.choose())!;
+
+      await store.save(page([]), pictures: [image]);
+
+      expect(
+        storage.files.file('/blobs/${image.id.value}.enc').existsSync(),
+        isFalse,
+      );
     });
   });
 

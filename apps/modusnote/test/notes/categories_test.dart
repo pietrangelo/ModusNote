@@ -109,6 +109,11 @@ void main() {
     expect(store.categoryOf(EntryId('d')), crime);
     expect(find.text('Nota spostata in «Gialli».'), findsOneWidget);
 
+    // The message would cover the card on a phone.
+    tester
+        .state<ScaffoldMessengerState>(find.byType(ScaffoldMessenger))
+        .removeCurrentSnackBar();
+    await tester.pumpAndSettle();
     await tester.longPress(find.text('Lista della spesa'));
     await tester.pumpAndSettle();
     await tap(tester, find.byKey(const ValueKey('pick-none')));

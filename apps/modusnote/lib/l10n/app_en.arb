@@ -1044,5 +1044,133 @@
   "linkUnavailable": "Note not available",
   "@linkUnavailable": {
     "description": "Editor: a link to a note that was deleted or is in the trash."
+  },
+  "schemaDocumentLabel": "Document",
+  "@schemaDocumentLabel": {
+    "description": "Localization of the seed schema key schema.document.label."
+  },
+  "schemaDocumentFieldTitle": "Title",
+  "@schemaDocumentFieldTitle": {
+    "description": "Localization of the seed schema key schema.document.field.title."
+  },
+  "schemaDocumentFieldBody": "Text",
+  "@schemaDocumentFieldBody": {
+    "description": "Localization of the seed schema key schema.document.field.body."
+  },
+  "schemaDocumentFieldAttachments": "Attachments",
+  "@schemaDocumentFieldAttachments": {
+    "description": "Localization of the seed schema key schema.document.field.attachments."
+  },
+  "schemaDocumentFieldTags": "Tags",
+  "@schemaDocumentFieldTags": {
+    "description": "Localization of the seed schema key schema.document.field.tags."
+  },
+  "violationDuplicateItem": "The same picture appears twice",
+  "@violationDuplicateItem": {
+    "description": "Validation error: one picture attached twice."
+  },
+  "iconPage": "Page",
+  "@iconPage": {
+    "description": "Icon choice."
+  },
+  "addImage": "Add picture",
+  "@addImage": {
+    "description": "Attachments: picks a picture from the device."
+  },
+  "addLink": "Add link",
+  "@addLink": {
+    "description": "Attachments: adds a web address."
+  },
+  "addLinkTitle": "Add a link",
+  "@addLinkTitle": {
+    "description": "Link dialog title for a new link."
+  },
+  "editLinkTitle": "Edit link",
+  "@editLinkTitle": {
+    "description": "Link dialog title for an existing link."
+  },
+  "linkAddress": "Address",
+  "@linkAddress": {
+    "description": "Link dialog: the web address."
+  },
+  "linkAddressInvalid": "Only http and https addresses, without spaces or letters from other alphabets",
+  "@linkAddressInvalid": {
+    "description": "Link dialog: the address cannot be kept."
+  },
+  "linkTitle": "Title (optional)",
+  "@linkTitle": {
+    "description": "Link dialog: what the link is called."
+  },
+  "attachmentTextInvalid": "One line, up to 200 characters",
+  "@attachmentTextInvalid": {
+    "description": "Link title or picture caption that cannot be kept."
+  },
+  "attachmentSave": "Save",
+  "@attachmentSave": {
+    "description": "Link or caption dialog: keeps what was written."
+  },
+  "openLinkTitle": "Open this address?",
+  "@openLinkTitle": {
+    "description": "Confirmation before a link leaves the app."
+  },
+  "openLinkBody": "It opens in your browser, outside Modus Notes, and the site will know it was visited.",
+  "@openLinkBody": {
+    "description": "Confirmation before a link leaves the app."
+  },
+  "openLink": "Open",
+  "@openLink": {
+    "description": "Confirmation: opens the link in the browser."
+  },
+  "openLinkFailed": "No app could open this address",
+  "@openLinkFailed": {
+    "description": "Snackbar when opening a link failed."
+  },
+  "copyLink": "Copy address",
+  "@copyLink": {
+    "description": "Attachment menu: copies the link."
+  },
+  "linkCopied": "Address copied",
+  "@linkCopied": {
+    "description": "Snackbar after copying a link."
+  },
+  "editAttachment": "Edit",
+  "@editAttachment": {
+    "description": "Attachment menu: edits a link or a caption."
+  },
+  "removeAttachment": "Remove",
+  "@removeAttachment": {
+    "description": "Attachment menu: takes it out of the page."
+  },
+  "attachmentOptions": "Attachment options",
+  "@attachmentOptions": {
+    "description": "Tooltip of the attachment menu."
+  },
+  "imageCaption": "Caption",
+  "@imageCaption": {
+    "description": "Caption dialog: what the picture shows."
+  },
+  "editCaptionTitle": "Caption",
+  "@editCaptionTitle": {
+    "description": "Caption dialog title."
+  },
+  "imageUnsupported": "Only PNG, JPEG, GIF and WebP pictures, up to 32 MB and 50 megapixels",
+  "@imageUnsupported": {
+    "description": "Snackbar: the chosen file cannot be attached."
+  },
+  "imageAddFailed": "Could not add the picture",
+  "@imageAddFailed": {
+    "description": "Snackbar: sealing the picture failed."
+  },
+  "imageUnavailable": "Not downloaded yet: connect to see it",
+  "@imageUnavailable": {
+    "description": "A picture from another device that cannot be downloaded now."
+  },
+  "imageDamaged": "This picture is damaged",
+  "@imageDamaged": {
+    "description": "A picture that fails to decrypt or decode."
+  },
+  "imageOpen": "Open picture",
+  "@imageOpen": {
+    "description": "Semantic label of a picture thumbnail."
   }
 }

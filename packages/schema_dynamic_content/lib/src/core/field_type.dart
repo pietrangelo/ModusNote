@@ -1,5 +1,6 @@
 import 'package:meta/meta.dart';
 
+import 'attachment.dart';
 import 'field_value.dart';
 import 'list_equality.dart';
 import 'schema_exception.dart';
@@ -296,4 +297,40 @@ final class ChecklistFieldType extends FieldType {
 
   @override
   int get hashCode => Object.hash(ChecklistFieldType, maxItems);
+}
+
+/// Pictures and links placed in a page ([AttachmentsValue]). An image
+/// appears once; captions and titles are checked when they are made.
+final class AttachmentsFieldType extends FieldType {
+  AttachmentsFieldType({this.maxItems = 34}) {
+    _requireRange(maxItems > 0 && maxItems <= maxAllowedItems);
+  }
+
+  /// Bounds the blobs one note can pull in.
+  static const maxAllowedItems = 89;
+
+  final int maxItems;
+
+  @override
+  List<ViolationCode> check(FieldValue value) {
+    if (value is! AttachmentsValue) return const [ViolationCode.typeMismatch];
+    final items = value.items;
+    final images = [
+      for (final item in items)
+        if (item is ImageAttachment) item.blob,
+    ];
+    return [
+      // As for tasks: an empty list is no list.
+      if (items.isEmpty) ViolationCode.missingRequired,
+      if (items.length > maxItems) ViolationCode.tooManyItems,
+      if (images.toSet().length != images.length) ViolationCode.duplicateItem,
+    ];
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is AttachmentsFieldType && other.maxItems == maxItems;
+
+  @override
+  int get hashCode => Object.hash(AttachmentsFieldType, maxItems);
 }

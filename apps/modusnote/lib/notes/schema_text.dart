@@ -47,6 +47,7 @@ final class SchemaText {
     ViolationCode.invalidCharacters => _l10n.violationInvalidCharacters,
     ViolationCode.tooManyItems => _l10n.violationTooManyItems,
     ViolationCode.emptyItem => _l10n.violationEmptyItem,
+    ViolationCode.duplicateItem => _l10n.violationDuplicateItem,
   };
 
   static String _readable(String identifier) => identifier.replaceAll('_', ' ');
@@ -110,6 +111,11 @@ final class SchemaText {
     'schema.quick_note.label' => _l10n.schemaQuickNoteLabel,
     'schema.quick_note.field.content' => _l10n.schemaQuickNoteFieldContent,
     'schema.quick_note.field.tags' => _l10n.schemaQuickNoteFieldTags,
+    'schema.document.label' => _l10n.schemaDocumentLabel,
+    'schema.document.field.title' => _l10n.schemaDocumentFieldTitle,
+    'schema.document.field.body' => _l10n.schemaDocumentFieldBody,
+    'schema.document.field.attachments' => _l10n.schemaDocumentFieldAttachments,
+    'schema.document.field.tags' => _l10n.schemaDocumentFieldTags,
     _ => null,
   };
 }
