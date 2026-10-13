@@ -232,5 +232,11 @@
   "tintViolet": "Viola",
   "tintCyan": "Ciano",
   "tintRose": "Rosa",
-  "categorySave": "Salva"
+  "categorySave": "Salva",
+  "linkNote": "Collega una nota",
+  "pickNoteToLink": "Quale nota collegare?",
+  "noNotesToLink": "Ancora nessun'altra nota.",
+  "linksTitle": "Collegamenti",
+  "backlinksTitle": "Citata in",
+  "linkUnavailable": "Nota non disponibile"
 }
