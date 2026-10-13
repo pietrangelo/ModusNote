@@ -14,6 +14,14 @@ import 'package:test/test.dart';
 
 final class _OfflineServer implements SyncServer {
   @override
+  Future<void> createWorkspace(WorkspaceId workspace) =>
+      throw const ServerUnavailableException();
+
+  @override
+  Future<void> appendMembership(MembershipRecord record) =>
+      throw const ServerUnavailableException();
+
+  @override
   Future<void> push(WorkspaceId workspace, List<SealedRow> rows) =>
       throw const ServerUnavailableException();
 

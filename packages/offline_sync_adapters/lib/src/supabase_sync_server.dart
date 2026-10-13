@@ -115,10 +115,22 @@ final class SupabaseSyncServer implements SyncServer {
     return records;
   }
 
-  Future<void> createWorkspace(WorkspaceId workspace) => _insert('workspaces', [
-    {'id': workspace.hex},
-  ]);
+  /// A workspace this account already registered (a publish cut short)
+  /// answers 409, which is success here. One registered by another account
+  /// answers the same, but then nothing after it is allowed by RLS, so the
+  /// next append is refused.
+  @override
+  Future<void> createWorkspace(WorkspaceId workspace) async {
+    try {
+      await _insert('workspaces', [
+        {'id': workspace.hex},
+      ]);
+    } on SyncServerRejectedException catch (error) {
+      if (error.status != 409) rethrow;
+    }
+  }
 
+  @override
   Future<void> appendMembership(MembershipRecord record) =>
       _insert('membership_records', [
         {

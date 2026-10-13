@@ -39,6 +39,9 @@ final class VaultNoteStore extends ChangeNotifier implements NoteStore {
   final NotePlayback? playback;
   var _unreadable = 0;
 
+  /// Called after each saved edit, once it is queued for the server.
+  VoidCallback? onWrite;
+
   /// Records that are not a valid note of a known schema: kept in the vault
   /// (a newer app may read them) but not shown. A note of an older version
   /// of its type is shown as the current version, and written as such only
@@ -74,6 +77,7 @@ final class VaultNoteStore extends ChangeNotifier implements NoteStore {
     );
     _notes[entry.id] = after;
     notifyListeners();
+    onWrite?.call();
     // Only once the note no longer points at them.
     await _delete({
       if (before != null)
@@ -95,9 +99,19 @@ final class VaultNoteStore extends ChangeNotifier implements NoteStore {
     }
   }
 
-  Future<void> _load() async {
-    for (final MapEntry(key: record, value: contents)
-        in (await _engine.records()).entries) {
+  /// Reads every note again: a sync merged edits from the server.
+  Future<void> reload() async {
+    final records = await _engine.records();
+    _notes.clear();
+    _unreadable = 0;
+    _take(records);
+    notifyListeners();
+  }
+
+  Future<void> _load() async => _take(await _engine.records());
+
+  void _take(Map<RecordId, RevisionContents> records) {
+    for (final MapEntry(key: record, value: contents) in records.entries) {
       final note = _decode(contents.bytes);
       // The id inside the note must name the record it is stored in, so a
       // note's bytes copied onto another record cannot surface twice.

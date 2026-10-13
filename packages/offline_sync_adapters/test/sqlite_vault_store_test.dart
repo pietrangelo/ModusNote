@@ -171,6 +171,7 @@ void main() {
     test('a database from before passkeys gains the table', () async {
       database
         ..execute('DROP TABLE vault_passkey')
+        ..execute('DROP TABLE vault_settings')
         ..execute('PRAGMA user_version = 2');
       await store.create(header(me()), membership: const [], bundles: const []);
 
@@ -180,6 +181,36 @@ void main() {
       expect(await reopened.loadPasskey(), isNull);
       await reopened.savePasskey(passkey());
       expect(await reopened.loadPasskey(), passkey());
+    });
+  });
+
+  group('settings', () {
+    final sealed = EncryptedEnvelope(
+      nonce: Nonce.fromBytes(List.filled(Nonce.length, 3)),
+      ciphertext: List.filled(40, 4),
+    );
+
+    test('are kept across reopening, replaced and removed', () async {
+      expect(await store.loadSetting('sync.session'), isNull);
+
+      await store.saveSetting('sync.session', sealed);
+      store = reopen();
+      expect(await store.loadSetting('sync.session'), sealed);
+
+      await store.saveSetting('sync.session', null);
+      expect(await reopen().loadSetting('sync.session'), isNull);
+    });
+
+    test('a corrupted setting surfaces as malformed, not a crash', () async {
+      await store.saveSetting('sync.session', sealed);
+      database.execute('UPDATE vault_settings SET envelope = ?', [
+        Uint8List.fromList([1]),
+      ]);
+
+      await expectLater(
+        store.loadSetting('sync.session'),
+        throwsA(isA<MalformedSyncDataException>()),
+      );
     });
   });
 
