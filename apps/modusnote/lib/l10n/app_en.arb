@@ -961,6 +961,51 @@
   "@noteUnfiled": {
     "description": "Snackbar after a note leaves every category."
   },
+  "selectNotes": "Select notes",
+  "@selectNotes": {
+    "description": "Wide library: starts picking several notes, to act on them together."
+  },
+  "notesPicked": "{count, plural, =1{1 note selected} other{{count} notes selected}}",
+  "@notesPicked": {
+    "description": "Wide library: how many notes are picked.",
+    "placeholders": {
+      "count": {"type": "int"}
+    }
+  },
+  "pickAll": "Select all",
+  "@pickAll": {
+    "description": "Wide library: picks every note the list shows."
+  },
+  "endPicking": "Clear selection",
+  "@endPicking": {
+    "description": "Wide library: stops picking notes."
+  },
+  "fileNotes": "Move to a category",
+  "@fileNotes": {
+    "description": "Wide library: files the picked notes in one category."
+  },
+  "notesTrashed": "{count, plural, =1{1 note moved to the trash.} other{{count} notes moved to the trash.}}",
+  "@notesTrashed": {
+    "description": "Snackbar after the picked notes go to the trash.",
+    "placeholders": {
+      "count": {"type": "int"}
+    }
+  },
+  "notesFiled": "{count, plural, =1{1 note moved to “{name}”.} other{{count} notes moved to “{name}”.}}",
+  "@notesFiled": {
+    "description": "Snackbar after the picked notes are filed in a category.",
+    "placeholders": {
+      "count": {"type": "int"},
+      "name": {"type": "String"}
+    }
+  },
+  "notesUnfiled": "{count, plural, =1{1 note taken out of its category.} other{{count} notes taken out of their categories.}}",
+  "@notesUnfiled": {
+    "description": "Snackbar after the picked notes leave every category.",
+    "placeholders": {
+      "count": {"type": "int"}
+    }
+  },
   "iconFolder": "Folder",
   "@iconFolder": {
     "description": "Icon choice."
