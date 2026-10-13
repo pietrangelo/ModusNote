@@ -1,4 +1,5 @@
 import 'dart:math';
+import 'dart:typed_data';
 
 import 'package:collaboration_access_control/collaboration_access_control.dart';
 import 'package:identity_cryptography/identity_cryptography.dart';
@@ -316,6 +317,61 @@ final class VaultKeeper {
     await _vaults.removePasskey();
     await _passkeys?.forget(slot.credential);
   }
+
+  static final _settingName = RegExp(r'^[a-z0-9][a-z0-9.-]{0,63}$');
+
+  /// A small device-only value, such as the sync account's session, sealed
+  /// under the open [vault]'s local key; null when none is stored. A value
+  /// that does not open under [name] (moved, edited) reads as absent.
+  Future<Uint8List?> loadSetting(UnlockedVault vault, String name) async {
+    _checkSettingName(name);
+    if (vault.isLocked) throw const VaultLockedException();
+    final sealed = await _vaults.loadSetting(name);
+    if (sealed == null) return null;
+    if (vault.isLocked) throw const VaultLockedException();
+    try {
+      return _envelopes.open(
+        sealed,
+        key: vault._localKey,
+        associatedData: _settingSlot(vault, name),
+      );
+    } on AuthenticationTagMismatchException {
+      return null;
+    }
+  }
+
+  /// Seals [value] under [name] in the open [vault], or removes the setting
+  /// when [value] is null.
+  Future<void> saveSetting(
+    UnlockedVault vault,
+    String name,
+    Uint8List? value,
+  ) async {
+    _checkSettingName(name);
+    if (vault.isLocked) throw const VaultLockedException();
+    await _vaults.saveSetting(
+      name,
+      value == null
+          ? null
+          : _envelopes.seal(
+              value,
+              key: vault._localKey,
+              associatedData: _settingSlot(vault, name),
+            ),
+    );
+  }
+
+  static void _checkSettingName(String name) {
+    if (!_settingName.hasMatch(name)) {
+      throw ArgumentError.value(name, 'name', 'not a setting name');
+    }
+  }
+
+  static AssociatedData _settingSlot(UnlockedVault vault, String name) =>
+      AssociatedData.forContext(
+        'modusnote.vault.setting.v1',
+        '${vault.workspace.hex}.$name',
+      );
 
   /// Verifies the stored log against the founder the header pins and
   /// accepts the stored key bundles, then opens the vault.

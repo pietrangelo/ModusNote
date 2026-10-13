@@ -41,8 +41,10 @@ final class SyncReport {
 /// Use case: offline-first editing and sync of one workspace's records.
 ///
 /// Writes land locally first (sealed under the device-local key) and in the
-/// outbox (sealed under the GroupKey); [sync] pushes the outbox, catches up
-/// on membership and key bundles, then pulls and merges new rows.
+/// outbox (sealed under the GroupKey); [sync] publishes membership records
+/// the server lacks (the whole log, the first time a founder syncs), pushes
+/// the outbox, catches up on membership and key bundles, then pulls and
+/// merges new rows.
 final class SyncEngine {
   SyncEngine({
     required this._server,
@@ -143,6 +145,7 @@ final class SyncEngine {
   /// log that fails verification; nothing past that point is applied.
   Future<SyncReport> sync() async {
     try {
+      await _publishMembership();
       final pushed = await _push();
       await _catchUpMembership();
       await _acceptKeyBundles();
@@ -161,12 +164,40 @@ final class SyncEngine {
     return rows.length;
   }
 
+  /// Appends the local membership records the server does not hold yet.
+  /// The founder first registers the workspace; records the server already
+  /// holds (a sync cut short after appending them) must be ours, or the
+  /// server is serving another log under this workspace.
+  Future<void> _publishMembership() async {
+    final local = _ledger.records;
+    var published = await _store.loadCursor(SyncStream.membership);
+    if (published >= local.length) return;
+    if (published == 0 && local.first.author == _myId) {
+      await _server.createWorkspace(_workspace);
+    }
+    final held = await _server.membership(_workspace, from: published);
+    for (final record in held) {
+      if (record.sequence >= local.length) break;
+      if (record != local[record.sequence]) {
+        throw const LedgerRollbackException();
+      }
+      published = record.sequence + 1;
+    }
+    for (final record in local.skip(published)) {
+      await _server.appendMembership(record);
+      await _store.saveCursor(SyncStream.membership, record.sequence + 1);
+    }
+    await _store.saveCursor(SyncStream.membership, local.length);
+  }
+
   Future<void> _catchUpMembership() async {
     final newer = await _server.membership(
       _workspace,
       from: _ledger.records.length,
     );
     if (newer.isNotEmpty) _ledger = _ledgers.extend(_ledger, newer);
+    // Whatever came from the server, the server holds.
+    await _store.saveCursor(SyncStream.membership, _ledger.records.length);
   }
 
   Future<void> _acceptKeyBundles() async {

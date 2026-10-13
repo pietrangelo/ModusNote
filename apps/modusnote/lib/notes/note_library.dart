@@ -15,6 +15,7 @@ class NoteLibraryScreen extends StatefulWidget {
   const NoteLibraryScreen({
     required this.schemas,
     required this.store,
+    this.cloud,
     this.onLock,
     this.onPasskey,
     super.key,
@@ -22,6 +23,9 @@ class NoteLibraryScreen extends StatefulWidget {
 
   final List<SchemaDefinition> schemas;
   final NoteStore store;
+
+  /// The sync status button; null in a build without a server.
+  final Widget? cloud;
 
   /// Locks the vault; without it (no vault, e.g. the web preview) the
   /// library shows no lock button.
@@ -77,6 +81,7 @@ class _NoteLibraryScreenState extends State<NoteLibraryScreen> {
       appBar: AppBar(
         title: Text(l10n.notesTitle),
         actions: [
+          ?widget.cloud,
           if (widget.onPasskey case final onPasskey?)
             IconButton(
               onPressed: onPasskey,

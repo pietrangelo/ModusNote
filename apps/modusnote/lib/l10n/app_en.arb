@@ -536,5 +536,108 @@
         "type": "int"
       }
     }
+  },
+  "cloudSync": "Sync",
+  "@cloudSync": {
+    "description": "Title and tooltip of the sync button and sheet."
+  },
+  "cloudStateSyncing": "Syncing…",
+  "@cloudStateSyncing": {
+    "description": "Sync sheet: a sync is running."
+  },
+  "cloudStateSynced": "Synced at {time}",
+  "@cloudStateSynced": {
+    "description": "Sync sheet: time of the last successful sync.",
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "cloudStateOffline": "The server cannot be reached: changes stay on this device and go out later.",
+  "@cloudStateOffline": {
+    "description": "Sync sheet: the last sync found no server."
+  },
+  "cloudStateRefused": "The server refused the sync. Try signing out and in again.",
+  "@cloudStateRefused": {
+    "description": "Sync sheet: the server rejected a request."
+  },
+  "cloudStateUntrusted": "The server sent data that failed verification, so none of it was applied.",
+  "@cloudStateUntrusted": {
+    "description": "Sync sheet: the server hid or forged data."
+  },
+  "cloudSignInBody": "Sign in with your email to keep your notes on the server too. It only ever receives encrypted data, and your passphrase never leaves this device.",
+  "@cloudSignInBody": {
+    "description": "Sync sheet: why and how to sign in."
+  },
+  "cloudEmailLabel": "Email",
+  "@cloudEmailLabel": {
+    "description": "Label of the email field."
+  },
+  "cloudSendCode": "Send code",
+  "@cloudSendCode": {
+    "description": "Button that emails a sign-in code."
+  },
+  "cloudCodeSent": "We sent a code to {email}.",
+  "@cloudCodeSent": {
+    "description": "Shown after the sign-in code was emailed.",
+    "placeholders": {
+      "email": {
+        "type": "String"
+      }
+    }
+  },
+  "cloudCodeLabel": "Code from the email",
+  "@cloudCodeLabel": {
+    "description": "Label of the sign-in code field."
+  },
+  "cloudSignIn": "Sign in",
+  "@cloudSignIn": {
+    "description": "Button that signs in with the code."
+  },
+  "cloudChangeEmail": "Use another address",
+  "@cloudChangeEmail": {
+    "description": "Goes back to the email field."
+  },
+  "cloudEmailInvalid": "Enter a valid email address.",
+  "@cloudEmailInvalid": {
+    "description": "The email field does not hold an address."
+  },
+  "cloudCodeInvalid": "The code is the 6 to 10 digits in the email.",
+  "@cloudCodeInvalid": {
+    "description": "The code field does not hold a code."
+  },
+  "cloudCodeRefused": "Wrong or expired code.",
+  "@cloudCodeRefused": {
+    "description": "The server refused the code."
+  },
+  "cloudEmailRefused": "The server did not accept this address. Try again later.",
+  "@cloudEmailRefused": {
+    "description": "The server refused to send a code."
+  },
+  "cloudUnreachable": "The server cannot be reached. Check the connection.",
+  "@cloudUnreachable": {
+    "description": "Signing in failed for lack of network."
+  },
+  "cloudSignedInAs": "Signed in as {email}",
+  "@cloudSignedInAs": {
+    "description": "Sync sheet: the account's email.",
+    "placeholders": {
+      "email": {
+        "type": "String"
+      }
+    }
+  },
+  "cloudSyncNow": "Sync now",
+  "@cloudSyncNow": {
+    "description": "Button that syncs at once."
+  },
+  "cloudSignOut": "Sign out",
+  "@cloudSignOut": {
+    "description": "Button that signs out of the sync account."
+  },
+  "cloudOneDevice": "For now each device keeps its own space on the server; linking your devices comes next.",
+  "@cloudOneDevice": {
+    "description": "Sync sheet: devices are not linked yet."
   }
 }

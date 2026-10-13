@@ -136,6 +136,19 @@ void main() {
     bob.dispose();
   });
 
+  test('only the founder registers the workspace on the server', () async {
+    expect(server.createdWorkspaces, isEmpty, reason: 'Bob synced first');
+
+    await alice.engine.sync();
+
+    expect(server.createdWorkspaces, [workspaceId]);
+    expect(
+      server.membershipLog,
+      hasLength(2),
+      reason: 'nothing appended twice',
+    );
+  });
+
   group('offline first', () {
     test('a write is readable at once, with no server at all', () async {
       server.online = false;
