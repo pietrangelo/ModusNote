@@ -18,6 +18,9 @@ abstract final class NoteAppearance {
     NoteIcon.book => Icons.menu_book_outlined,
     NoteIcon.heart => Icons.favorite_border,
     NoteIcon.page => Icons.article_outlined,
+    NoteIcon.bookmark => Icons.bookmark_border,
+    NoteIcon.person => Icons.person_outline,
+    NoteIcon.place => Icons.place_outlined,
     null => Icons.description_outlined,
   };
 

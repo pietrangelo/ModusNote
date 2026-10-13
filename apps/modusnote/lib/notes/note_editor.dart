@@ -13,6 +13,8 @@ import '../l10n/generated/app_localizations.dart';
 import '../theme/golden_ratio.dart';
 import '../vault/auto_lock.dart';
 import 'attachments/attachments_input.dart';
+import 'books/book_outline.dart';
+import 'books/book_section.dart';
 import 'dynamic_form_renderer.dart';
 import 'editor/markdown_commands.dart';
 import 'editor/markdown_controller.dart';
@@ -99,6 +101,9 @@ class NoteEditorScreenState extends State<NoteEditorScreen>
   final _pictures = <BlobId, KeyedImage>{};
 
   final _markdown = ValueNotifier<MarkdownEditingController?>(null);
+
+  /// The words of a chapter's text, counted as it is typed.
+  late final _words = ValueNotifier<int>(_countWords());
   Timer? _timer;
   var _dirty = false;
   var _state = SaveState.saved;
@@ -133,11 +138,13 @@ class NoteEditorScreenState extends State<NoteEditorScreen>
       _schema = schema;
       _violations = const [];
     });
+    _words.value = _countWords();
     _changed();
   }
 
   void _onDraft(FormDraft draft) {
     _draft = draft;
+    if (_isChapter) _words.value = _countWords();
     // Typing on a soft keyboard is not a pointer event.
     AutoLockScope.maybeOf(context)?.touch();
     _changed();
@@ -414,18 +421,40 @@ class NoteEditorScreenState extends State<NoteEditorScreen>
     );
   }
 
+  bool get _isChapter => _schema.id.name == BookOutline.chapter;
+
+  int _countWords() => switch (_draft.values[FieldKey('body')]) {
+    TextValue(:final text) when _isChapter => WordCount.of(text),
+    _ => 0,
+  };
+
+  /// Where this note is filed, or will be once first saved.
+  CategoryId? get _category =>
+      widget.store.categoryOf(_id) ?? (_saved == null ? _newIn : null);
+
   /// Opens a linked note over this one, once this one is saved.
   Future<void> _openLinked(DynamicEntry entry) async {
+    final schema = _schemaOf(entry);
+    if (schema != null) await _openOver(schema, entry: entry);
+  }
+
+  /// Opens [entry], or a new note of [schema] filed in [category], over
+  /// this one, once this one is saved.
+  Future<void> _openOver(
+    SchemaDefinition schema, {
+    DynamicEntry? entry,
+    CategoryId? category,
+  }) async {
     final navigator = Navigator.of(context);
     final autoLock = AutoLockScope.maybeOf(context);
     await _flush();
-    final schema = _schemaOf(entry);
-    if (!mounted || schema == null) return;
+    if (!mounted) return;
     final screen = NoteEditorScreen(
       schemas: widget.schemas,
       store: widget.store,
       initialSchema: schema,
       entry: entry,
+      category: category,
       clock: widget.clock,
       openLink: widget.openLink,
     );
@@ -574,6 +603,42 @@ class NoteEditorScreenState extends State<NoteEditorScreen>
                           openLink: widget.openLink,
                         ),
                       ),
+                      if (_isChapter)
+                        Align(
+                          alignment: AlignmentDirectional.centerEnd,
+                          child: ValueListenableBuilder(
+                            valueListenable: _words,
+                            builder: (context, words, _) => Text(
+                              l10n.wordCount(words),
+                              key: const ValueKey('chapter-words'),
+                              style: theme.textTheme.labelSmall,
+                            ),
+                          ),
+                        ),
+                      if (_schema.id.name == BookOutline.book)
+                        ListenableBuilder(
+                          listenable: widget.store,
+                          builder: (context, _) {
+                            final category = _category;
+                            return BookSection(
+                              outline: BookOutline.of(
+                                category: category,
+                                store: widget.store,
+                                schemaOf: _schemaOf,
+                              ),
+                              goal: switch (_draft.values[FieldKey(
+                                'word_goal',
+                              )]) {
+                                NumberValue(:final number) => number.toInt(),
+                                _ => null,
+                              },
+                              schemas: widget.schemas,
+                              onOpen: _openLinked,
+                              onAdd: (schema) =>
+                                  _openOver(schema, category: category),
+                            );
+                          },
+                        ),
                       ListenableBuilder(
                         listenable: widget.store,
                         builder: (context, _) => NoteLinksSection(
