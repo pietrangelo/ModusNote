@@ -116,6 +116,56 @@ final class SchemaText {
     'schema.document.field.body' => _l10n.schemaDocumentFieldBody,
     'schema.document.field.attachments' => _l10n.schemaDocumentFieldAttachments,
     'schema.document.field.tags' => _l10n.schemaDocumentFieldTags,
+    'schema.book.label' => _l10n.schemaBookLabel,
+    'schema.book.field.title' => _l10n.schemaBookFieldTitle,
+    'schema.book.field.synopsis' => _l10n.schemaBookFieldSynopsis,
+    'schema.book.field.genre' => _l10n.schemaBookFieldGenre,
+    'schema.book.field.word_goal' => _l10n.schemaBookFieldWordGoal,
+    'schema.book.field.attachments' => _l10n.schemaBookFieldAttachments,
+    'schema.book.field.tags' => _l10n.schemaBookFieldTags,
+    'schema.book_chapter.label' => _l10n.schemaBookChapterLabel,
+    'schema.book_chapter.field.title' => _l10n.schemaBookChapterFieldTitle,
+    'schema.book_chapter.field.body' => _l10n.schemaBookChapterFieldBody,
+    'schema.book_chapter.field.number' => _l10n.schemaBookChapterFieldNumber,
+    'schema.book_chapter.field.status' => _l10n.schemaBookChapterFieldStatus,
+    'schema.book_chapter.field.status.idea' =>
+      _l10n.schemaBookChapterFieldStatusIdea,
+    'schema.book_chapter.field.status.draft' =>
+      _l10n.schemaBookChapterFieldStatusDraft,
+    'schema.book_chapter.field.status.revised' =>
+      _l10n.schemaBookChapterFieldStatusRevised,
+    'schema.book_chapter.field.status.final' =>
+      _l10n.schemaBookChapterFieldStatusFinal,
+    'schema.book_chapter.field.attachments' =>
+      _l10n.schemaBookChapterFieldAttachments,
+    'schema.book_character.label' => _l10n.schemaBookCharacterLabel,
+    'schema.book_character.field.name' => _l10n.schemaBookCharacterFieldName,
+    'schema.book_character.field.profile' =>
+      _l10n.schemaBookCharacterFieldProfile,
+    'schema.book_character.field.role' => _l10n.schemaBookCharacterFieldRole,
+    'schema.book_character.field.role.protagonist' =>
+      _l10n.schemaBookCharacterFieldRoleProtagonist,
+    'schema.book_character.field.role.antagonist' =>
+      _l10n.schemaBookCharacterFieldRoleAntagonist,
+    'schema.book_character.field.role.supporting' =>
+      _l10n.schemaBookCharacterFieldRoleSupporting,
+    'schema.book_character.field.role.minor' =>
+      _l10n.schemaBookCharacterFieldRoleMinor,
+    'schema.book_character.field.age' => _l10n.schemaBookCharacterFieldAge,
+    'schema.book_character.field.goal' => _l10n.schemaBookCharacterFieldGoal,
+    'schema.book_character.field.conflict' =>
+      _l10n.schemaBookCharacterFieldConflict,
+    'schema.book_character.field.arc' => _l10n.schemaBookCharacterFieldArc,
+    'schema.book_character.field.attachments' =>
+      _l10n.schemaBookCharacterFieldAttachments,
+    'schema.book_place.label' => _l10n.schemaBookPlaceLabel,
+    'schema.book_place.field.name' => _l10n.schemaBookPlaceFieldName,
+    'schema.book_place.field.description' =>
+      _l10n.schemaBookPlaceFieldDescription,
+    'schema.book_place.field.kind' => _l10n.schemaBookPlaceFieldKind,
+    'schema.book_place.field.period' => _l10n.schemaBookPlaceFieldPeriod,
+    'schema.book_place.field.attachments' =>
+      _l10n.schemaBookPlaceFieldAttachments,
     _ => null,
   };
 }

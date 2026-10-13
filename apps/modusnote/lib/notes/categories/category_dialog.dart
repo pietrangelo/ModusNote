@@ -166,6 +166,9 @@ class _CategoryDialogState extends State<_CategoryDialog> {
         NoteIcon.book => l10n.iconBook,
         NoteIcon.heart => l10n.iconHeart,
         NoteIcon.page => l10n.iconPage,
+        NoteIcon.bookmark => l10n.iconBookmark,
+        NoteIcon.person => l10n.iconPerson,
+        NoteIcon.place => l10n.iconPlace,
       };
 
   static String _tintName(AppLocalizations l10n, NoteTint? tint) =>

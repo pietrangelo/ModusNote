@@ -492,27 +492,32 @@ class _NoteLibraryScreenState extends State<NoteLibraryScreen> {
                       ),
                     ],
                     const SizedBox(height: Spacing.m),
-                    Wrap(
-                      spacing: Spacing.s,
-                      runSpacing: Spacing.s,
-                      children: [
-                        ChoiceChip(
-                          label: Text(l10n.allNoteTypes),
-                          selected: _type == null,
-                          onSelected: (_) => setState(() => _type = null),
-                        ),
-                        for (final schema in widget.schemas)
+                    // One scrolling line: with a book's four types there
+                    // are too many to wrap above the notes on a phone.
+                    SingleChildScrollView(
+                      key: const ValueKey('note-types'),
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        spacing: Spacing.s,
+                        children: [
                           ChoiceChip(
-                            avatar: Icon(
-                              NoteAppearance.icon(schema.icon),
-                              size: IconSizes.inline,
-                              color: NoteAppearance.tint(schema.tint),
-                            ),
-                            label: Text(text.label(schema.label)),
-                            selected: _type?.id == schema.id,
-                            onSelected: (_) => setState(() => _type = schema),
+                            label: Text(l10n.allNoteTypes),
+                            selected: _type == null,
+                            onSelected: (_) => setState(() => _type = null),
                           ),
-                      ],
+                          for (final schema in widget.schemas)
+                            ChoiceChip(
+                              avatar: Icon(
+                                NoteAppearance.icon(schema.icon),
+                                size: IconSizes.inline,
+                                color: NoteAppearance.tint(schema.tint),
+                              ),
+                              label: Text(text.label(schema.label)),
+                              selected: _type?.id == schema.id,
+                              onSelected: (_) => setState(() => _type = schema),
+                            ),
+                        ],
+                      ),
                     ),
                   ],
                 ),

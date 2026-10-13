@@ -53,6 +53,72 @@ abstract final class SeedSchemas {
     ('tags', TagListFieldType(), false),
   ]);
 
+  /// A book: what it is about and how long it should be. Its chapters,
+  /// characters and places are notes of their own, filed in the same
+  /// category as the book.
+  static final bookV1 = _seed('book', NoteIcon.book, NoteTint.gold, [
+    ('title', TextFieldType(maxLength: 200), true),
+    ('synopsis', const MarkdownFieldType(), false),
+    ('genre', TextFieldType(maxLength: 80), false),
+    (
+      'word_goal',
+      NumberFieldType(min: 1, max: 10000000, integerOnly: true),
+      false,
+    ),
+    ('attachments', AttachmentsFieldType(), false),
+    ('tags', TagListFieldType(), false),
+  ]);
+
+  /// A chapter of a book: its text, its place in the book, how far along.
+  static final bookChapterV1 = _seed(
+    'book_chapter',
+    NoteIcon.bookmark,
+    NoteTint.gold,
+    [
+      ('title', TextFieldType(maxLength: 200), true),
+      ('body', const MarkdownFieldType(), false),
+      ('number', NumberFieldType(min: 1, max: 9999, integerOnly: true), false),
+      ('status', ChoiceFieldType(['idea', 'draft', 'revised', 'final']), false),
+      ('attachments', AttachmentsFieldType(), false),
+    ],
+  );
+
+  /// A character sheet: who they are, what they want, what stands in the
+  /// way and how they change.
+  static final bookCharacterV1 = _seed(
+    'book_character',
+    NoteIcon.person,
+    NoteTint.gold,
+    [
+      ('name', TextFieldType(maxLength: 200), true),
+      ('profile', const MarkdownFieldType(), false),
+      (
+        'role',
+        ChoiceFieldType(['protagonist', 'antagonist', 'supporting', 'minor']),
+        false,
+      ),
+      ('age', TextFieldType(maxLength: 80), false),
+      ('goal', TextFieldType(maxLength: 500), false),
+      ('conflict', TextFieldType(maxLength: 500), false),
+      ('arc', TextFieldType(maxLength: 500), false),
+      ('attachments', AttachmentsFieldType(), false),
+    ],
+  );
+
+  /// A place in a book: what it looks like, what kind of place, when.
+  static final bookPlaceV1 = _seed(
+    'book_place',
+    NoteIcon.place,
+    NoteTint.gold,
+    [
+      ('name', TextFieldType(maxLength: 200), true),
+      ('description', const MarkdownFieldType(), false),
+      ('kind', TextFieldType(maxLength: 80), false),
+      ('period', TextFieldType(maxLength: 80), false),
+      ('attachments', AttachmentsFieldType(), false),
+    ],
+  );
+
   /// A to-do is a list of tasks, with an optional title. A [taskV1] note
   /// becomes a one-task list: its description, made one safe line, and
   /// its completed flag.
@@ -90,6 +156,10 @@ abstract final class SeedSchemas {
     dreamLogV1,
     taskV2,
     documentV1,
+    bookV1,
+    bookChapterV1,
+    bookCharacterV1,
+    bookPlaceV1,
     // Last: the type a new note starts as.
     quickNoteV1,
   ]);

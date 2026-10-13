@@ -40,18 +40,29 @@ void main() {
       SchemaId('dream_log', 1),
       SchemaId('task', 2),
       SchemaId('document', 1),
+      SchemaId('book', 1),
+      SchemaId('book_chapter', 1),
+      SchemaId('book_character', 1),
+      SchemaId('book_place', 1),
       SchemaId('quick_note', 1),
     ]);
   });
 
-  test('every type has its own icon and tint', () {
+  test('every type has its own icon, and every family its own tint', () {
     final icons = SeedSchemas.all.map((s) => s.icon).toList();
-    final tints = SeedSchemas.all.map((s) => s.tint).toList();
+    final families = {
+      for (final s in SeedSchemas.all)
+        s.id.name.startsWith('book') ? 'book' : s.id.name: s.tint,
+    };
+    final tints = families.values.toList();
 
     expect(icons, everyElement(isNotNull));
     expect(tints, everyElement(isNotNull));
     expect(icons.toSet(), hasLength(icons.length));
-    expect(tints.toSet(), hasLength(tints.length));
+    // A book's chapters, characters and places share its colour.
+    for (final s in SeedSchemas.all) {
+      if (s.id.name.startsWith('book')) expect(s.tint, families['book']);
+    }
     expect(SeedSchemas.taskV2.icon, NoteIcon.checklist);
     expect(SeedSchemas.taskV2.tint, NoteTint.cyan);
   });
