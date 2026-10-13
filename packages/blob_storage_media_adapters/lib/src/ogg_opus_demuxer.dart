@@ -172,7 +172,9 @@ final class _Pages {
       throw const MalformedBlobException('not an Ogg page');
     }
     final flags = view.getUint8(5);
-    final granule = view.getInt64(6, Endian.little);
+    // Beyond 2^53 a browser cannot hold the granule exactly; we never
+    // write one anywhere near that.
+    final granule = getPortableInt64(view, 6, Endian.little) ?? -1;
     final serial = view.getUint32(14, Endian.little);
     final sequence = view.getUint32(18, Endian.little);
     final storedCrc = view.getUint32(22, Endian.little);
