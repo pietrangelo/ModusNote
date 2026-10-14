@@ -120,10 +120,12 @@ async function scenario(browser, origin, mode) {
   await settle();
   await typeInto(/^Title/, songTitle);
   await page.getByRole('button', { name: 'Record' }).first().click();
-  await page.getByText('Stop and attach').waitFor({ timeout: 30000 });
-  await page.waitForTimeout(3000);
+  // The sheet shows its stop button before the microphone has started, and
+  // its counter only once it has: count three seconds of the take itself,
+  // not of a microphone that may take seconds to open on a busy runner.
+  await page.getByText(/^0:0[3-9]$/).first().waitFor({ timeout: 30000 });
   await page.getByRole('button', { name: 'Stop and attach' }).click();
-  await labelled(/Recording attached · 0:0[2-4]/, 30000);
+  await labelled(/Recording attached · 0:0[3-9]/, 30000);
   await page.getByText('Saved').waitFor({ timeout: 30000 });
   await page.getByRole('button', { name: 'Close' }).click();
   await page.getByText(songTitle).first().waitFor({ timeout: 30000 });
@@ -167,7 +169,7 @@ async function scenario(browser, origin, mode) {
   await settle();
   await play.click();
   await page.getByRole('button', { name: 'Pause' }).waitFor({ timeout: 30000 });
-  await labelled(/0:01 \/ 0:0[2-4]/, 10000);
+  await labelled(/0:01 \/ 0:0[3-9]/, 10000);
   await page.getByRole('button', { name: 'Play recording' }).waitFor({ timeout: 10000 });
   await page.getByRole('button', { name: 'Close' }).click();
   await settle();
