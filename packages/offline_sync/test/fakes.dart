@@ -6,7 +6,17 @@ import 'package:offline_sync/offline_sync.dart';
 /// records and key bundles. It can be switched off to simulate no network.
 final class FakeSyncServer implements SyncServer {
   var online = true;
+
+  /// Every row ever appended; row `i` has position `i + 1`.
   final rows = <SealedRow>[];
+
+  /// Positions removed as superseded, the way the real table's trigger
+  /// removes them; [pull] skips them.
+  final compacted = <int>{};
+
+  /// Runs at the start of every [pull], to interleave a client's own work
+  /// with a sync in flight.
+  Future<void> Function()? onPull;
   final membershipLog = <MembershipRecord>[];
   final bundles = <KeyBundle>[];
 
@@ -33,8 +43,22 @@ final class FakeSyncServer implements SyncServer {
   Future<void> push(WorkspaceId workspace, List<SealedRow> rows) async {
     _check();
     calls.add('push ${rows.length}');
-    this.rows.addAll(rows);
+    for (final row in rows) {
+      this.rows.add(row);
+      for (var position = 1; position < this.rows.length; position++) {
+        if (position <= row.supersedes &&
+            this.rows[position - 1].record == row.record) {
+          compacted.add(position);
+        }
+      }
+    }
   }
+
+  /// The rows a pull still returns.
+  List<SealedRow> get live => [
+    for (final (index, row) in rows.indexed)
+      if (!compacted.contains(index + 1)) row,
+  ];
 
   @override
   Future<void> createWorkspace(WorkspaceId workspace) async {
@@ -66,9 +90,10 @@ final class FakeSyncServer implements SyncServer {
     required int after,
   }) async {
     _check();
+    await onPull?.call();
     return [
       for (var i = after; i < rows.length; i++)
-        PulledRow(cursor: i + 1, row: rows[i]),
+        if (!compacted.contains(i + 1)) PulledRow(cursor: i + 1, row: rows[i]),
     ];
   }
 
@@ -152,6 +177,7 @@ final class FakeLocalStore implements LocalRecordStore {
   final records = <RecordId, EncryptedEnvelope>{};
   var outbox = Outbox.empty;
   final cursors = <SyncStream, int>{};
+  final unreadable = <RecordId, int>{};
 
   @override
   Future<EncryptedEnvelope?> load(RecordId id) async => records[id];
@@ -175,6 +201,15 @@ final class FakeLocalStore implements LocalRecordStore {
   @override
   Future<void> saveCursor(SyncStream stream, int cursor) async =>
       cursors[stream] = cursor;
+
+  @override
+  Future<int?> loadUnreadable(RecordId id) async => unreadable[id];
+
+  @override
+  Future<void> markUnreadable(RecordId id, int position) async {
+    final known = unreadable[id];
+    if (known == null || position < known) unreadable[id] = position;
+  }
 }
 
 final class FakeClock implements Clock {

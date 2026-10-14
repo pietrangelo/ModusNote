@@ -354,3 +354,73 @@ select pg_temp.refused($q$ select public.delete_account() $q$);
 select pg_temp.refused($q$ select public.sole_workspaces() $q$);
 select pg_temp.check(true, 'the anonymous role cannot delete accounts');
 commit;
+
+-- Compaction: a pushed row drops the rows of its record it supersedes.
+\set erin  '''00000000-0000-0000-0000-0000000000e1'''
+\set frank '''00000000-0000-0000-0000-0000000000f1'''
+\set packed '''c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0'''
+\set aside  '''c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1'''
+\set fenced '''c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2'''
+
+begin;
+select pg_temp.act_as(:frank);
+insert into public.workspaces (id) values (:fenced);
+insert into public.sync_rows (workspace_id, record_id, epoch, ciphertext)
+values (:fenced, repeat('a', 32), 0, decode(repeat('ab', 41), 'hex'));
+commit;
+
+begin;
+select pg_temp.act_as(:erin);
+insert into public.workspaces (id) values (:packed), (:aside);
+insert into public.sync_rows (workspace_id, record_id, epoch, ciphertext)
+values (:packed, repeat('a', 32), 0, decode(repeat('ab', 41), 'hex')),
+       (:packed, repeat('b', 32), 0, decode(repeat('ab', 41), 'hex')),
+       (:packed, repeat('a', 32), 0, decode(repeat('ab', 41), 'hex')),
+       (:aside, repeat('a', 32), 0, decode(repeat('ab', 41), 'hex'));
+insert into public.sync_rows (workspace_id, record_id, epoch, ciphertext, supersedes)
+values (:packed, repeat('a', 32), 0, decode(repeat('ab', 41), 'hex'), 3);
+select pg_temp.check(
+  (select array_agg(position order by position) from public.sync_rows
+   where workspace_id = :packed) = '{2,4}',
+  'a row drops the earlier rows of its record up to what it supersedes'
+);
+insert into public.sync_rows (workspace_id, record_id, epoch, ciphertext, supersedes)
+values (:packed, repeat('b', 32), 0, decode(repeat('ab', 41), 'hex'), 1000);
+select pg_temp.check(
+  (select array_agg(position order by position) from public.sync_rows
+   where workspace_id = :packed) = '{4,5}',
+  'adversary: supersedes past the end drops only older rows of that record'
+);
+select pg_temp.check(
+  (select count(*) from public.sync_rows where workspace_id = :aside) = 1,
+  'adversary: the same record in another workspace is untouched'
+);
+insert into public.sync_rows (workspace_id, record_id, epoch, ciphertext)
+values (:packed, repeat('a', 32), 0, decode(repeat('ab', 41), 'hex'));
+select pg_temp.check(
+  (select array_agg(position order by position) from public.sync_rows
+   where workspace_id = :packed) = '{4,5,6}',
+  'a row superseding nothing drops nothing, and positions keep growing'
+);
+select pg_temp.refused($q$ delete from public.sync_rows $q$);
+select pg_temp.refused($q$ select public.drop_superseded_rows() $q$);
+select pg_temp.check(true, 'clients still cannot delete rows themselves');
+do $$
+begin
+  insert into public.sync_rows (workspace_id, record_id, epoch, ciphertext, supersedes)
+  values ('c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0', repeat('a', 32), 0,
+          decode(repeat('ab', 41), 'hex'), -1);
+  raise exception 'FAILED: negative supersedes accepted';
+exception
+  when check_violation then raise notice 'ok - supersedes cannot be negative';
+end;
+$$;
+commit;
+
+begin;
+select pg_temp.act_as(:frank);
+select pg_temp.check(
+  (select count(*) from public.sync_rows where workspace_id = :fenced) = 1,
+  'adversary: another account''s workspace is untouched'
+);
+commit;

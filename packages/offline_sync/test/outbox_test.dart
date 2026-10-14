@@ -56,4 +56,31 @@ void main() {
     expect(empty.pending, isEmpty);
     expect(() => empty.pending.add(row('a', 1)), throwsUnsupportedError);
   });
+
+  test('a newer edit replaces what the queued one superseded too', () {
+    final first = SealedRow(
+      record: row('a', 1).record,
+      ciphertext: row('a', 1).ciphertext,
+      supersedes: 3,
+    );
+    final second = SealedRow(
+      record: row('a', 2).record,
+      ciphertext: row('a', 2).ciphertext,
+      supersedes: 5,
+    );
+
+    expect(Outbox.empty.enqueue(first).enqueue(second).pending, [second]);
+    expect(second, isNot(row('a', 2)), reason: 'supersedes is part of a row');
+  });
+
+  test('a row cannot supersede a negative position', () {
+    expect(
+      () => SealedRow(
+        record: row('a', 1).record,
+        ciphertext: row('a', 1).ciphertext,
+        supersedes: -1,
+      ),
+      throwsA(isA<MalformedSyncDataException>()),
+    );
+  });
 }
