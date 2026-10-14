@@ -135,11 +135,13 @@ final class VaultNoteStore extends ChangeNotifier implements NoteStore {
           )
         : before.edited(entry, takes: takes, pictures: pictures).restored();
     await _put(after);
-    // Only once the note no longer points at them.
-    final kept = {for (final blob in after.blobs) blob.id};
+    // Only once the note no longer points at them, and only what no note
+    // points at: a picture pasted from one note's text into another's
+    // belongs to both.
+    final kept = {for (final blob in blobs) blob.id};
     final released = before == null
         ? const <BlobId>{}
-        : RecordedNote.released(before: before, after: after);
+        : RecordedNote.released(before: before, after: after).difference(kept);
     await _delete({
       ...released,
       for (final blob in [...takes, ...pictures])

@@ -363,5 +363,7 @@
   "hideNoteList": "Nascondi elenco note",
   "showNoteList": "Mostra elenco note",
   "focusMode": "Modalità focus",
-  "exitFocusMode": "Esci dalla modalità focus"
+  "exitFocusMode": "Esci dalla modalità focus",
+  "insertImage": "Inserisci immagine",
+  "imageMissing": "Immagine non disponibile"
 }
