@@ -434,6 +434,25 @@ void main() {
         );
       });
 
+      test('an account past its workspace quota gets a 413', () async {
+        // The quota table holds 20; a fresh account founds them all.
+        final account = _uuid();
+        for (var i = 0; i < 20; i++) {
+          await serverFor(account).createWorkspace(WorkspaceId.parse(_hex(16)));
+        }
+
+        await expectLater(
+          serverFor(account).createWorkspace(WorkspaceId.parse(_hex(16))),
+          throwsA(
+            isA<SyncServerRejectedException>().having(
+              (e) => e.status,
+              'status',
+              413,
+            ),
+          ),
+        );
+      });
+
       test('a token signed with another secret is refused', () async {
         final workspace = await foundWorkspace();
         final forged = SupabaseSyncServer(

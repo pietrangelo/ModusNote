@@ -263,6 +263,17 @@ void main() {
       expect(sync.state, SyncState.failed);
       expect(sync.problem, SyncProblem.refused);
     });
+
+    test('a blob over the size limit is reported as no space', () async {
+      final (sync, _) = await withUploads(
+        () => Future.error(const RemoteBlobRejectedException(413)),
+      );
+
+      await sync.syncNow();
+
+      expect(sync.state, SyncState.failed);
+      expect(sync.problem, SyncProblem.full);
+    });
   });
 
   group('adversary', () {
@@ -275,6 +286,16 @@ void main() {
 
       expect(phone.sync.state, SyncState.failed);
       expect(phone.sync.problem, SyncProblem.refused);
+    });
+
+    test('a workspace over its quota is reported as no space', () async {
+      final (phone, server) = await device();
+      server.refuseWith = 413;
+
+      await phone.sync.syncNow();
+
+      expect(phone.sync.state, SyncState.failed);
+      expect(phone.sync.problem, SyncProblem.full);
     });
 
     test('a server holding another log under this workspace is untrusted '

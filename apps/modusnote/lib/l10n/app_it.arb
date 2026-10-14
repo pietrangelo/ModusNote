@@ -122,6 +122,7 @@
   "cloudStateSynced": "Sincronizzato alle {time}",
   "cloudStateOffline": "Il server non è raggiungibile: le modifiche restano sul dispositivo e partiranno più tardi.",
   "cloudStateRefused": "Il server ha rifiutato la sincronizzazione. Prova a uscire e ad accedere di nuovo.",
+  "cloudStateFull": "Questo vault ha esaurito il suo spazio sul server. Elimina le note che non ti servono più, o registrazioni e immagini troppo grandi, poi sincronizza di nuovo.",
   "cloudStateUntrusted": "Il server ha inviato dati che non superano la verifica, quindi non è stato applicato nulla.",
   "cloudSignInBody": "Accedi con la tua email per conservare le note anche sul server. Il server riceve solo dati cifrati e la passphrase non lascia mai questo dispositivo.",
   "cloudEmailLabel": "Email",
