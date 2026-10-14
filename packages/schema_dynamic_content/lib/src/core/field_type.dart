@@ -334,3 +334,53 @@ final class AttachmentsFieldType extends FieldType {
   @override
   int get hashCode => Object.hash(AttachmentsFieldType, maxItems);
 }
+
+/// A password: a [SecretValue] of one line. Any printable character is
+/// allowed, so a generated or pasted password is kept as it is; control
+/// and bidirectional characters are not, since they would make the text
+/// copied differ from the text shown.
+final class PasswordFieldType extends FieldType {
+  PasswordFieldType({this.maxLength = 1024}) {
+    _requireRange(maxLength > 0 && maxLength <= maxAllowed);
+  }
+
+  static const maxAllowed = 4096;
+
+  final int maxLength;
+
+  @override
+  List<ViolationCode> check(FieldValue value) => switch (value) {
+    SecretValue(:final text) => [
+      if (_length(text) > maxLength) ViolationCode.tooLong,
+      if (containsUnsafeCharacters(text)) ViolationCode.invalidCharacters,
+    ],
+    _ => const [ViolationCode.typeMismatch],
+  };
+
+  @override
+  bool operator ==(Object other) =>
+      other is PasswordFieldType && other.maxLength == maxLength;
+
+  @override
+  int get hashCode => Object.hash(PasswordFieldType, maxLength);
+}
+
+/// An address on the web, as a [TextValue] written exactly as [WebLink]
+/// writes it: the same rules as a link attached to a page, so what is
+/// shown is what opens.
+final class UrlFieldType extends FieldType {
+  const UrlFieldType();
+
+  @override
+  List<ViolationCode> check(FieldValue value) => switch (value) {
+    TextValue(:final text) when WebLink.parse(text)?.url == text => const [],
+    TextValue() => const [ViolationCode.invalidUrl],
+    _ => const [ViolationCode.typeMismatch],
+  };
+
+  @override
+  bool operator ==(Object other) => other is UrlFieldType;
+
+  @override
+  int get hashCode => (UrlFieldType).hashCode;
+}

@@ -16,6 +16,7 @@ enum ViolationCode {
   tooManyItems,
   emptyItem,
   duplicateItem,
+  invalidUrl,
 }
 
 /// One reason an entry does not satisfy its schema. [field] is null for

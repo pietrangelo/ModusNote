@@ -1617,5 +1617,164 @@
   "imageMissing": "Picture not available",
   "@imageMissing": {
     "description": "In the text of a note: a picture whose details this vault does not have."
+  },
+  "schemaCredentialLabel": "Credentials",
+  "@schemaCredentialLabel": {
+    "description": "Localization of the seed schema key schema.credential.label."
+  },
+  "schemaCredentialFieldDescription": "Description",
+  "@schemaCredentialFieldDescription": {
+    "description": "Localization of the seed schema key schema.credential.field.description."
+  },
+  "schemaCredentialFieldUsername": "Username",
+  "@schemaCredentialFieldUsername": {
+    "description": "Localization of the seed schema key schema.credential.field.username."
+  },
+  "schemaCredentialFieldPassword": "Password",
+  "@schemaCredentialFieldPassword": {
+    "description": "Localization of the seed schema key schema.credential.field.password."
+  },
+  "schemaCredentialFieldLink": "Link",
+  "@schemaCredentialFieldLink": {
+    "description": "Localization of the seed schema key schema.credential.field.link."
+  },
+  "schemaCredentialFieldPasswordExpiry": "Password expiry",
+  "@schemaCredentialFieldPasswordExpiry": {
+    "description": "Localization of the seed schema key schema.credential.field.password_expiry."
+  },
+  "iconKey": "Key",
+  "@iconKey": {
+    "description": "Name of an icon a category can show."
+  },
+  "violationInvalidUrl": "Not a web address the app can open (http or https)",
+  "@violationInvalidUrl": {
+    "description": "Validation error: a link field holds something that is not an http or https address."
+  },
+  "passwordShow": "Show password",
+  "@passwordShow": {
+    "description": "Button that reveals a masked password."
+  },
+  "passwordHide": "Hide password",
+  "@passwordHide": {
+    "description": "Button that masks a shown password."
+  },
+  "passwordCopy": "Copy password",
+  "@passwordCopy": {
+    "description": "Button that copies a password to the clipboard."
+  },
+  "passwordCopied": "Password copied: the clipboard is cleared in 30 seconds.",
+  "@passwordCopied": {
+    "description": "Snackbar after copying a password."
+  },
+  "passwordGenerate": "Generate a password",
+  "@passwordGenerate": {
+    "description": "Button that opens the password generator."
+  },
+  "generatorLength": "Length: {length}",
+  "@generatorLength": {
+    "description": "Password generator: the chosen length.",
+    "placeholders": {
+      "length": {
+        "type": "int"
+      }
+    }
+  },
+  "generatorSymbols": "Symbols to leave out",
+  "@generatorSymbols": {
+    "description": "Password generator: heading of the symbols a site may refuse."
+  },
+  "generatorSymbolsHint": "Tap the symbols a site does not accept. Letters and digits are always in, and the length grows if needed to stay safe.",
+  "@generatorSymbolsHint": {
+    "description": "Password generator: how excluding symbols works."
+  },
+  "generatorExclude": "Leave out {symbol}",
+  "@generatorExclude": {
+    "description": "Password generator: tooltip of a symbol chip.",
+    "placeholders": {
+      "symbol": {
+        "type": "String"
+      }
+    }
+  },
+  "generatorStrength": "About {bits} bits of entropy",
+  "@generatorStrength": {
+    "description": "Password generator: how strong the password is.",
+    "placeholders": {
+      "bits": {
+        "type": "int"
+      }
+    }
+  },
+  "generatorAgain": "Generate again",
+  "@generatorAgain": {
+    "description": "Password generator: draws a new password."
+  },
+  "generatorUse": "Use this password",
+  "@generatorUse": {
+    "description": "Password generator: puts the password in the field."
+  },
+  "linkOpen": "Open link",
+  "@linkOpen": {
+    "description": "Button that opens the link of a credential, after a confirmation."
+  },
+  "expiryExpired": "Password expired",
+  "@expiryExpired": {
+    "description": "On a credential card: the password expiry date has passed."
+  },
+  "expiryToday": "Password expires today",
+  "@expiryToday": {
+    "description": "On a credential card."
+  },
+  "expiryTomorrow": "Password expires tomorrow",
+  "@expiryTomorrow": {
+    "description": "On a credential card."
+  },
+  "expiryInDays": "Password expires in {days} days",
+  "@expiryInDays": {
+    "description": "On a credential card, two to seven days before the expiry.",
+    "placeholders": {
+      "days": {
+        "type": "int"
+      }
+    }
+  },
+  "reminderTitle": "Password expiring",
+  "@reminderTitle": {
+    "description": "Title of the password expiry notification. It never names the note."
+  },
+  "reminderWeekBefore": "{count, plural, =1{A password expires in 7 days.} other{{count} passwords expire in 7 days.}}",
+  "@reminderWeekBefore": {
+    "description": "Notification text a week before. Generic on purpose: it shows on the lock screen.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "reminderDayBefore": "{count, plural, =1{A password expires tomorrow.} other{{count} passwords expire tomorrow.}}",
+  "@reminderDayBefore": {
+    "description": "Notification text the day before.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "reminderDayOf": "{count, plural, =1{A password expires today.} other{{count} passwords expire today.}}",
+  "@reminderDayOf": {
+    "description": "Notification text on the day.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "reminderChannel": "Password expiry",
+  "@reminderChannel": {
+    "description": "Name of the Android notification channel of the reminders."
+  },
+  "reminderChannelDescription": "Reminders a week before, the day before and the day a password expires.",
+  "@reminderChannelDescription": {
+    "description": "Description of the Android notification channel."
   }
 }

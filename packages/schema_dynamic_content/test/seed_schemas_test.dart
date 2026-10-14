@@ -14,6 +14,7 @@ void main() {
       'book_chapter',
       'book_character',
       'book_place',
+      'credential',
       'quick_note',
     ]);
   });

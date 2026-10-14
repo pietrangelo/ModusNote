@@ -122,6 +122,7 @@ abstract final class EntryCodec {
 
   static Map<String, Object?> _encodeValue(FieldValue value) => switch (value) {
     TextValue(:final text) => {'kind': 'text', 'value': text},
+    SecretValue(:final text) => {'kind': 'secret', 'value': text},
     NumberValue(:final number) => {'kind': 'number', 'value': number},
     DateValue(:final year, :final month, :final day) => {
       'kind': 'date',
@@ -166,6 +167,7 @@ abstract final class EntryCodec {
     final kind = json.string('kind');
     return switch (kind) {
       'text' => TextValue(json.string('value')),
+      'secret' => SecretValue(json.string('value')),
       'number' => NumberValue(json.number('value')),
       'date' => switch (json.integers('value')) {
         [final year, final month, final day] => DateValue(year, month, day),

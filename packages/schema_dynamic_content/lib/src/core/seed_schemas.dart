@@ -119,6 +119,18 @@ abstract final class SeedSchemas {
     ],
   );
 
+  /// A login: what it is for, the user name and password, where it is
+  /// used and when the password expires. The password is a [SecretValue]:
+  /// sealed with the note like everything else, and never searched or
+  /// shown on a card.
+  static final credentialV1 = _seed('credential', NoteIcon.key, NoteTint.cyan, [
+    ('description', TextFieldType(maxLength: 200), true),
+    ('username', TextFieldType(maxLength: 200), false),
+    ('password', PasswordFieldType(), false),
+    ('link', const UrlFieldType(), false),
+    ('password_expiry', const DateFieldType(), false),
+  ]);
+
   /// A to-do is a list of tasks, with an optional title. A [taskV1] note
   /// becomes a one-task list: its description, made one safe line, and
   /// its completed flag.
@@ -160,6 +172,7 @@ abstract final class SeedSchemas {
     bookChapterV1,
     bookCharacterV1,
     bookPlaceV1,
+    credentialV1,
     // Last: the type a new note starts as.
     quickNoteV1,
   ]);

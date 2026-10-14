@@ -156,9 +156,9 @@ void main() {
   testWidgets('initial values are shown', (tester) async {
     await render(
       tester,
-      SeedSchemas.taskV1,
+      SeedSchemas.taskV2,
       values: {
-        k('description'): const TextValue('Chiamare Ada'),
+        k('title'): const TextValue('Chiamare Ada'),
         k('priority'): const ChoiceValue('high'),
       },
     );

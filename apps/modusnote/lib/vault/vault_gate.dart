@@ -19,6 +19,7 @@ import '../audio/note_recorder.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../notes/note_library.dart';
 import '../notes/schema_text.dart';
+import '../reminders/password_reminders.dart';
 import '../sync/blob_sync.dart';
 import '../sync/cloud_sheet.dart';
 import '../sync/link_device_sheet.dart';
@@ -49,6 +50,7 @@ class VaultGate extends StatefulWidget {
     this.account,
     this.syncFor,
     this.files,
+    this.remindersFor,
     super.key,
   });
 
@@ -104,6 +106,11 @@ class VaultGate extends StatefulWidget {
   /// platform has no way yet, which hides them.
   final FileExchange? files;
 
+  /// Shows the password expiry reminders, given the person's language;
+  /// null where the platform has no notifications the app can schedule
+  /// (the web), where the credential cards say it instead.
+  final ReminderScheduler Function(AppLocalizations l10n)? remindersFor;
+
   @override
   State<VaultGate> createState() => _VaultGateState();
 }
@@ -131,12 +138,13 @@ final class _Joining extends _Stage {
 }
 
 final class _Open extends _Stage {
-  const _Open(this.vault, this.store, this.autoLock, this.sync);
+  const _Open(this.vault, this.store, this.autoLock, this.sync, this.reminders);
 
   final UnlockedVault vault;
   final VaultNoteStore store;
   final AutoLock autoLock;
   final SyncController? sync;
+  final PasswordReminders? reminders;
 }
 
 /// The Supabase session, sealed in the vault under the local key: it opens
@@ -187,7 +195,13 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _stopWatching();
-    if (_stage case _Open(:final vault, :final autoLock, :final sync)) {
+    if (_stage case _Open(
+      :final vault,
+      :final autoLock,
+      :final sync,
+      :final reminders,
+    )) {
+      reminders?.dispose();
       sync?.dispose();
       widget.account?.detach();
       autoLock.dispose();
@@ -231,6 +245,7 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
   Future<void> _unlockWithPasskey() => _open(widget.keeper.unlockWithPasskey);
 
   Future<void> _open(Future<UnlockedVault> Function() opening) async {
+    final l10n = AppLocalizations.of(context);
     setState(() {
       _busy = true;
       _problem = null;
@@ -268,8 +283,17 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
           widget.autoLockFor?.call(_autoLocked) ??
           AutoLock(onLock: _autoLocked);
       _watchActivity(autoLock);
-      setState(() => _stage = _Open(vault, store, autoLock, sync));
+      final reminders = switch (widget.remindersFor?.call(l10n)) {
+        null => null,
+        final scheduler => PasswordReminders(
+          store: store,
+          scheduler: scheduler,
+          texts: ReminderTexts(l10n),
+        ),
+      };
+      setState(() => _stage = _Open(vault, store, autoLock, sync, reminders));
       sync?.start();
+      reminders?.start();
     } on WrongPassphraseException {
       _fail(_Problem.wrong);
     } on TamperedWorkspaceDataException {
@@ -441,8 +465,11 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
       :final store,
       :final autoLock,
       :final sync,
+      :final reminders,
     )) {
       _stopWatching();
+      // The reminders already set stay with the system.
+      reminders?.dispose();
       // An undo offered on the way out would write with released keys.
       ScaffoldMessenger.maybeOf(context)?.clearSnackBars();
       // The sync stops before the keys it works with are released.

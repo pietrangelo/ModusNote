@@ -18,6 +18,7 @@ import '../sync/sync_config.dart';
 import '../audio/soloud_player.dart';
 import '../vault/vault_gate.dart';
 import 'gallery_image_chooser.dart';
+import 'local_reminder_scheduler.dart';
 import 'vault_wiring.dart';
 
 /// libsodium is built by the `sodium` package's build hook and loaded once
@@ -59,6 +60,10 @@ Future<Widget> buildHome() async {
           },
     passwordFrom: (bytes) => SodiumPasswordSecret.fromUtf8Bytes(sodium, bytes),
     catalog: SeedSchemas.catalog,
+    remindersFor: (l10n) => LocalReminderScheduler(
+      channel: l10n.reminderChannel,
+      description: l10n.reminderChannelDescription,
+    ),
     recorderFor: (engine) => NoteRecorder(
       capture: createPlatformAudioCapture,
       blobs: blobs,

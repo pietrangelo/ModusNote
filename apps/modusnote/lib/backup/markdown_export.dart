@@ -114,7 +114,8 @@ final class MarkdownExport {
             });
           }
           out.writeln();
-        case TextValue(:final text) when field.type is! TextFieldType:
+        case TextValue(:final text)
+            when field.type is! TextFieldType && field.type is! UrlFieldType:
           if (text.trim().isEmpty) continue;
           out
             ..writeln('## $label')
