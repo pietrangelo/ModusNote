@@ -18,6 +18,7 @@ final class AttachmentHooks {
     required this.openImage,
     required this.openLink,
     this.addImage,
+    this.imageSize,
   });
 
   /// Picks and seals a picture; null when the person cancels. Null where
@@ -29,6 +30,10 @@ final class AttachmentHooks {
 
   /// Opens a link once the person has confirmed it.
   final LinkOpener openLink;
+
+  /// A picture's size, from the note's metadata; null when the picture is
+  /// not known, which pictures in the text then say.
+  final ImageHeader? Function(BlobId blob)? imageSize;
 }
 
 /// The pictures and links of a page: thumbnails decrypted in memory, links
@@ -94,14 +99,10 @@ class _AttachmentsInputState extends State<AttachmentsInput> {
     }
   }
 
-  void _view(ImageAttachment image) => unawaited(
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        fullscreenDialog: true,
-        builder: (_) =>
-            _ImageViewer(bytes: _bytesOf(image.blob), caption: image.caption),
-      ),
-    ),
+  void _view(ImageAttachment image) => ImageViewer.show(
+    context,
+    bytes: _bytesOf(image.blob),
+    caption: image.caption,
   );
 
   @override
@@ -314,10 +315,19 @@ class _Thumbnail extends StatelessWidget {
 /// A decrypted picture, decoded at the size it is drawn: a large photo
 /// never expands to full resolution for a thumbnail.
 class SealedImage extends StatelessWidget {
-  const SealedImage({required this.bytes, required this.fit, super.key});
+  const SealedImage({
+    required this.bytes,
+    required this.fit,
+    this.drawnWidth,
+    super.key,
+  });
 
   final Future<Uint8List> bytes;
   final BoxFit fit;
+
+  /// The width it is drawn at, when known beforehand: inside text, where
+  /// a layout builder cannot measure.
+  final double? drawnWidth;
 
   @override
   Widget build(BuildContext context) {
@@ -339,21 +349,22 @@ class SealedImage extends StatelessWidget {
         if (data == null) {
           return const Center(child: CircularProgressIndicator());
         }
+        Widget image(int? width) => Image.memory(
+          data,
+          fit: fit,
+          cacheWidth: width,
+          gaplessPlayback: true,
+          // A decoder that refuses the bytes is a damaged picture, not a
+          // crash.
+          errorBuilder: (context, _, _) => _Problem(l10n.imageDamaged),
+        );
+        if (drawnWidth case final drawn?) return image((drawn * ratio).ceil());
         return LayoutBuilder(
-          builder: (context, constraints) {
-            final width = constraints.maxWidth.isFinite
+          builder: (context, constraints) => image(
+            constraints.maxWidth.isFinite
                 ? (constraints.maxWidth * ratio).ceil()
-                : null;
-            return Image.memory(
-              data,
-              fit: fit,
-              cacheWidth: width,
-              gaplessPlayback: true,
-              // A decoder that refuses the bytes is a damaged picture, not
-              // a crash.
-              errorBuilder: (context, _, _) => _Problem(l10n.imageDamaged),
-            );
-          },
+                : null,
+          ),
         );
       },
     );
@@ -379,11 +390,24 @@ class _Problem extends StatelessWidget {
 }
 
 /// One picture on the whole screen, to zoom into.
-class _ImageViewer extends StatelessWidget {
-  const _ImageViewer({required this.bytes, required this.caption});
+class ImageViewer extends StatelessWidget {
+  const ImageViewer({required this.bytes, required this.caption, super.key});
 
   final Future<Uint8List> bytes;
   final String caption;
+
+  static void show(
+    BuildContext context, {
+    required Future<Uint8List> bytes,
+    required String caption,
+  }) => unawaited(
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        fullscreenDialog: true,
+        builder: (_) => ImageViewer(bytes: bytes, caption: caption),
+      ),
+    ),
+  );
 
   @override
   Widget build(BuildContext context) => Scaffold(

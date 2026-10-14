@@ -376,4 +376,84 @@ void main() {
       expect(find.byTooltip('Grassetto (Ctrl+B)'), findsNothing);
     });
   });
+
+  group('focus mode', () {
+    final focus = find.byKey(const ValueKey('focus-mode'));
+    final song = existing(SeedSchemas.songSketchV1, {
+      'title': const TextValue('Notturno'),
+      'bpm': NumberValue(90),
+      'lyrics': const TextValue('Prima strofa'),
+    });
+
+    testWidgets('leaves only the title and the text, toolbar included', (
+      tester,
+    ) async {
+      await open(tester, entry: song, schema: SeedSchemas.songSketchV1);
+      await tester.tap(find.byKey(const ValueKey('details-toggle')));
+      await tester.pumpAndSettle();
+      expect(fieldFinder('bpm'), findsOneWidget);
+
+      await tester.tap(focus);
+      await tester.pumpAndSettle();
+
+      expect(fieldFinder('title'), findsOneWidget);
+      expect(fieldFinder('lyrics'), findsOneWidget);
+      expect(fieldFinder('bpm'), findsNothing);
+      expect(fieldFinder('guide_track'), findsNothing);
+      expect(find.byKey(const ValueKey('note-type')), findsNothing);
+      expect(find.byType(BackButton), findsNothing);
+
+      await tester.tap(focus);
+      await tester.pumpAndSettle();
+      expect(fieldFinder('bpm'), findsOneWidget, reason: 'details stay open');
+    });
+
+    testWidgets('a quick note keeps its text but loses the toolbar', (
+      tester,
+    ) async {
+      await open(tester);
+      await tester.enterText(textInput('content'), 'riff');
+      await tester.pump();
+      expect(find.byTooltip('Grassetto (Ctrl+B)'), findsOneWidget);
+
+      await tester.tap(focus);
+      await tester.pumpAndSettle();
+
+      expect(find.byTooltip('Grassetto (Ctrl+B)'), findsNothing);
+      expect(find.text('riff'), findsOneWidget);
+    });
+
+    testWidgets('back leaves focus mode before the page', (tester) async {
+      await open(tester, entry: song, schema: SeedSchemas.songSketchV1);
+      await tester.tap(focus);
+      await tester.pumpAndSettle();
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+
+      expect(find.byType(NoteEditorScreen), findsOneWidget);
+      expect(find.byType(BackButton), findsOneWidget);
+
+      await back(tester);
+      expect(find.byType(NoteEditorScreen), findsNothing);
+    });
+
+    testWidgets('Ctrl+Shift+F and Escape, from the text', (tester) async {
+      await open(tester, entry: song, schema: SeedSchemas.songSketchV1);
+      await tester.tap(textInput('lyrics'));
+      await tester.pump();
+
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+      await tester.sendKeyEvent(LogicalKeyboardKey.keyF);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+      await tester.pumpAndSettle();
+      expect(find.byType(BackButton), findsNothing);
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+      expect(find.byType(BackButton), findsOneWidget);
+    });
+  });
 }

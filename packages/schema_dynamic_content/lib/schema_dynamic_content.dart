@@ -13,6 +13,7 @@ export 'src/core/entry_search.dart';
 export 'src/core/field_type.dart';
 export 'src/core/field_value.dart';
 export 'src/core/identifiers.dart';
+export 'src/core/inline_images.dart';
 export 'src/core/label.dart';
 export 'src/core/note_links.dart';
 export 'src/core/schema_catalog.dart';

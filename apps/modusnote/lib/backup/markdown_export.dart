@@ -83,7 +83,7 @@ final class MarkdownExport {
       if (entry.valueOf(body) case TextValue(:final text)
           when text.trim().isNotEmpty) {
         out
-          ..writeln(text.trimRight())
+          ..writeln(_pictures(text, words).trimRight())
           ..writeln();
       }
     }
@@ -119,7 +119,7 @@ final class MarkdownExport {
           out
             ..writeln('## $label')
             ..writeln()
-            ..writeln(text.trimRight())
+            ..writeln(_pictures(text, words).trimRight())
             ..writeln();
         default:
           final shown = _scalar(field, value);
@@ -179,6 +179,27 @@ final class MarkdownExport {
     r'^(con|prn|aux|nul|com[0-9]|lpt[0-9])(\..*)?$',
     caseSensitive: false,
   );
+
+  /// [text] with each picture written in it ([InlineImages]) as a line
+  /// naming it: the export holds no pictures, and an `image:` address
+  /// means nothing outside the app.
+  static String _pictures(String text, MarkdownExportText words) {
+    final pictures = InlineImages.find(text);
+    if (pictures.isEmpty) return text;
+    final out = StringBuffer();
+    var from = 0;
+    for (final picture in pictures) {
+      final caption = picture.caption;
+      out
+        ..write(text.substring(from, picture.start))
+        ..write('_${words.picture}')
+        ..write(caption.isEmpty ? '' : ': ${_escape(caption)}')
+        ..write('_');
+      from = picture.end;
+    }
+    out.write(text.substring(from));
+    return out.toString();
+  }
 
   static String _oneLine(String text) =>
       text.replaceAll(RegExp(r'[\r\n]+'), ' ').trim();

@@ -92,6 +92,30 @@ void main() {
     expect(text, contains(':** 92'));
   });
 
+  test('a picture in the text is named, never left as an address', () {
+    final blob = BlobId('f' * 32);
+    final page = entry('a' * 32, SeedSchemas.documentV1, {
+      'title': const TextValue('Manuale'),
+      'body': TextValue(
+        'Il palco:\n${InlineImages.markdown('Vista [dal] fondo', blob)}\n'
+        'e ${InlineImages.markdown('', blob)} fine.',
+      ),
+    });
+
+    final text = unzip(export().archive([page], at: DateTime(2026)))
+        .values
+        .single;
+
+    expect(
+      text,
+      contains(
+        'Il palco:\n_immagine (non inclusa): Vista dal fondo_\n'
+        'e _immagine (non inclusa)_ fine.',
+      ),
+    );
+    expect(text, isNot(contains('image:')));
+  });
+
   test('a to-do keeps its boxes; the same title twice gets a number', () {
     final list = entry('b' * 32, SeedSchemas.taskV2, {
       'title': const TextValue('Spesa'),

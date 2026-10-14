@@ -1,6 +1,7 @@
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:modusnote/notes/editor/markdown_commands.dart';
+import 'package:schema_dynamic_content/schema_dynamic_content.dart';
 
 /// `|` marks the cursor; `[` and `]` mark a selection.
 TextEditingValue v(String marked) {
@@ -174,6 +175,32 @@ void main() {
       const value = TextEditingValue(text: 'abc');
       expect(MarkdownCommands.bold(value), value);
       expect(MarkdownCommands.newline(value), isNull);
+    });
+  });
+
+  group('image', () {
+    final blob = BlobId('f' * 32);
+    final ref = '(image:${'f' * 32})';
+
+    test('goes on a line of its own, the cursor after it', () {
+      expect(
+        show(MarkdownCommands.image(v('ab|cd'), blob)),
+        'ab\n![]$ref|\ncd',
+      );
+      expect(show(MarkdownCommands.image(v('ab\n|'), blob)), 'ab\n![]$ref|\n');
+      expect(show(MarkdownCommands.image(v('|'), blob)), '![]$ref|\n');
+      expect(
+        show(MarkdownCommands.image(v('ab|\ncd'), blob)),
+        'ab\n![]$ref|\ncd',
+      );
+    });
+
+    test('a selection on one line becomes its caption', () {
+      expect(
+        show(MarkdownCommands.image(v('x [Il palco] y'), blob)),
+        'x \n![Il palco]$ref|\n y',
+      );
+      expect(show(MarkdownCommands.image(v('[a\nb]'), blob)), '![]$ref|\n');
     });
   });
 }
