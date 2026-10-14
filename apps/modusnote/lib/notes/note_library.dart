@@ -12,6 +12,7 @@ import '../vault/auto_lock.dart';
 import 'categories/categories_screen.dart';
 import 'categories/category_picker.dart';
 import 'command_palette.dart';
+import 'credentials/expiry_status.dart';
 import 'note_appearance.dart';
 import 'note_editor.dart';
 import 'note_store.dart';
@@ -1017,6 +1018,8 @@ class _NoteCard extends StatelessWidget {
           )
         : tasks.every((list) => list.allDone);
     final tint = NoteAppearance.tint(schema?.tint);
+    // A password about to expire says so in place of the date.
+    final expiry = ExpiryStatus.of(entry, l10n, now: DateTime.now());
     return Card(
       color: NoteAppearance.wash(schema?.tint),
       clipBehavior: Clip.antiAlias,
@@ -1054,6 +1057,12 @@ class _NoteCard extends StatelessWidget {
                       ),
                       style: theme.textTheme.labelSmall,
                     ),
+                  if (expiry != null)
+                    Icon(
+                      Icons.schedule,
+                      size: IconSizes.inline,
+                      color: theme.colorScheme.primary,
+                    ),
                   if (done)
                     Icon(
                       Icons.check_circle,
@@ -1070,8 +1079,10 @@ class _NoteCard extends StatelessWidget {
                 ),
               ),
               Text(
-                MaterialLocalizations.of(context)
-                    .formatMediumDate(entry.audit.updatedAt.toLocal()),
+                expiry ??
+                    MaterialLocalizations.of(context)
+                        .formatMediumDate(entry.audit.updatedAt.toLocal()),
+                key: expiry == null ? null : const ValueKey('password-expiry'),
                 style: theme.textTheme.bodySmall,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
@@ -1206,6 +1217,7 @@ class _SideColumn extends StatelessWidget {
         ),
         Expanded(
           child: ListView(
+            key: const ValueKey('nav-column'),
             children: [
               ListTile(
                 key: const ValueKey('nav-all'),
@@ -1310,8 +1322,9 @@ class _NoteRow extends StatelessWidget {
         overflow: TextOverflow.ellipsis,
       ),
       subtitle: Text(
-        MaterialLocalizations.of(context)
-            .formatMediumDate(entry.audit.updatedAt.toLocal()),
+        ExpiryStatus.of(entry, l10n, now: DateTime.now()) ??
+            MaterialLocalizations.of(context)
+                .formatMediumDate(entry.audit.updatedAt.toLocal()),
         maxLines: 1,
       ),
       selected: selected || (picked ?? false),

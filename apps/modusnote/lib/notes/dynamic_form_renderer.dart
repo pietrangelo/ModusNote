@@ -8,6 +8,8 @@ import '../l10n/generated/app_localizations.dart';
 import '../theme/golden_ratio.dart';
 import '../theme/modus_colors.dart';
 import 'attachments/attachments_input.dart';
+import 'credentials/password_input.dart';
+import 'credentials/url_input.dart';
 import 'editor/inline_picture.dart';
 import 'editor/markdown_controller.dart';
 import 'editor/markdown_toolbar.dart';
@@ -114,7 +116,12 @@ class _DynamicFormRendererState extends State<DynamicFormRenderer> {
   }
 
   late final _layout = _PageLayout.of(widget.schema);
+
+  /// Without a body the details are the note (a credential): they never
+  /// fold away.
+  late final _foldable = _layout.body != null;
   late var _detailsOpen =
+      !_foldable ||
       _layout.details.every((field) => widget.values[field.key] == null) ||
       _layout.details.any(_hasViolation);
 
@@ -153,7 +160,7 @@ class _DynamicFormRendererState extends State<DynamicFormRenderer> {
             ),
           ),
         if (_layout.details.isNotEmpty) ...[
-          if (!widget.focused)
+          if (!widget.focused && _foldable)
             _DetailsHeader(
               open: _detailsOpen,
               onToggle: () => setState(() => _detailsOpen = !_detailsOpen),
@@ -310,6 +317,19 @@ class _DynamicFormRendererState extends State<DynamicFormRenderer> {
         error: error,
         value: value is AttachmentsValue ? value : null,
         hooks: widget.attachments ?? _noAttachments,
+        onChanged: set,
+      ),
+      PasswordFieldType() => PasswordInput(
+        label: label,
+        error: error,
+        value: value,
+        onChanged: set,
+      ),
+      UrlFieldType() => UrlInput(
+        label: label,
+        error: error,
+        value: value,
+        openLink: widget.attachments?.openLink,
         onChanged: set,
       ),
       AudioBlobFieldType() => _AudioInput(

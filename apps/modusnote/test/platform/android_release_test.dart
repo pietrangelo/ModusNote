@@ -68,4 +68,20 @@ void main() {
       isEmpty,
     );
   });
+
+  test('expiry reminders survive a reboot and need no exact alarms', () {
+    for (final permission in ['POST_NOTIFICATIONS', 'RECEIVE_BOOT_COMPLETED']) {
+      expect(manifest, contains('android.permission.$permission'));
+    }
+    expect(manifest, isNot(contains('SCHEDULE_EXACT_ALARM')));
+    expect(manifest, isNot(contains('USE_EXACT_ALARM')));
+    expect(manifest, contains('ScheduledNotificationReceiver'));
+    expect(manifest, contains('ScheduledNotificationBootReceiver'));
+    expect(gradle, contains('isCoreLibraryDesugaringEnabled = true'));
+    expect(
+      File('android/app/src/main/res/drawable/ic_notification.xml')
+          .existsSync(),
+      isTrue,
+    );
+  });
 }
