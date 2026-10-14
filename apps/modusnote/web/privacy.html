@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Modus Notes · Privacy</title>
+  <link rel="stylesheet" href="privacy.css">
+</head>
+<body>
+<main>
+  <h1>Informativa sulla privacy</h1>
+  <p class="muted">Modus Notes · Modo · Misura · Ritmo · aggiornata il 14 ottobre 2026</p>
+
+  <p>Modus Notes è un'app di note crittografata end-to-end. Le note, le registrazioni, le immagini, le categorie, i titoli e i tipi di nota vengono cifrati sul tuo dispositivo con chiavi che non lasciano mai i tuoi dispositivi. Nessuno oltre a te e ai dispositivi che colleghi può leggerli: né noi, né i fornitori che ospitano i dati.</p>
+
+  <h2>Senza account</h2>
+  <p>L'app funziona senza account. In questo caso tutto resta sul dispositivo, cifrato con la tua passphrase, e nulla viene inviato in rete.</p>
+
+  <h2>Con la sincronizzazione</h2>
+  <p>Se attivi la sincronizzazione, accedi con la tua email e un codice. Allora il server conserva:</p>
+  <ul>
+    <li>l'indirizzo email dell'account, per l'accesso;</li>
+    <li>i dati cifrati delle note e delle registrazioni, che il server non può leggere, con identificativi casuali, dimensione e orari di sincronizzazione;</li>
+    <li>la chiave pubblica di ogni dispositivo collegato, che identifica l'installazione ma non il telefono né la persona.</li>
+  </ul>
+  <p>La passphrase del vault non viene mai inviata. Non usiamo analytics, pubblicità, tracciamento né SDK di terzi che raccolgano dati, e non vendiamo né condividiamo dati con nessuno.</p>
+
+  <h2>Fornitori</h2>
+  <ul>
+    <li><strong>Supabase</strong> (database e accesso, Unione europea): email e righe cifrate.</li>
+    <li><strong>Cloudflare R2</strong>: registrazioni e immagini cifrate.</li>
+    <li><strong>Cloudflare Pages</strong>: distribuisce l'app web.</li>
+  </ul>
+  <p>Trattano i dati solo per nostro conto. Tutte le connessioni usano HTTPS.</p>
+
+  <h2>Permessi</h2>
+  <p>Il microfono serve solo per registrare quando lo chiedi; le foto solo per allegare l'immagine che scegli. L'app non accede a posizione, contatti né altri dati del dispositivo.</p>
+
+  <section id="elimina-account">
+    <h2>Eliminare l'account</h2>
+    <p>Dall'app: apri il foglio <strong>Sincronizzazione</strong> (l'icona della nuvola nella libreria) e tocca <strong>Elimina account</strong>. Vengono cancellati subito l'account e l'email, e i dati cifrati di ogni workspace di cui sei l'unico membro, registrazioni comprese. Le note restano sul tuo dispositivo.</p>
+    <p>Se non hai più l'app, scrivi a <a href="mailto:gplay.suave928@passmail.net?subject=Eliminazione%20account%20Modus%20Notes">gplay.suave928@passmail.net</a> dall'indirizzo dell'account: eliminiamo gli stessi dati entro 30 giorni. Non conserviamo copie dopo l'eliminazione.</p>
+  </section>
+
+  <h2>Contatti</h2>
+  <p>Per qualunque domanda sulla privacy: <a href="mailto:gplay.suave928@passmail.net">gplay.suave928@passmail.net</a>.</p>
+
+  <section lang="en" id="english">
+    <h2>In English</h2>
+    <p>Modus Notes is end-to-end encrypted: notes, recordings and images are encrypted on your device and nobody else, including us and our hosting providers, can read them. Without sync nothing leaves the device. With sync we store your email address, the encrypted data, and each linked device's public key. No analytics, ads or tracking; nothing is sold or shared.</p>
+    <p id="delete-account">To delete your account, open <strong>Sync</strong> in the app and tap <strong>Delete account</strong>, or email <a href="mailto:gplay.suave928@passmail.net?subject=Modus%20Notes%20account%20deletion">gplay.suave928@passmail.net</a> from the account's address; we delete the same data within 30 days.</p>
+  </section>
+</main>
+</body>
+</html>
