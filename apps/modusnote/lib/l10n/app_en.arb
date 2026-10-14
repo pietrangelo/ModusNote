@@ -1554,5 +1554,29 @@
   "pageIndexNotFiled": "Put the page in a category: the other pages in it will make up the index.",
   "@pageIndexNotFiled": {
     "description": "Under a document page that is in no category."
+  },
+  "hideSidebar": "Hide side menu",
+  "@hideSidebar": {
+    "description": "Wide window: folds the first column (types, categories, trash) away."
+  },
+  "showSidebar": "Show side menu",
+  "@showSidebar": {
+    "description": "Wide window: brings the folded first column back."
+  },
+  "hideNoteList": "Hide note list",
+  "@hideNoteList": {
+    "description": "Wide window: folds the list of notes away, leaving the open note more room."
+  },
+  "showNoteList": "Show note list",
+  "@showNoteList": {
+    "description": "Wide window: brings the folded list of notes back."
+  },
+  "focusMode": "Focus mode",
+  "@focusMode": {
+    "description": "Editor: shows only the title and the text, without menus, lists or other fields."
+  },
+  "exitFocusMode": "Leave focus mode",
+  "@exitFocusMode": {
+    "description": "Editor: back from focus mode to the whole page."
   }
 }
