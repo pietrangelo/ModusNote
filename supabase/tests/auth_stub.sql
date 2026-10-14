@@ -14,3 +14,5 @@ as $$
   )::uuid
 $$;
 grant usage on schema public to anon, authenticated;
+-- The accounts table, reduced to what delete_account touches.
+create table auth.users (id uuid primary key);

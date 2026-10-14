@@ -41,10 +41,13 @@ final class SyncController extends ChangeNotifier {
     required this._account,
     required this._onPulled,
     this._afterSync,
+    bool retired = false,
+    this._retire,
     this._debounce = const Duration(seconds: 2),
     this._interval = const Duration(minutes: 1),
     DateTime Function()? clock,
-  }) : _clock = clock ?? DateTime.now;
+  }) : _clock = clock ?? DateTime.now,
+       _retired = retired;
 
   final SyncEngine _engine;
   final SyncAccount _account;
@@ -52,6 +55,9 @@ final class SyncController extends ChangeNotifier {
 
   /// Runs after each sync that reached the server: uploads recordings.
   final Future<void> Function()? _afterSync;
+
+  /// Remembers in the vault that its account was deleted.
+  final Future<void> Function()? _retire;
   final Duration _debounce;
   final Duration _interval;
   final DateTime Function() _clock;
@@ -64,6 +70,7 @@ final class SyncController extends ChangeNotifier {
   Future<void>? _running;
   var _again = false;
   var _disposed = false;
+  bool _retired;
 
   SyncState get state => _state;
 
@@ -75,6 +82,11 @@ final class SyncController extends ChangeNotifier {
   bool get signedIn => _account.signedIn;
 
   String? get email => _account.email;
+
+  /// The vault's account was deleted: it no longer syncs nor signs in.
+  /// The server forgot the workspace while this vault still counts what it
+  /// pushed and pulled there, so a new account would get none of its notes.
+  bool get retired => _retired;
 
   void start() {
     _account.onChanged = _accountChanged;
@@ -95,6 +107,18 @@ final class SyncController extends ChangeNotifier {
       _account.signIn(email, code);
 
   Future<void> signOut() => _account.signOut();
+
+  /// Deletes the account and everything the server holds for it. Throws
+  /// what [SyncAccount.deleteAccount] throws, with nothing deleted yet.
+  Future<void> deleteAccount() async {
+    if (_retired) return;
+    // A sync in flight would only fail against a vanishing account.
+    await _running;
+    await _account.deleteAccount();
+    _retired = true;
+    await _retire?.call();
+    _set(SyncState.signedOut);
+  }
 
   Future<void> syncNow() {
     if (_disposed) return Future.value();
@@ -120,7 +144,7 @@ final class SyncController extends ChangeNotifier {
   }
 
   Future<void> _once() async {
-    if (!_account.signedIn) return _set(SyncState.signedOut);
+    if (_retired || !_account.signedIn) return _set(SyncState.signedOut);
     _set(SyncState.syncing);
     try {
       final report = await _engine.sync();

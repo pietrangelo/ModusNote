@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:offline_sync/offline_sync.dart';
+import 'package:offline_sync_adapters/offline_sync_adapters.dart';
 
 import '../l10n/generated/app_localizations.dart';
 import '../theme/golden_ratio.dart';
@@ -69,6 +71,9 @@ class CloudSheet extends StatefulWidget {
 }
 
 class _CloudSheetState extends State<CloudSheet> {
+  var _deleting = false;
+  String? _deleteProblem;
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
@@ -81,7 +86,21 @@ class _CloudSheetState extends State<CloudSheet> {
         child: SafeArea(
           child: SingleChildScrollView(
             padding: const EdgeInsets.all(Spacing.l),
-            child: widget.sync.signedIn
+            child: widget.sync.retired
+                ? Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _title(context),
+                      const SizedBox(height: Spacing.m),
+                      Text(
+                        l10n.cloudAccountDeleted,
+                        key: const ValueKey('cloud-retired'),
+                        style: Theme.of(context).textTheme.bodyMedium,
+                      ),
+                    ],
+                  )
+                : widget.sync.signedIn
                 ? Column(
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -156,10 +175,87 @@ class _CloudSheetState extends State<CloudSheet> {
       ],
       const SizedBox(height: Spacing.s),
       OutlinedButton(
-        onPressed: syncing ? null : sync.signOut,
+        onPressed: syncing || _deleting ? null : sync.signOut,
         child: Text(l10n.cloudSignOut),
       ),
+      const SizedBox(height: Spacing.l),
+      TextButton.icon(
+        key: const ValueKey('delete-account'),
+        style: TextButton.styleFrom(
+          foregroundColor: Theme.of(context).colorScheme.error,
+        ),
+        onPressed: _deleting ? null : _deleteAccount,
+        icon: _deleting
+            ? const SizedBox.square(
+                dimension: Spacing.m,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : const Icon(Icons.person_remove_outlined),
+        label: Text(l10n.cloudDeleteAccount),
+      ),
+      if (_deleteProblem case final problem?) ...[
+        const SizedBox(height: Spacing.s),
+        Text(
+          problem,
+          key: const ValueKey('delete-account-problem'),
+          style: Theme.of(context).textTheme.bodyMedium
+              ?.copyWith(color: Theme.of(context).colorScheme.error),
+        ),
+      ],
     ];
+  }
+
+  /// Asks first: nothing brings the account or the server's copy back.
+  /// The notes stay on this device.
+  Future<void> _deleteAccount() async {
+    final l10n = AppLocalizations.of(context);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        icon: const Icon(Icons.person_remove_outlined),
+        title: Text(l10n.cloudDeleteAccountTitle),
+        content: Text(l10n.cloudDeleteAccountBody(widget.sync.email ?? '')),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: Text(l10n.cancel),
+          ),
+          FilledButton(
+            key: const ValueKey('delete-account-confirm'),
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+              foregroundColor: Theme.of(context).colorScheme.onError,
+            ),
+            onPressed: () => Navigator.of(context).pop(true),
+            child: Text(l10n.cloudDeleteAccountConfirm),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() {
+      _deleting = true;
+      _deleteProblem = null;
+    });
+    // The keys stay while the request is out: the vault records the
+    // deletion when it comes back.
+    final release = AutoLockScope.maybeOf(context)?.hold();
+    String? problem;
+    try {
+      await widget.sync.deleteAccount();
+    } on ServerUnavailableException {
+      problem = l10n.cloudDeleteAccountOffline;
+    } on SupabaseAuthRejectedException {
+      problem = l10n.cloudDeleteAccountRefused;
+    } finally {
+      release?.call();
+    }
+    if (mounted) {
+      setState(() {
+        _deleting = false;
+        _deleteProblem = problem;
+      });
+    }
   }
 
   Widget _title(BuildContext context) => Text(

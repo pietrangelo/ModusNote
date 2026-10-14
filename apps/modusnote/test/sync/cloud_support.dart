@@ -52,6 +52,8 @@ final class FakeAuthServer {
         ),
       '/auth/v1/verify' => http.Response('{}', 403),
       '/auth/v1/logout' => http.Response('', 204),
+      '/functions/v1/delete-account' when body['confirm'] == 'delete-account' =>
+        http.Response('{"deleted":true}', 200),
       _ => http.Response('', 404),
     };
   });

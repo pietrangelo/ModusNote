@@ -616,6 +616,37 @@
   "@cloudSignOut": {
     "description": "Button that signs out of the sync account."
   },
+  "cloudDeleteAccount": "Delete account",
+  "@cloudDeleteAccount": {
+    "description": "Sync sheet: button that deletes the sync account and what the server keeps for it."
+  },
+  "cloudDeleteAccountTitle": "Delete the account?",
+  "@cloudDeleteAccountTitle": {
+    "description": "Title of the dialog confirming the account deletion."
+  },
+  "cloudDeleteAccountBody": "The account {email} is deleted for good, with everything the server keeps for it: the encrypted notes and recordings of the vaults it is the only account of. The notes stay on this device, but this vault will no longer sync, nor will the other devices linked to this account.",
+  "@cloudDeleteAccountBody": {
+    "description": "Body of the dialog confirming the account deletion.",
+    "placeholders": {
+      "email": {"type": "String"}
+    }
+  },
+  "cloudDeleteAccountConfirm": "Delete for good",
+  "@cloudDeleteAccountConfirm": {
+    "description": "Confirms the account deletion."
+  },
+  "cloudDeleteAccountOffline": "The server cannot be reached and the account was not deleted. Try again when you are online.",
+  "@cloudDeleteAccountOffline": {
+    "description": "The account deletion failed for lack of network or a server error."
+  },
+  "cloudDeleteAccountRefused": "The server did not accept the session and the account was not deleted. Sign out, sign in again and retry.",
+  "@cloudDeleteAccountRefused": {
+    "description": "The account deletion was refused (expired session)."
+  },
+  "cloudAccountDeleted": "You deleted the sync account: the server no longer keeps anything of this vault. The notes stay on this device, which no longer syncs.",
+  "@cloudAccountDeleted": {
+    "description": "Sync sheet of a vault whose account was deleted."
+  },
   "linkDeviceAction": "Link another device",
   "@linkDeviceAction": {
     "description": "Sync sheet: opens the linking of another device of the same account."
