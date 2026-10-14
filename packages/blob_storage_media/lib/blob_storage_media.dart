@@ -6,6 +6,7 @@ library;
 
 export 'src/application/audio_capture.dart';
 export 'src/application/audio_recording_session.dart';
+export 'src/application/blob_pruning.dart';
 export 'src/application/blob_replication.dart';
 export 'src/application/ciphertext_blob_store.dart';
 export 'src/application/encrypted_blob_storage.dart';
@@ -21,3 +22,4 @@ export 'src/core/image_format.dart';
 export 'src/core/portable_int64.dart';
 export 'src/core/recorded_note.dart';
 export 'src/core/recording_state.dart';
+export 'src/core/stored_blob.dart';
