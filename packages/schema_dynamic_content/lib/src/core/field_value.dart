@@ -28,6 +28,23 @@ final class TextValue extends FieldValue {
   String toString() => 'TextValue(${text.length} chars)';
 }
 
+/// A password, or anything else that must not show by default: held
+/// like text, but never searched, shown on a card or printed.
+final class SecretValue extends FieldValue {
+  const SecretValue(this.text);
+
+  final String text;
+
+  @override
+  bool operator ==(Object other) => other is SecretValue && other.text == text;
+
+  @override
+  int get hashCode => text.hashCode;
+
+  @override
+  String toString() => 'SecretValue(hidden)';
+}
+
 final class NumberValue extends FieldValue {
   NumberValue(this.number) {
     if (!number.isFinite) {

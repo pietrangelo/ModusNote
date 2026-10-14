@@ -146,4 +146,22 @@ void main() {
     expect(safe('nota\u202Etxt.exe'), 'nota txt.exe');
     expect(safe('x' * 200).length, MarkdownExport.maxName);
   });
+
+  test('adversary: a password never reaches the plain-text export', () {
+    final login = entry('c' * 32, SeedSchemas.credentialV1, {
+      'description': const TextValue('Banca'),
+      'username': const TextValue('mario'),
+      'password': const SecretValue('zebra-Quokka-42'),
+      'link': const TextValue('https://banca.example'),
+    });
+
+    final text = unzip(export().archive([login], at: DateTime(2026)))
+        .values
+        .single;
+
+    expect(text, contains('# Banca'));
+    expect(text, contains('**Nome utente:** mario'));
+    expect(text, contains('**Link:** https://banca.example'));
+    expect(text, isNot(contains('Quokka')));
+  });
 }

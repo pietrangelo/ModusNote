@@ -94,6 +94,11 @@ abstract final class SchemaCodec {
       'kind': 'attachments',
       'maxItems': maxItems,
     },
+    PasswordFieldType(:final maxLength) => {
+      'kind': 'password',
+      'maxLength': maxLength,
+    },
+    UrlFieldType() => {'kind': 'url'},
   };
 
   static SchemaDefinition _decodeSchema(JsonObject json) {
@@ -200,6 +205,11 @@ abstract final class SchemaCodec {
         {'maxItems'},
         () => AttachmentsFieldType(maxItems: json.integer('maxItems')),
       ),
+      'password' => (
+        {'maxLength'},
+        () => PasswordFieldType(maxLength: json.integer('maxLength')),
+      ),
+      'url' => (<String>{}, () => const UrlFieldType()),
       _ => throw SchemaFormatException('unknown field kind "$kind"'),
     };
     json.allowOnly({'kind', ...allowed});

@@ -85,6 +85,7 @@ enum NoteIcon {
   bookmark,
   person,
   place,
+  key,
 }
 
 /// The accent colour of a note type, as a palette role the app maps to
