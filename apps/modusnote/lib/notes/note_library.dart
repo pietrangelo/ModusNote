@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
@@ -22,7 +23,9 @@ import 'trash_screen.dart';
 /// card per note, each opening on a page of its own. A window at least
 /// [wideFrom] wide shows three columns instead, as a desktop notes app
 /// does: note types, categories and the trash; the list of notes; and the
-/// open note beside it.
+/// open note beside it. The first two columns fold away into a narrow rail
+/// and come back from it ([sidebarActivator], [noteListActivator]), and
+/// the open note's focus mode folds both while it lasts.
 class NoteLibraryScreen extends StatefulWidget {
   const NoteLibraryScreen({
     required this.schemas,
@@ -54,6 +57,25 @@ class NoteLibraryScreen extends StatefulWidget {
   /// The narrowest window that shows the three columns.
   static const wideFrom = Extents.xxxl;
 
+  /// Ctrl+\, or ⌘\ on Apple platforms: the side menu, folded or shown.
+  static SingleActivator get sidebarActivator => SingleActivator(
+    LogicalKeyboardKey.backslash,
+    control: !_apple,
+    meta: _apple,
+  );
+
+  /// Ctrl+Shift+\ (⌘⇧\): the list of notes, folded or shown.
+  static SingleActivator get noteListActivator => SingleActivator(
+    LogicalKeyboardKey.backslash,
+    control: !_apple,
+    meta: _apple,
+    shift: true,
+  );
+
+  static bool get _apple =>
+      defaultTargetPlatform == TargetPlatform.macOS ||
+      defaultTargetPlatform == TargetPlatform.iOS;
+
   @override
   State<NoteLibraryScreen> createState() => _NoteLibraryScreenState();
 }
@@ -72,6 +94,13 @@ class _NoteLibraryScreenState extends State<NoteLibraryScreen> {
   Object? _opened;
   var _editor = GlobalKey<NoteEditorScreenState>();
   var _showTrash = false;
+
+  /// Three columns only: whether the side menu and the list of notes are
+  /// shown, or folded into the rail; and whether the open note is in focus
+  /// mode, which folds both while it lasts.
+  var _sideOpen = true;
+  var _listOpen = true;
+  var _focused = false;
 
   /// Three columns only: the notes picked to act on together, or null
   /// while none are being picked. Only those the list shows are acted on.
@@ -105,6 +134,7 @@ class _NoteLibraryScreenState extends State<NoteLibraryScreen> {
     setState(() {
       _opened = opened;
       _showTrash = trash;
+      _focused = false;
       _editor = GlobalKey();
       if (trash) _picks = null;
     });
@@ -298,7 +328,17 @@ class _NoteLibraryScreenState extends State<NoteLibraryScreen> {
   Widget build(BuildContext context) => CallbackShortcuts(
     bindings: {
       CommandPalette.activator: _showPalette,
-      if (_picks != null)
+      if (_isWide) ...{
+        NoteLibraryScreen.sidebarActivator: _toggleSide,
+        NoteLibraryScreen.noteListActivator: _toggleList,
+        // The open note's own shortcut, for when the keyboard is not in it.
+        NoteEditorScreen.focusActivator: () =>
+            _editor.currentState?.toggleFocus(),
+      },
+      if (_focused)
+        const SingleActivator(LogicalKeyboardKey.escape): () =>
+            _editor.currentState?.toggleFocus()
+      else if (_picks != null)
         const SingleActivator(LogicalKeyboardKey.escape): _endPicking,
     },
     child: Focus(
@@ -311,6 +351,10 @@ class _NoteLibraryScreenState extends State<NoteLibraryScreen> {
       ),
     ),
   );
+
+  void _toggleSide() => setState(() => _sideOpen = !_sideOpen);
+
+  void _toggleList() => setState(() => _listOpen = !_listOpen);
 
   void _showPalette() => unawaited(CommandPalette.show(context, _commands));
 
@@ -344,6 +388,25 @@ class _NoteLibraryScreenState extends State<NoteLibraryScreen> {
         label: l10n.categories,
         run: _openCategories,
       ),
+      if (wide) ...[
+        PaletteCommand(
+          icon: Icons.menu,
+          label: _sideOpen ? l10n.hideSidebar : l10n.showSidebar,
+          run: _toggleSide,
+        ),
+        if (!_showTrash)
+          PaletteCommand(
+            icon: Icons.view_list_outlined,
+            label: _listOpen ? l10n.hideNoteList : l10n.showNoteList,
+            run: _toggleList,
+          ),
+        if (_editor.currentState case final editor?)
+          PaletteCommand(
+            icon: Icons.center_focus_strong,
+            label: editor.focused ? l10n.exitFocusMode : l10n.focusMode,
+            run: editor.toggleFocus,
+          ),
+      ],
       PaletteCommand(
         icon: Icons.delete_outline,
         label: l10n.trash,
@@ -431,45 +494,90 @@ class _NoteLibraryScreenState extends State<NoteLibraryScreen> {
     final text = SchemaText(l10n);
     final theme = Theme.of(context);
     final divider = Border(right: BorderSide(color: theme.dividerColor));
+    final sideShown = _sideOpen && !_focused;
+    final listShown = _listOpen && !_focused && !_showTrash;
+    final rail = [
+      if (!_sideOpen) ...[
+        IconButton(
+          key: const ValueKey('show-sidebar'),
+          onPressed: _toggleSide,
+          tooltip: l10n.showSidebar,
+          icon: const Icon(Icons.menu),
+        ),
+        IconButton(
+          onPressed: _showPalette,
+          tooltip: CommandPalette.tooltip(l10n),
+          icon: const Icon(Icons.search),
+        ),
+      ],
+      if (!_listOpen && !_showTrash) ...[
+        IconButton(
+          key: const ValueKey('show-note-list'),
+          onPressed: _toggleList,
+          tooltip: l10n.showNoteList,
+          icon: const Icon(Icons.view_list_outlined),
+        ),
+        IconButton(
+          onPressed: () => unawaited(_openBeside(_NewNote())),
+          tooltip: l10n.newNote,
+          icon: const Icon(Icons.add),
+        ),
+      ],
+    ];
     return Scaffold(
       body: SafeArea(
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Material(
-              key: const ValueKey('pane-types'),
-              color: theme.colorScheme.surface,
-              shape: divider,
-              child: SizedBox(
-                width: Extents.l,
-                child: ListenableBuilder(
-                  listenable: widget.store,
-                  builder: (context, _) => _SideColumn(
-                    schemas: widget.schemas,
-                    tree: widget.store.categories,
-                    text: text,
-                    type: _type,
-                    category: _selected,
-                    trash: _showTrash,
-                    onAll: () => _filter(() {
-                      _type = null;
-                      _category = null;
-                    }),
-                    onType: (type) => _filter(() => _type = type),
-                    onCategory: (id) => _filter(() => _category = id),
-                    onTrash: () => unawaited(_openBeside(null, trash: true)),
-                    actions: [
-                      IconButton(
-                        onPressed: _showPalette,
-                        tooltip: CommandPalette.tooltip(l10n),
-                        icon: const Icon(Icons.search),
-                      ),
-                      ..._actions(l10n, trash: false),
-                    ],
+            if (sideShown)
+              Material(
+                key: const ValueKey('pane-types'),
+                color: theme.colorScheme.surface,
+                shape: divider,
+                child: SizedBox(
+                  width: Extents.l,
+                  child: ListenableBuilder(
+                    listenable: widget.store,
+                    builder: (context, _) => _SideColumn(
+                      schemas: widget.schemas,
+                      tree: widget.store.categories,
+                      text: text,
+                      type: _type,
+                      category: _selected,
+                      trash: _showTrash,
+                      onAll: () => _filter(() {
+                        _type = null;
+                        _category = null;
+                      }),
+                      onType: (type) => _filter(() => _type = type),
+                      onCategory: (id) => _filter(() => _category = id),
+                      onTrash: () => unawaited(_openBeside(null, trash: true)),
+                      onHide: _toggleSide,
+                      actions: [
+                        IconButton(
+                          onPressed: _showPalette,
+                          tooltip: CommandPalette.tooltip(l10n),
+                          icon: const Icon(Icons.search),
+                        ),
+                        ..._actions(l10n, trash: false),
+                      ],
+                    ),
                   ),
                 ),
               ),
-            ),
+            if (!_focused && rail.isNotEmpty)
+              Material(
+                key: const ValueKey('pane-rail'),
+                color: theme.colorScheme.surface,
+                shape: divider,
+                child: SizedBox(
+                  width: Spacing.xxl,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: Spacing.s),
+                    child: Column(spacing: Spacing.xs, children: rail),
+                  ),
+                ),
+              ),
             if (_showTrash)
               Expanded(
                 child: TrashScreen(
@@ -478,12 +586,16 @@ class _NoteLibraryScreenState extends State<NoteLibraryScreen> {
                 ),
               )
             else ...[
-              DecoratedBox(
-                key: const ValueKey('pane-notes'),
-                decoration: BoxDecoration(border: divider),
-                child: SizedBox(
-                  width: Extents.xl,
-                  child: _noteColumn(context, l10n),
+              // Folded, the list keeps its scroll position and picks.
+              Offstage(
+                offstage: !listShown,
+                child: DecoratedBox(
+                  key: const ValueKey('pane-notes'),
+                  decoration: BoxDecoration(border: divider),
+                  child: SizedBox(
+                    width: Extents.xl,
+                    child: _noteColumn(context, l10n),
+                  ),
                 ),
               ),
               Expanded(child: _openNote(l10n)),
@@ -524,6 +636,12 @@ class _NoteLibraryScreenState extends State<NoteLibraryScreen> {
               isSelected: _picks != null,
               tooltip: l10n.selectNotes,
               icon: const Icon(Icons.checklist),
+            ),
+            IconButton(
+              key: const ValueKey('hide-note-list'),
+              onPressed: _toggleList,
+              tooltip: l10n.hideNoteList,
+              icon: const Icon(Icons.keyboard_double_arrow_left),
             ),
           ],
         ),
@@ -617,8 +735,10 @@ class _NoteLibraryScreenState extends State<NoteLibraryScreen> {
         initialSchema: schema,
         entry: entry,
         category: _selected,
+        onFocusChanged: (focused) => setState(() => _focused = focused),
         onClose: () => setState(() {
           _opened = null;
+          _focused = false;
           _editor = GlobalKey();
         }),
       );
@@ -1019,6 +1139,7 @@ class _SideColumn extends StatelessWidget {
     required this.onType,
     required this.onCategory,
     required this.onTrash,
+    required this.onHide,
     required this.actions,
   });
 
@@ -1032,6 +1153,9 @@ class _SideColumn extends StatelessWidget {
   final ValueChanged<SchemaDefinition> onType;
   final ValueChanged<CategoryId> onCategory;
   final VoidCallback onTrash;
+
+  /// Folds the column into the rail.
+  final VoidCallback onHide;
   final List<Widget> actions;
 
   @override
@@ -1057,12 +1181,27 @@ class _SideColumn extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(
             Spacing.l,
             Spacing.l,
-            Spacing.l,
+            Spacing.s,
             Spacing.m,
           ),
-          child: Semantics(
-            header: true,
-            child: Text(l10n.notesTitle, style: theme.textTheme.headlineSmall),
+          child: Row(
+            children: [
+              Expanded(
+                child: Semantics(
+                  header: true,
+                  child: Text(
+                    l10n.notesTitle,
+                    style: theme.textTheme.headlineSmall,
+                  ),
+                ),
+              ),
+              IconButton(
+                key: const ValueKey('hide-sidebar'),
+                onPressed: onHide,
+                tooltip: l10n.hideSidebar,
+                icon: const Icon(Icons.keyboard_double_arrow_left),
+              ),
+            ],
           ),
         ),
         Expanded(

@@ -52,6 +52,7 @@ class DynamicFormRenderer extends StatefulWidget {
     this.markdownTarget,
     this.attachments,
     this.autofocus = false,
+    this.focused = false,
     super.key,
   });
 
@@ -82,6 +83,10 @@ class DynamicFormRenderer extends StatefulWidget {
 
   /// Puts the cursor in the title, or in the body when there is none.
   final bool autofocus;
+
+  /// Focus mode: only the title and the body show. The other fields keep
+  /// their state, hidden, and come back as they were.
+  final bool focused;
 
   @override
   State<DynamicFormRenderer> createState() => _DynamicFormRendererState();
@@ -147,12 +152,13 @@ class _DynamicFormRendererState extends State<DynamicFormRenderer> {
             ),
           ),
         if (_layout.details.isNotEmpty) ...[
-          _DetailsHeader(
-            open: _detailsOpen,
-            onToggle: () => setState(() => _detailsOpen = !_detailsOpen),
-          ),
+          if (!widget.focused)
+            _DetailsHeader(
+              open: _detailsOpen,
+              onToggle: () => setState(() => _detailsOpen = !_detailsOpen),
+            ),
           Visibility(
-            visible: _detailsOpen,
+            visible: _detailsOpen && !widget.focused,
             maintainState: true,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -170,11 +176,15 @@ class _DynamicFormRendererState extends State<DynamicFormRenderer> {
           ),
         ],
         for (final field in _layout.recordings)
-          keyed(
-            field,
-            Padding(
-              padding: const EdgeInsets.only(bottom: Spacing.l),
-              child: _input(field, text, l10n),
+          Visibility(
+            visible: !widget.focused,
+            maintainState: true,
+            child: keyed(
+              field,
+              Padding(
+                padding: const EdgeInsets.only(bottom: Spacing.l),
+                child: _input(field, text, l10n),
+              ),
             ),
           ),
         if (body != null)
@@ -198,7 +208,11 @@ class _DynamicFormRendererState extends State<DynamicFormRenderer> {
             ),
           }),
         for (final field in _layout.attachments)
-          keyed(field, _input(field, text, l10n)),
+          Visibility(
+            visible: !widget.focused,
+            maintainState: true,
+            child: keyed(field, _input(field, text, l10n)),
+          ),
       ],
     );
   }
