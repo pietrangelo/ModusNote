@@ -195,6 +195,25 @@ void main() {
       ]);
     });
 
+    test('a pushed row drops the rows of its record it supersedes', () async {
+      final workspace = await foundWorkspace();
+      final server = serverFor(alice);
+      final first = sealedRow(1);
+      final other = sealedRow(2);
+      final second = SealedRow(
+        record: first.record,
+        ciphertext: sealedRow(3).ciphertext,
+        supersedes: 2,
+      );
+
+      await server.push(workspace, [first, other]);
+      await server.push(workspace, [second]);
+
+      final pulled = await server.pull(workspace, after: 0);
+      expect(pulled.map((p) => p.cursor), [2, 3]);
+      expectSameRows(pulled, [other, second]);
+    });
+
     test('registering a workspace again is harmless', () async {
       final workspace = await foundWorkspace();
 

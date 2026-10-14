@@ -11,8 +11,10 @@ import '../core/vault_header.dart';
 /// Port: the zero-knowledge sync server (Supabase in production). Every
 /// method throws [ServerUnavailableException] when it cannot be reached.
 ///
-/// All three streams are append-only: the server never overwrites a row,
-/// and conflicts are resolved by the clients, which see every revision.
+/// All three streams are append-only for clients: the server never
+/// overwrites a row, and conflicts are resolved by the clients. The one
+/// removal is the writer's: a pushed row may name the rows of its record it
+/// supersedes ([SealedRow.supersedes]), and the server drops them.
 abstract interface class SyncServer {
   /// Registers [workspace] for this account. Idempotent: a workspace this
   /// account already registered is not an error.
@@ -22,9 +24,11 @@ abstract interface class SyncServer {
   /// server holds each sequence number once.
   Future<void> appendMembership(MembershipRecord record);
 
+  /// Appends [rows], then drops the rows each one supersedes.
   Future<void> push(WorkspaceId workspace, List<SealedRow> rows);
 
-  /// Rows appended after position [after], each with its own position.
+  /// Rows appended after position [after], each with its own position;
+  /// superseded rows are gone, so positions may skip.
   Future<List<PulledRow>> pull(WorkspaceId workspace, {required int after});
 
   /// Membership records from sequence [from] on.
@@ -85,6 +89,14 @@ abstract interface class LocalRecordStore {
   Future<int> loadCursor(SyncStream stream);
 
   Future<void> saveCursor(SyncStream stream, int cursor);
+
+  /// The lowest position of a row of [id] this device pulled and could not
+  /// open (its GroupKey was missing), if any.
+  Future<int?> loadUnreadable(RecordId id);
+
+  /// Remembers that the row of [id] at [position] could not be opened;
+  /// only the lowest such position is kept.
+  Future<void> markUnreadable(RecordId id, int position);
 }
 
 /// Port: where the device keeps its vault header and the signed log of its

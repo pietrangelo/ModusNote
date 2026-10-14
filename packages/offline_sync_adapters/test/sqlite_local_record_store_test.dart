@@ -18,12 +18,13 @@ EncryptedEnvelope envelope(int marker, [int length = 20]) => EncryptedEnvelope(
   ciphertext: List.filled(length, marker),
 );
 
-SealedRow row(RecordId id, int marker) => SealedRow(
+SealedRow row(RecordId id, int marker, {int supersedes = 0}) => SealedRow(
   record: id,
   ciphertext: WorkspaceCiphertext(
     epoch: KeyEpoch(marker),
     envelope: envelope(marker),
   ),
+  supersedes: supersedes,
 );
 
 void main() {
@@ -105,6 +106,18 @@ void main() {
       expect((await reopened.loadOutbox()).pending, outbox.pending);
     });
 
+    test('keeps what each queued row supersedes', () async {
+      final outbox = Outbox.empty
+          .enqueue(row(note, 1, supersedes: 41))
+          .enqueue(row(other, 2));
+      await store.saveOutbox(outbox);
+
+      final pending = (await reopen().loadOutbox()).pending;
+
+      expect(pending.map((row) => row.supersedes), [41, 0]);
+      expect(pending, outbox.pending);
+    });
+
     test('saving replaces the previous outbox entirely', () async {
       await store.saveOutbox(Outbox.empty.enqueue(row(note, 1)));
       await store.saveOutbox(Outbox.empty.enqueue(row(other, 2)));
@@ -126,7 +139,47 @@ void main() {
     });
   });
 
+  group('unreadable rows', () {
+    test('keep the lowest position per record, across reopening', () async {
+      expect(await store.loadUnreadable(note), isNull);
+      await store.markUnreadable(note, 9);
+      await store.markUnreadable(note, 4);
+      await store.markUnreadable(note, 12);
+      await store.markUnreadable(other, 30);
+
+      final reopened = reopen();
+
+      expect(await reopened.loadUnreadable(note), 4);
+      expect(await reopened.loadUnreadable(other), 30);
+    });
+
+    test('belong to their workspace', () async {
+      await store.markUnreadable(note, 4);
+
+      final elsewhere = SqliteLocalRecordStore(
+        database,
+        workspace: otherWorkspace,
+      );
+
+      expect(await elsewhere.loadUnreadable(note), isNull);
+    });
+  });
+
   group('schema', () {
+    test('a version 4 database keeps its queued rows when upgraded', () async {
+      await store.saveOutbox(Outbox.empty.enqueue(row(note, 1)));
+      database
+        ..execute('DROP TABLE unreadable_rows')
+        ..execute('ALTER TABLE outbox DROP COLUMN supersedes')
+        ..userVersion = 4;
+
+      final reopened = reopen();
+
+      expect(database.userVersion, SqliteLocalRecordStore.schemaVersion);
+      expect((await reopened.loadOutbox()).pending, [row(note, 1)]);
+      expect(await reopened.loadUnreadable(note), isNull);
+    });
+
     test(
       'is versioned, and opening it again does not reset anything',
       () async {

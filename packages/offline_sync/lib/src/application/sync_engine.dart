@@ -116,6 +116,10 @@ final class SyncEngine {
   /// Records an edit (or a deletion) locally and queues it for the server.
   /// Works offline; fails only if this device may not write.
   Future<void> write(RecordId id, RevisionBody body) async {
+    // Read before the local record: every row up to this cursor has been
+    // merged into what is loaded next, even if a pull finishes in between.
+    final pulled = await _store.loadCursor(SyncStream.rows);
+    final unreadable = await _store.loadUnreadable(id);
     final local = await _loadLocal(id);
     final version = (local?.seen ?? VersionVector.empty).increment(_myId);
     final revision = RecordRevision(
@@ -123,7 +127,7 @@ final class SyncEngine {
       workspace: _workspace,
       version: version,
       author: _myId,
-      writtenAt: _clock.now().toUtc(),
+      writtenAt: _after(local?.latest, _clock.now().toUtc()),
       ledgerHead: ledgerHead,
       body: body,
     );
@@ -140,9 +144,28 @@ final class SyncEngine {
         keyring: _keyring,
         recordId: id.hex,
       ),
+      // Annotated now, not when pushed: a pull before the push may bring a
+      // concurrent revision this one has not seen.
+      supersedes: unreadable == null || unreadable > pulled
+          ? pulled
+          : unreadable - 1,
     );
     await _saveLocal(LocalRecord(current: signed, seen: version));
     await _store.saveOutbox((await _store.loadOutbox()).enqueue(row));
+  }
+
+  /// The largest time the wire carries (2^53 - 1 µs, in 2255).
+  static const _maxMicroseconds = 9007199254740991;
+
+  /// [now], unless the record has a revision written at or after it: then
+  /// one microsecond later than that, so an edit is always later than what
+  /// it saw, even on a clock running behind.
+  static DateTime _after(DateTime? latest, DateTime now) {
+    if (latest == null || now.isAfter(latest)) return now;
+    final micros = latest.microsecondsSinceEpoch;
+    return micros >= _maxMicroseconds
+        ? latest
+        : DateTime.fromMicrosecondsSinceEpoch(micros + 1, isUtc: true);
   }
 
   /// Whether edits written here still wait in the queue for the server.
@@ -282,7 +305,7 @@ final class SyncEngine {
         _workspace,
         after: cursor,
       )) {
-        switch (await _merge(row)) {
+        switch (await _merge(row, position)) {
           case _Merged.applied:
             pulled++;
           case _Merged.conflict:
@@ -308,7 +331,7 @@ final class SyncEngine {
     );
   }
 
-  Future<_Merged> _merge(SealedRow row) async {
+  Future<_Merged> _merge(SealedRow row, int position) async {
     final SignedRevision incoming;
     try {
       incoming = SignedRevision.parse(
@@ -320,6 +343,8 @@ final class SyncEngine {
       );
       await _authenticate(incoming, row);
     } on MissingGroupKeyException {
+      // Another device may read it: no edit here may claim to supersede it.
+      await _store.markUnreadable(row.record, position);
       return _Merged.undecryptable;
     } on CryptographyException {
       return _Merged.rejected;
@@ -337,9 +362,16 @@ final class SyncEngine {
       return _Merged.applied;
     }
     final resolution = ConflictResolver.resolve(local.current, incoming);
-    if (resolution.changed || resolution.seen != local.seen) {
+    final latest = local.latestWith(incoming.revision.writtenAt);
+    if (resolution.changed ||
+        resolution.seen != local.seen ||
+        latest != local.latest) {
       await _saveLocal(
-        LocalRecord(current: resolution.winner, seen: resolution.seen),
+        LocalRecord(
+          current: resolution.winner,
+          seen: resolution.seen,
+          latest: latest,
+        ),
       );
     }
     return resolution.concurrent ? _Merged.conflict : _Merged.applied;

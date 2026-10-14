@@ -55,7 +55,7 @@ final class SqliteLocalRecordStore implements LocalRecordStore {
   @override
   Future<Outbox> loadOutbox() async {
     final rows = _database.select(
-      'SELECT record, epoch, envelope FROM outbox '
+      'SELECT record, epoch, envelope, supersedes FROM outbox '
       'WHERE workspace = ? ORDER BY position',
       [_workspace],
     );
@@ -66,6 +66,7 @@ final class SqliteLocalRecordStore implements LocalRecordStore {
           row['record'] as String,
           row['epoch'] as int,
           row['envelope'] as Uint8List,
+          row['supersedes'] as int,
         ),
       );
     }
@@ -77,8 +78,9 @@ final class SqliteLocalRecordStore implements LocalRecordStore {
     _transaction(() {
       _database.execute('DELETE FROM outbox WHERE workspace = ?', [_workspace]);
       final insert = _database.prepare(
-        'INSERT INTO outbox (workspace, position, record, epoch, envelope) '
-        'VALUES (?, ?, ?, ?, ?)',
+        'INSERT INTO outbox '
+        '(workspace, position, record, epoch, envelope, supersedes) '
+        'VALUES (?, ?, ?, ?, ?, ?)',
       );
       try {
         for (final (position, row) in outbox.pending.indexed) {
@@ -88,6 +90,7 @@ final class SqliteLocalRecordStore implements LocalRecordStore {
             row.record.hex,
             row.ciphertext.epoch.value,
             row.ciphertext.envelope.toBytes(),
+            row.supersedes,
           ]);
         }
       } finally {
@@ -113,9 +116,32 @@ final class SqliteLocalRecordStore implements LocalRecordStore {
         [_workspace, stream.name, cursor],
       );
 
+  @override
+  Future<int?> loadUnreadable(RecordId id) async {
+    final rows = _database.select(
+      'SELECT position FROM unreadable_rows WHERE workspace = ? AND record = ?',
+      [_workspace, id.hex],
+    );
+    return rows.isEmpty ? null : rows.single['position'] as int;
+  }
+
+  @override
+  Future<void> markUnreadable(RecordId id, int position) async =>
+      _database.execute(
+        'INSERT INTO unreadable_rows (workspace, record, position) '
+        'VALUES (?, ?, ?) ON CONFLICT (workspace, record) '
+        'DO UPDATE SET position = min(position, excluded.position)',
+        [_workspace, id.hex, position],
+      );
+
   void _transaction(void Function() body) => transaction(_database, body);
 
-  static SealedRow _sealedRow(String record, int epoch, Uint8List envelope) {
+  static SealedRow _sealedRow(
+    String record,
+    int epoch,
+    Uint8List envelope,
+    int supersedes,
+  ) {
     try {
       return SealedRow(
         record: RecordId.parse(record),
@@ -123,6 +149,7 @@ final class SqliteLocalRecordStore implements LocalRecordStore {
           epoch: KeyEpoch(epoch),
           envelope: EncryptedEnvelope.parse(envelope),
         ),
+        supersedes: supersedes,
       );
     } on CollaborationException {
       throw const MalformedSyncDataException('corrupted outbox row');

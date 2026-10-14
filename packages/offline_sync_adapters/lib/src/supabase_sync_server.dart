@@ -57,6 +57,9 @@ final class SupabaseSyncServer implements SyncServer, DeviceLinkChannel {
             'record_id': row.record.hex,
             'epoch': row.ciphertext.epoch.value,
             'ciphertext': _bytea(row.ciphertext.envelope.toBytes()),
+            // Always sent: PostgREST takes the columns of a batch from its
+            // first row.
+            'supersedes': row.supersedes,
           },
       ]);
 
