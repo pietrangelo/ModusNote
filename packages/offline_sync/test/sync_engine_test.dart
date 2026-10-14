@@ -280,6 +280,180 @@ void main() {
     });
   });
 
+  group('compaction', () {
+    /// A device admitted after everything else happened: it sees only what
+    /// the server still holds.
+    Future<Device> latecomer() async {
+      final carol = Device(server, clock);
+      addTearDown(carol.dispose);
+      publish(
+        administration.invite(
+          alice.engine.ledger,
+          alice.keyring,
+          owner: alice.identity,
+          invitee: carol.identity.publicIdentity,
+          role: Role.editor,
+        ),
+      );
+      carol.start(
+        ledgers.verify(server.membershipLog, invitation: invitation),
+        GroupKeyring(workspaceId),
+      );
+      await carol.engine.sync();
+      return carol;
+    }
+
+    SignedRevision stored(SealedRow row) => SignedRevision.parse(
+      WorkspaceContentCipher(
+        SodiumEnvelopeEncryptor(sodium),
+      ).open(row.ciphertext, keyring: alice.keyring, recordId: row.record.hex),
+    );
+
+    test('an edit removes the revisions its writer had already seen', () async {
+      await alice.engine.write(note, RevisionContents(text('v1')));
+      await alice.engine.sync();
+      await alice.engine.write(note, RevisionContents(text('v2')));
+      await alice.engine.sync();
+      await bob.engine.sync();
+      await bob.engine.write(note, RevisionContents(text('v3')));
+      await bob.engine.write(other, RevisionContents(text('altra')));
+      await bob.engine.sync();
+
+      expect(server.rows, hasLength(4));
+      expect(server.live.map((row) => row.record), [note, other]);
+      expect(await (await latecomer()).read(note), 'v3');
+      await alice.engine.sync();
+      expect(await alice.read(note), 'v3');
+    });
+
+    test('a new record and a first edit remove nothing', () async {
+      await alice.engine.write(note, RevisionContents(text('v1')));
+      await alice.engine.sync();
+      await bob.engine.sync();
+      await bob.engine.write(other, RevisionContents(text('altra')));
+      await bob.engine.sync();
+
+      expect(server.compacted, isEmpty);
+    });
+
+    test('concurrent edits both survive and every device agrees', () async {
+      await alice.engine.write(note, RevisionContents(text('base')));
+      await alice.engine.sync();
+      await bob.engine.sync();
+      server.online = false;
+      await alice.engine.write(note, RevisionContents(text('di Alice')));
+      clock.advance();
+      await bob.engine.write(note, RevisionContents(text('di Bob')));
+      server.online = true;
+
+      await alice.engine.sync();
+      await bob.engine.sync();
+      await alice.engine.sync();
+
+      expect(server.live, hasLength(2), reason: 'only the base is gone');
+      final carol = await latecomer();
+      expect(await alice.read(note), 'di Bob');
+      expect(await bob.read(note), 'di Bob');
+      expect(await carol.read(note), 'di Bob');
+    });
+
+    test('an edit made while a pull is in flight keeps what that pull '
+        'brings', () async {
+      await alice.engine.write(note, RevisionContents(text('base')));
+      await alice.engine.sync();
+      await bob.engine.sync();
+      clock.advance(const Duration(hours: 1));
+      await bob.engine.write(note, RevisionContents(text('di Bob, dopo')));
+      await bob.engine.sync();
+      clock.advance(const Duration(hours: -1));
+
+      // Alice saves while her sync is between its push and its pull: her
+      // edit has not seen Bob's, so it must not remove it.
+      server.onPull = () async {
+        server.onPull = null;
+        await alice.engine.write(note, RevisionContents(text('di Alice')));
+      };
+      await alice.engine.sync();
+      await alice.engine.sync();
+      await bob.engine.sync();
+
+      expect(server.live, hasLength(2));
+      final carol = await latecomer();
+      final winner = await bob.read(note);
+      expect(await alice.read(note), winner);
+      expect(await carol.read(note), winner);
+    });
+
+    test('a row the writer could not open is never removed', () async {
+      await alice.engine.write(note, RevisionContents(text('v1')));
+      await alice.engine.sync();
+      // Sealed under an epoch Bob has not been granted (yet).
+      final sealed = server.rows.single.ciphertext;
+      server.rows.add(
+        SealedRow(
+          record: note,
+          ciphertext: WorkspaceCiphertext(
+            epoch: KeyEpoch(7),
+            envelope: sealed.envelope,
+          ),
+        ),
+      );
+      await alice.engine.write(other, RevisionContents(text('dopo')));
+      await alice.engine.sync();
+
+      final report = await bob.engine.sync();
+      await bob.engine.write(note, RevisionContents(text('v2')));
+      await bob.engine.sync();
+
+      expect(report.undecryptable, 1);
+      expect(server.compacted, {
+        1,
+      }, reason: 'v1 goes, the unreadable row stays');
+    });
+
+    test('a revision is always later than every revision its writer saw, '
+        'whatever the clock says', () async {
+      await alice.engine.write(note, RevisionContents(text('v1')));
+      await alice.engine.sync();
+      await bob.engine.sync();
+      final seen = stored(server.rows.single).revision.writtenAt;
+
+      clock.advance(const Duration(hours: -5));
+      await bob.engine.write(note, RevisionContents(text('v2')));
+      await bob.engine.sync();
+
+      expect(stored(server.rows.last).revision.writtenAt.isAfter(seen), isTrue);
+    });
+
+    test('a skewed clock cannot make a latecomer disagree', () async {
+      // d at 10:00; X at 07:00 by Carol, who has not seen d; D by Bob, who
+      // has seen d but not X, on a clock five hours behind. D removes d. A
+      // device holding d keeps it against X, then takes D; one that never
+      // saw d would weigh X against D by time alone and, without monotonic
+      // times, pick X.
+      final carol = await latecomer();
+      clock.current = DateTime.utc(2026, 10, 11, 10);
+      await alice.engine.write(note, RevisionContents(text('d')));
+      await alice.engine.sync();
+      await bob.engine.sync();
+      clock.current = DateTime.utc(2026, 10, 11, 7);
+      await carol.engine.write(note, RevisionContents(text('X')));
+      await carol.engine.sync();
+      clock.current = DateTime.utc(2026, 10, 11, 5);
+      await bob.engine.write(note, RevisionContents(text('D')));
+      await bob.engine.sync();
+      await carol.engine.sync();
+      await alice.engine.sync();
+
+      expect(server.compacted, {1});
+      final late = await latecomer();
+      expect(await alice.read(note), 'D');
+      expect(await bob.read(note), 'D');
+      expect(await carol.read(note), 'D');
+      expect(await late.read(note), 'D');
+    });
+  });
+
   group('zero knowledge', () {
     test('neither the server nor the local database holds plaintext', () async {
       await alice.engine.write(note, RevisionContents(text('SEGRETISSIMO')));

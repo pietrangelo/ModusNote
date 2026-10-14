@@ -8,7 +8,7 @@ final class UnsupportedLocalSchemaException implements Exception {
   String toString() => 'UnsupportedLocalSchemaException';
 }
 
-const localSchemaVersion = 4;
+const localSchemaVersion = 5;
 
 /// One schema for the whole device database, shared by every store that
 /// opens it, so their migrations cannot race on `user_version`.
@@ -26,6 +26,7 @@ void migrateLocalDatabase(CommonDatabase database) {
     if (version < 2) database.execute(_vault);
     if (version < 3) database.execute(_passkey);
     if (version < 4) database.execute(_settings);
+    if (version < 5) database.execute(_compaction);
     database.execute('PRAGMA user_version = $localSchemaVersion');
   });
 }
@@ -90,5 +91,17 @@ const _settings = '''
   CREATE TABLE vault_settings (
     name TEXT PRIMARY KEY,
     envelope BLOB NOT NULL
+  ) WITHOUT ROWID;
+''';
+
+// What a queued row supersedes on the server, and the rows this device
+// pulled and could not open, which none of its edits may supersede.
+const _compaction = '''
+  ALTER TABLE outbox ADD COLUMN supersedes INTEGER NOT NULL DEFAULT 0;
+  CREATE TABLE unreadable_rows (
+    workspace TEXT NOT NULL,
+    record TEXT NOT NULL,
+    position INTEGER NOT NULL,
+    PRIMARY KEY (workspace, record)
   ) WITHOUT ROWID;
 ''';

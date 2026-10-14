@@ -205,6 +205,8 @@ void main() {
       database
         ..execute('DROP TABLE vault_passkey')
         ..execute('DROP TABLE vault_settings')
+        ..execute('DROP TABLE unreadable_rows')
+        ..execute('ALTER TABLE outbox DROP COLUMN supersedes')
         ..execute('PRAGMA user_version = 2');
       await store.create(header(me()), membership: const [], bundles: const []);
 

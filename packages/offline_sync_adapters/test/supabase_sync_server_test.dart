@@ -16,7 +16,7 @@ final project = Uri.parse('https://example.supabase.co');
 String hex(List<int> bytes) =>
     bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
 
-SealedRow row(int marker) => SealedRow(
+SealedRow row(int marker, {int supersedes = 0}) => SealedRow(
   record: note,
   ciphertext: WorkspaceCiphertext(
     epoch: KeyEpoch(3),
@@ -25,6 +25,7 @@ SealedRow row(int marker) => SealedRow(
       ciphertext: List.filled(EncryptedEnvelope.tagLength, marker),
     ),
   ),
+  supersedes: supersedes,
 );
 
 Map<String, Object?> wireRow(int position, SealedRow row) => {
@@ -58,7 +59,7 @@ void main() {
     test('appends rows to sync_rows as the signed-in account', () async {
       respond = (_) => http.Response('', 201);
 
-      await server().push(workspace, [row(1), row(2)]);
+      await server().push(workspace, [row(1, supersedes: 9), row(2)]);
 
       final request = requests.single;
       expect(request.method, 'POST');
@@ -67,12 +68,13 @@ void main() {
       expect(request.headers['Authorization'], 'Bearer session-token');
       expect(request.headers['Prefer'], 'return=minimal');
       expect(jsonDecode(request.body), [
-        for (final r in [row(1), row(2)])
+        for (final (r, supersedes) in [(row(1), 9), (row(2), 0)])
           {
             'workspace_id': workspace.hex,
             'record_id': r.record.hex,
             'epoch': 3,
             'ciphertext': '\\x${hex(r.ciphertext.envelope.toBytes())}',
+            'supersedes': supersedes,
           },
       ]);
     });
