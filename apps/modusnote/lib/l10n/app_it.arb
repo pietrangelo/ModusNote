@@ -357,5 +357,13 @@
   "paletteNewNote": "Nuova nota: {type}",
   "pageIndex": "Indice",
   "addPage": "Nuova pagina",
-  "pageIndexNotFiled": "Metti la pagina in una categoria: le altre pagine che contiene formeranno l'indice."
+  "pageIndexNotFiled": "Metti la pagina in una categoria: le altre pagine che contiene formeranno l'indice.",
+  "hideSidebar": "Nascondi menu laterale",
+  "showSidebar": "Mostra menu laterale",
+  "hideNoteList": "Nascondi elenco note",
+  "showNoteList": "Mostra elenco note",
+  "focusMode": "Modalità focus",
+  "exitFocusMode": "Esci dalla modalità focus",
+  "insertImage": "Inserisci immagine",
+  "imageMissing": "Immagine non disponibile"
 }

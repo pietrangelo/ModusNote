@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:schema_dynamic_content/schema_dynamic_content.dart';
 
 import '../../theme/golden_ratio.dart';
 import '../../theme/modus_colors.dart';
@@ -11,11 +12,49 @@ import 'markdown_syntax.dart';
 /// edited stays the Markdown source, its markers dimmed and the rest drawn
 /// as what it means (bold, headings, lists, code, links). Nothing is
 /// parsed as HTML and nothing is fetched; a link is only coloured.
+///
+/// A picture written in the text ([InlineImages]) is drawn where it sits
+/// by [pictureBuilder], in place of its Markdown, until the cursor goes
+/// into that Markdown to edit it. Each character of the reference stays
+/// in the text: the `!` carries the picture and the rest takes no room,
+/// so offsets, selection and what is saved are the source as typed.
 class MarkdownEditingController extends TextEditingController {
   MarkdownEditingController({super.text});
 
   String? _scanned;
   List<MdRun> _runs = const [];
+  List<InlineImage> _pictures = const [];
+
+  /// The most pictures drawn in one text, as many as a page can attach.
+  static const maxPictures = 34;
+
+  /// Draws a picture of the text; null where pictures cannot be shown,
+  /// which leaves their Markdown as it is.
+  Widget Function(InlineImage picture)? pictureBuilder;
+
+  /// Whether the field has the keyboard: only then does the cursor open a
+  /// picture's Markdown.
+  bool get editing => _editing;
+  bool _editing = false;
+  set editing(bool editing) {
+    if (editing == _editing) return;
+    _editing = editing;
+    notifyListeners();
+  }
+
+  /// The pictures shown as pictures: all but the one being edited.
+  List<InlineImage> _shown() {
+    if (pictureBuilder == null) return const [];
+    final selection = value.selection;
+    if (!_editing || !selection.isValid) return _pictures;
+    return [
+      for (final picture in _pictures)
+        if (selection.start >= picture.end ||
+            selection.end <= picture.start ||
+            (selection.isCollapsed && selection.start == picture.start))
+          picture,
+    ];
+  }
 
   /// Applies a [MarkdownCommands] edit as if it were typed.
   void apply(TextEditingValue Function(TextEditingValue) command) {
@@ -30,24 +69,61 @@ class MarkdownEditingController extends TextEditingController {
   }) {
     if (!identical(_scanned, text)) {
       _runs = MarkdownSyntax.scan(text);
+      // Every picture drawn is decrypted and held in memory: a text with
+      // more, crafted or pasted, shows the rest as Markdown.
+      _pictures = InlineImages.find(text).take(maxPictures).toList();
       _scanned = text;
     }
     final composing = withComposing && value.isComposingRangeValid
         ? value.composing
         : TextRange.empty;
     final base = style ?? const TextStyle();
-    return TextSpan(
-      style: style,
-      children: [
-        for (final run in _runs)
-          for (final (start, end, underline) in _split(run, composing))
-            TextSpan(
-              text: text.substring(start, end),
-              style: MarkdownStyles.of(base, run.marks, underline: underline),
-            ),
-      ],
-    );
+    final shown = _shown();
+    final builder = pictureBuilder;
+    final children = <InlineSpan>[];
+    var next = 0;
+    for (final run in _runs) {
+      for (final (start, end, underline) in _split(run, composing)) {
+        TextSpan piece(int from, int to) => TextSpan(
+          text: text.substring(from, to),
+          style: MarkdownStyles.of(base, run.marks, underline: underline),
+        );
+        var from = start;
+        while (from < end) {
+          while (next < shown.length && shown[next].end <= from) {
+            next++;
+          }
+          if (builder == null ||
+              next == shown.length ||
+              shown[next].start >= end) {
+            children.add(piece(from, end));
+            break;
+          }
+          final picture = shown[next];
+          if (from < picture.start) {
+            children.add(piece(from, picture.start));
+            from = picture.start;
+          }
+          final to = end < picture.end ? end : picture.end;
+          for (var at = from; at < to; at++) {
+            children.add(
+              at == picture.start
+                  ? WidgetSpan(
+                      alignment: PlaceholderAlignment.middle,
+                      child: builder(picture),
+                    )
+                  : _nothing,
+            );
+          }
+          from = to;
+        }
+      }
+    }
+    return TextSpan(style: style, children: children);
   }
+
+  /// A character of a picture's Markdown while the picture is shown.
+  static const _nothing = WidgetSpan(child: SizedBox.shrink());
 
   /// [run] cut where the text being composed by the keyboard starts and
   /// ends, so that stretch can be underlined as the platform expects.

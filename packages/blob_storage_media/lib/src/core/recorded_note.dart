@@ -117,7 +117,7 @@ final class RecordedNote {
     }
     final imagesById = {for (final image in pictures) image.id: image};
     final images = <BlobId, KeyedImage>{};
-    for (final id in AttachmentsValue.imagesOf(entry)) {
+    for (final id in InlineImages.picturesOf(entry)) {
       images[id] =
           imagesById[id] ??
           (throw ArgumentError.value(id.value, 'entry', 'unknown picture'));
@@ -445,7 +445,7 @@ abstract final class RecordedNoteCodec {
         !referenced.containsAll(recordings.keys)) {
       throw const MalformedBlobException('recordings do not match the note');
     }
-    final pictured = AttachmentsValue.imagesOf(entry).toSet();
+    final pictured = InlineImages.picturesOf(entry).toSet();
     if (pictured.length != images.length ||
         !pictured.containsAll(images.keys)) {
       throw const MalformedBlobException('pictures do not match the note');

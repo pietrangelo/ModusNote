@@ -1,9 +1,10 @@
 import 'dart:async';
 import 'dart:math';
-import 'dart:typed_data';
 
 import 'package:blob_storage_media/blob_storage_media.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:schema_dynamic_content/schema_dynamic_content.dart';
 
 import '../attachments/open_in_browser.dart';
@@ -42,6 +43,11 @@ enum SaveState { saved, saving, incomplete, failed }
 /// On a page of its own it goes back when left. Beside the list on a wide
 /// screen it is closed by [onClose] instead, and whoever shows another
 /// note in its place asks it to [NoteEditorScreenState.settle] first.
+///
+/// Focus mode ([focusActivator], or the button in the app bar) leaves only
+/// the title and the text: no details, recordings, attachments, toolbar or
+/// sections below, and [onFocusChanged] lets the library fold its columns
+/// away too. Escape, or back, leaves it.
 class NoteEditorScreen extends StatefulWidget {
   const NoteEditorScreen({
     required this.schemas,
@@ -49,6 +55,7 @@ class NoteEditorScreen extends StatefulWidget {
     required this.initialSchema,
     this.entry,
     this.onClose,
+    this.onFocusChanged,
     this.category,
     this.clock = DateTime.now,
     this.openLink = openInBrowser,
@@ -66,6 +73,9 @@ class NoteEditorScreen extends StatefulWidget {
   /// its own, which goes back instead.
   final VoidCallback? onClose;
 
+  /// Told when focus mode starts or ends.
+  final ValueChanged<bool>? onFocusChanged;
+
   /// Where a new note is filed; an existing one stays where it is.
   final CategoryId? category;
   final DateTime Function() clock;
@@ -75,6 +85,23 @@ class NoteEditorScreen extends StatefulWidget {
 
   /// How long typing must pause before the note is saved.
   static const autosaveDelay = Duration(seconds: 1);
+
+  /// Ctrl+Shift+F, or ⌘⇧F on Apple platforms: focus mode on and off.
+  static SingleActivator get focusActivator => SingleActivator(
+    LogicalKeyboardKey.keyF,
+    control: !_apple,
+    meta: _apple,
+    shift: true,
+  );
+
+  static bool get _apple =>
+      defaultTargetPlatform == TargetPlatform.macOS ||
+      defaultTargetPlatform == TargetPlatform.iOS;
+
+  /// The focus button's tooltip, with its shortcut.
+  static String focusTooltip(AppLocalizations l10n, {required bool focused}) =>
+      '${focused ? l10n.exitFocusMode : l10n.focusMode} '
+      '(${_apple ? '⌘⇧F' : 'Ctrl+Shift+F'})';
 
   @override
   State<NoteEditorScreen> createState() => NoteEditorScreenState();
@@ -110,6 +137,16 @@ class NoteEditorScreenState extends State<NoteEditorScreen>
   var _dirty = false;
   var _state = SaveState.saved;
   Future<SaveState>? _saving;
+  var _focused = false;
+
+  /// Whether only the title and the text show.
+  bool get focused => _focused;
+
+  /// Turns focus mode on or off.
+  void toggleFocus() {
+    setState(() => _focused = !_focused);
+    widget.onFocusChanged?.call(_focused);
+  }
 
   @override
   void initState() {
@@ -220,7 +257,13 @@ class NoteEditorScreenState extends State<NoteEditorScreen>
     final draft = _draft;
     // A picture picked while this save runs waits for the next one.
     final takes = _takes.values.toList();
-    final pictures = _pictures.values.toList();
+    // A picture pasted from another note's text brings its metadata from
+    // there; one this vault does not know cannot be saved.
+    final pictures = [
+      ..._pictures.values,
+      for (final blob in InlineImages.picturesOf(entry))
+        if (!_pictures.containsKey(blob)) ?widget.store.imageOf(blob),
+    ];
     _show(SaveState.saving);
     // A save is not cut short by the vault locking itself.
     final release = AutoLockScope.maybeOf(context)?.hold();
@@ -283,6 +326,8 @@ class NoteEditorScreenState extends State<NoteEditorScreen>
       return true;
     }
     setState(() => _violations = _pendingViolations);
+    // The missing fields must be seen, and focus mode hides most of them.
+    if (_focused) toggleFocus();
     final l10n = AppLocalizations.of(context);
     final discard = await showDialog<bool>(
       context: context,
@@ -399,6 +444,16 @@ class NoteEditorScreenState extends State<NoteEditorScreen>
       if (entry.id == id) return entry;
     }
     return null;
+  }
+
+  /// Picks a picture, seals it and puts it in the text where the cursor
+  /// is; it joins the note at the next save.
+  Future<void> _insertImage() async {
+    final controller = _markdown.value;
+    if (controller == null) return;
+    final blob = await _addImage();
+    if (blob == null || !mounted || _markdown.value != controller) return;
+    controller.apply((value) => MarkdownCommands.image(value, blob));
   }
 
   /// Picks another note and links to it where the cursor is.
@@ -527,184 +582,229 @@ class NoteEditorScreenState extends State<NoteEditorScreen>
       SaveState.failed => l10n.editorSaveFailed,
     };
     final embedded = widget.onClose != null;
+    final focused = _focused;
     return PopScope(
-      // Beside the list there is nothing to go back to.
-      canPop: embedded || !_dirty,
+      // Beside the list there is nothing to go back to; in focus mode back
+      // leaves focus mode first.
+      canPop: !focused && (embedded || !_dirty),
       onPopInvokedWithResult: (didPop, _) {
-        if (!didPop) _leave();
+        if (didPop) return;
+        if (focused) {
+          toggleFocus();
+        } else {
+          _leave();
+        }
       },
-      child: Scaffold(
-        appBar: AppBar(
-          automaticallyImplyLeading: !embedded,
-          leading: embedded
-              ? IconButton(
-                  onPressed: _leave,
-                  tooltip: MaterialLocalizations.of(context).closeButtonTooltip,
-                  icon: const Icon(Icons.close),
-                )
-              : null,
-          title: _TypeTitle(
-            schema: _schema,
-            schemas: _saved == null ? widget.schemas : const [],
-            text: text,
-            onSwitch: _switchTo,
-          ),
-          actions: [
-            if (status != null)
-              Center(
-                child: Text(
-                  status,
-                  key: const ValueKey('save-state'),
-                  style: theme.textTheme.labelSmall,
-                ),
-              ),
-            if (_saved != null)
-              IconButton(
-                onPressed: _trash,
-                tooltip: l10n.moveToTrash,
-                icon: const Icon(Icons.delete_outline),
-              ),
-            const SizedBox(width: Spacing.s),
-          ],
-        ),
-        body: Column(
-          children: [
-            Expanded(
-              child: Align(
-                alignment: Alignment.topCenter,
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: Extents.xxl),
-                  child: ListView(
-                    padding: const EdgeInsets.fromLTRB(
-                      Spacing.l,
-                      Spacing.s,
-                      Spacing.l,
-                      Spacing.xxl,
+      child: CallbackShortcuts(
+        bindings: {
+          NoteEditorScreen.focusActivator: toggleFocus,
+          if (focused)
+            const SingleActivator(LogicalKeyboardKey.escape): toggleFocus,
+        },
+        child: Scaffold(
+          appBar: AppBar(
+            automaticallyImplyLeading: !embedded && !focused,
+            leading: focused
+                ? null
+                : embedded
+                ? IconButton(
+                    onPressed: _leave,
+                    tooltip: MaterialLocalizations.of(context)
+                        .closeButtonTooltip,
+                    icon: const Icon(Icons.close),
+                  )
+                : null,
+            title: focused
+                ? null
+                : _TypeTitle(
+                    schema: _schema,
+                    schemas: _saved == null ? widget.schemas : const [],
+                    text: text,
+                    onSwitch: _switchTo,
+                  ),
+            actions: [
+              if (status != null)
+                // At most two short lines, so that a phone's app bar keeps
+                // room for back, the type and the buttons.
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: Extents.s),
+                  child: Center(
+                    child: Text(
+                      status,
+                      key: const ValueKey('save-state'),
+                      style: theme.textTheme.labelSmall,
+                      textAlign: TextAlign.end,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                     ),
-                    children: [
-                      DynamicFormRenderer(
-                        // A new type is a new page, filled with what was
-                        // carried over.
-                        key: ValueKey(_schema.id),
-                        schema: _schema,
-                        values: _draft.values,
-                        violations: _violations,
-                        autofocus: widget.entry == null,
-                        markdownTarget: _markdown,
-                        onChanged: _onDraft,
-                        onRecordAudio: widget.store.recorder == null
-                            ? null
-                            : _record,
-                        recordingLength: _lengthOf,
-                        recordingPlayer: _playerOf,
-                        attachments: AttachmentHooks(
-                          addImage: widget.store.images == null
-                              ? null
-                              : _addImage,
-                          openImage: _openImage,
-                          openLink: widget.openLink,
-                        ),
+                  ),
+                ),
+              IconButton(
+                key: const ValueKey('focus-mode'),
+                onPressed: toggleFocus,
+                isSelected: focused,
+                tooltip: NoteEditorScreen.focusTooltip(l10n, focused: focused),
+                icon: const Icon(Icons.center_focus_weak),
+                selectedIcon: const Icon(Icons.center_focus_strong),
+              ),
+              if (_saved != null && !focused)
+                IconButton(
+                  onPressed: _trash,
+                  tooltip: l10n.moveToTrash,
+                  icon: const Icon(Icons.delete_outline),
+                ),
+              const SizedBox(width: Spacing.s),
+            ],
+          ),
+          body: Column(
+            children: [
+              Expanded(
+                child: Align(
+                  alignment: Alignment.topCenter,
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: Extents.xxl),
+                    child: ListView(
+                      padding: const EdgeInsets.fromLTRB(
+                        Spacing.l,
+                        Spacing.s,
+                        Spacing.l,
+                        Spacing.xxl,
                       ),
-                      if (_isChapter)
-                        Align(
-                          alignment: AlignmentDirectional.centerEnd,
-                          child: ValueListenableBuilder(
-                            valueListenable: _words,
-                            builder: (context, words, _) => Text(
-                              l10n.wordCount(words),
-                              key: const ValueKey('chapter-words'),
-                              style: theme.textTheme.labelSmall,
-                            ),
+                      children: [
+                        DynamicFormRenderer(
+                          // A new type is a new page, filled with what was
+                          // carried over.
+                          key: ValueKey(_schema.id),
+                          schema: _schema,
+                          values: _draft.values,
+                          violations: _violations,
+                          autofocus: widget.entry == null,
+                          focused: focused,
+                          markdownTarget: _markdown,
+                          onChanged: _onDraft,
+                          onRecordAudio: widget.store.recorder == null
+                              ? null
+                              : _record,
+                          recordingLength: _lengthOf,
+                          recordingPlayer: _playerOf,
+                          attachments: AttachmentHooks(
+                            addImage: widget.store.images == null
+                                ? null
+                                : _addImage,
+                            openImage: _openImage,
+                            openLink: widget.openLink,
+                            imageSize: (blob) =>
+                                (_pictures[blob] ?? widget.store.imageOf(blob))
+                                    ?.metadata
+                                    .info,
                           ),
                         ),
-                      if (_schema.id.name == BookOutline.book)
-                        ListenableBuilder(
-                          listenable: widget.store,
-                          builder: (context, _) {
-                            final category = _category;
-                            return BookSection(
-                              outline: BookOutline.of(
-                                category: category,
-                                store: widget.store,
-                                schemaOf: _schemaOf,
+                        if (_isChapter)
+                          Align(
+                            alignment: AlignmentDirectional.centerEnd,
+                            child: ValueListenableBuilder(
+                              valueListenable: _words,
+                              builder: (context, words, _) => Text(
+                                l10n.wordCount(words),
+                                key: const ValueKey('chapter-words'),
+                                style: theme.textTheme.labelSmall,
                               ),
-                              goal: switch (_draft.values[FieldKey(
-                                'word_goal',
-                              )]) {
-                                NumberValue(:final number) => number.toInt(),
-                                _ => null,
-                              },
-                              schemas: widget.schemas,
-                              onOpen: _openLinked,
-                              onAdd: (schema) =>
-                                  _openOver(schema, category: category),
-                            );
-                          },
-                        ),
-                      if (_schema.id.name == PageIndex.document)
-                        ListenableBuilder(
-                          listenable: widget.store,
-                          builder: (context, _) {
-                            final category = _category;
-                            return PageIndexSection(
-                              sections: PageIndex.of(
-                                category: category,
-                                store: widget.store,
+                            ),
+                          ),
+                        if (_schema.id.name == BookOutline.book && !focused)
+                          ListenableBuilder(
+                            listenable: widget.store,
+                            builder: (context, _) {
+                              final category = _category;
+                              return BookSection(
+                                outline: BookOutline.of(
+                                  category: category,
+                                  store: widget.store,
+                                  schemaOf: _schemaOf,
+                                ),
+                                goal: switch (_draft.values[FieldKey(
+                                  'word_goal',
+                                )]) {
+                                  NumberValue(:final number) => number.toInt(),
+                                  _ => null,
+                                },
+                                schemas: widget.schemas,
+                                onOpen: _openLinked,
+                                onAdd: (schema) =>
+                                    _openOver(schema, category: category),
+                              );
+                            },
+                          ),
+                        if (_schema.id.name == PageIndex.document && !focused)
+                          ListenableBuilder(
+                            listenable: widget.store,
+                            builder: (context, _) {
+                              final category = _category;
+                              return PageIndexSection(
+                                sections: PageIndex.of(
+                                  category: category,
+                                  store: widget.store,
+                                  schemaOf: _schemaOf,
+                                ),
+                                current: _id,
                                 schemaOf: _schemaOf,
-                              ),
-                              current: _id,
+                                onOpen: _openLinked,
+                                onAdd: () =>
+                                    _openOver(_schema, category: category),
+                              );
+                            },
+                          ),
+                        if (!focused)
+                          ListenableBuilder(
+                            listenable: widget.store,
+                            builder: (context, _) => NoteLinksSection(
+                              links: NoteLinks.targets(_draft.values.values),
+                              backlinks: [
+                                for (final entry in widget.store.entries)
+                                  if (entry.id != _id &&
+                                      NoteLinks.targets(entry.attributes.values)
+                                          .contains(_id))
+                                    entry,
+                              ],
+                              find: _find,
                               schemaOf: _schemaOf,
                               onOpen: _openLinked,
-                              onAdd: () =>
-                                  _openOver(_schema, category: category),
-                            );
-                          },
-                        ),
-                      ListenableBuilder(
-                        listenable: widget.store,
-                        builder: (context, _) => NoteLinksSection(
-                          links: NoteLinks.targets(_draft.values.values),
-                          backlinks: [
-                            for (final entry in widget.store.entries)
-                              if (entry.id != _id &&
-                                  NoteLinks.targets(entry.attributes.values)
-                                      .contains(_id))
-                                entry,
-                          ],
-                          find: _find,
-                          schemaOf: _schemaOf,
-                          onOpen: _openLinked,
-                        ),
-                      ),
-                    ],
+                            ),
+                          ),
+                      ],
+                    ),
                   ),
                 ),
               ),
-            ),
-            ValueListenableBuilder(
-              valueListenable: _markdown,
-              builder: (context, controller, _) => controller == null
-                  ? const SizedBox.shrink()
-                  : SafeArea(
-                      top: false,
-                      // Taps on the toolbar keep the keyboard up.
-                      child: TextFieldTapRegion(
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            color: theme.colorScheme.surface,
-                            border: Border(
-                              top: BorderSide(color: theme.dividerColor),
+              ValueListenableBuilder(
+                valueListenable: _markdown,
+                builder: (context, controller, _) =>
+                    controller == null || focused
+                    ? const SizedBox.shrink()
+                    : SafeArea(
+                        top: false,
+                        // Taps on the toolbar keep the keyboard up.
+                        child: TextFieldTapRegion(
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              color: theme.colorScheme.surface,
+                              border: Border(
+                                top: BorderSide(color: theme.dividerColor),
+                              ),
                             ),
-                          ),
-                          child: MarkdownToolbar(
-                            controller: controller,
-                            onLinkNote: _linkNote,
+                            child: MarkdownToolbar(
+                              controller: controller,
+                              onLinkNote: _linkNote,
+                              onInsertImage: widget.store.images == null
+                                  ? null
+                                  : _insertImage,
+                            ),
                           ),
                         ),
                       ),
-                    ),
-            ),
-          ],
+              ),
+            ],
+          ),
         ),
       ),
     );

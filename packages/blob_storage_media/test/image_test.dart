@@ -334,6 +334,88 @@ void main() {
       });
     });
 
+    DynamicEntry written(
+      List<String> inline, {
+      List<String> attached = const [],
+    }) => valid(
+      DynamicEntry.create(
+        schema: schema,
+        id: EntryId('w' * 32),
+        attributes: {
+          FieldKey('title'): const TextValue('Capitolo'),
+          FieldKey('body'): TextValue(
+            [
+              'Il palco:',
+              for (final image in inline)
+                InlineImages.markdown('Foto $image', BlobId(image)),
+              'Fine.',
+            ].join('\n'),
+          ),
+          if (attached.isNotEmpty)
+            attachments: AttachmentsValue([
+              for (final image in attached) ImageAttachment(BlobId(image)),
+            ]),
+        },
+        at: at,
+      ),
+    );
+
+    test('pictures in the text are the page\'s pictures too', () {
+      final note = RecordedNote.compose(
+        written(['t1', 't2'], attached: ['a1']),
+        pictures: [picture('a1'), picture('t1'), picture('t2')],
+      );
+
+      expect(note.images.keys.toSet(), {
+        BlobId('a1'),
+        BlobId('t1'),
+        BlobId('t2'),
+      });
+      expect(
+        () => RecordedNote.compose(written(['t1']), pictures: [picture('a1')]),
+        throwsA(isA<ArgumentError>()),
+        reason: 'a picture in the text needs its metadata',
+      );
+    });
+
+    test('taking a picture out of the text releases it', () {
+      final before = RecordedNote.compose(
+        written(['t1', 't2']),
+        pictures: [picture('t1'), picture('t2')],
+      );
+      final after = before.edited(written(['t2']));
+
+      expect(RecordedNote.released(before: before, after: after), {
+        BlobId('t1'),
+      });
+    });
+
+    test('a page with pictures in its text round-trips, and refuses a '
+        'picture its text does not show', () {
+      final note = RecordedNote.compose(
+        written(['t1']),
+        pictures: [picture('t1')],
+      );
+      final back = decode(RecordedNoteCodec.encode(note));
+      expect(back.images.keys, [BlobId('t1')]);
+      expect(
+        back.entry.attributes[FieldKey('body')],
+        note.entry.attributes[FieldKey('body')],
+      );
+
+      expect(
+        () => RecordedNoteCodec.decode(
+          RecordedNoteCodec.encodeUnchecked(
+            written(['t1']),
+            const {},
+            images: {BlobId('t2'): picture('t2')},
+          ),
+          schemas: resolve,
+        ),
+        throwsA(isA<MalformedBlobException>()),
+      );
+    });
+
     test('trash, restore and filing keep the pictures', () {
       final note = RecordedNote.compose(
         page(['a1']),
