@@ -451,6 +451,58 @@ void main() {
       );
     });
 
+    test('a picture pasted into the text of another note is kept while either '
+        'shows it', () async {
+      final database = memoryDatabase();
+      addTearDown(database.close);
+      final storage = memoryBlobs();
+      final vault = await keeperOn(database).create(passphrase('frase lunga'));
+      addTearDown(vault.lock);
+      final released = <BlobId>{};
+      final store =
+          await VaultNoteStore.open(
+              vault.engine,
+              catalog: SeedSchemas.catalog,
+              images: NoteImages(
+                blobs: storage.blobs,
+                engine: vault.engine,
+                chooser: FakeChooser(),
+              ),
+            )
+            ..onRelease = (ids) async => released.addAll(ids);
+      final image = (await store.images!.choose())!;
+      DynamicEntry text(String id, String body) => switch (DynamicEntry.create(
+        schema: SeedSchemas.documentV1,
+        id: EntryId(id),
+        attributes: {
+          FieldKey('title'): const TextValue('Pagina'),
+          FieldKey('body'): TextValue(body),
+        },
+        at: DateTime.utc(2026, 10, 14),
+      )) {
+        Valid(:final value) => value,
+        Invalid(:final violations) => throw StateError('$violations'),
+      };
+      final shown = InlineImages.markdown('Il palco', image.id);
+      final other = 'b' * 32;
+      bool stored() =>
+          storage.files.file('/blobs/${image.id.value}.enc').existsSync();
+
+      await store.save(text(first, 'Prima $shown'), pictures: [image]);
+      await store.save(
+        text(other, 'Copia $shown'),
+        pictures: [store.imageOf(image.id)!],
+      );
+      await store.save(text(first, 'Prima, senza foto'));
+
+      expect(stored(), isTrue, reason: 'the other note still shows it');
+      expect(released, isEmpty);
+
+      await store.save(text(other, 'Copia, senza foto'));
+      expect(stored(), isFalse);
+      expect(released, {image.id});
+    });
+
     test('a picture added and left out of the save is deleted', () async {
       final database = memoryDatabase();
       addTearDown(database.close);

@@ -257,7 +257,13 @@ class NoteEditorScreenState extends State<NoteEditorScreen>
     final draft = _draft;
     // A picture picked while this save runs waits for the next one.
     final takes = _takes.values.toList();
-    final pictures = _pictures.values.toList();
+    // A picture pasted from another note's text brings its metadata from
+    // there; one this vault does not know cannot be saved.
+    final pictures = [
+      ..._pictures.values,
+      for (final blob in InlineImages.picturesOf(entry))
+        if (!_pictures.containsKey(blob)) ?widget.store.imageOf(blob),
+    ];
     _show(SaveState.saving);
     // A save is not cut short by the vault locking itself.
     final release = AutoLockScope.maybeOf(context)?.hold();
@@ -438,6 +444,16 @@ class NoteEditorScreenState extends State<NoteEditorScreen>
       if (entry.id == id) return entry;
     }
     return null;
+  }
+
+  /// Picks a picture, seals it and puts it in the text where the cursor
+  /// is; it joins the note at the next save.
+  Future<void> _insertImage() async {
+    final controller = _markdown.value;
+    if (controller == null) return;
+    final blob = await _addImage();
+    if (blob == null || !mounted || _markdown.value != controller) return;
+    controller.apply((value) => MarkdownCommands.image(value, blob));
   }
 
   /// Picks another note and links to it where the cursor is.
@@ -677,6 +693,10 @@ class NoteEditorScreenState extends State<NoteEditorScreen>
                                 : _addImage,
                             openImage: _openImage,
                             openLink: widget.openLink,
+                            imageSize: (blob) =>
+                                (_pictures[blob] ?? widget.store.imageOf(blob))
+                                    ?.metadata
+                                    .info,
                           ),
                         ),
                         if (_isChapter)
@@ -775,6 +795,9 @@ class NoteEditorScreenState extends State<NoteEditorScreen>
                             child: MarkdownToolbar(
                               controller: controller,
                               onLinkNote: _linkNote,
+                              onInsertImage: widget.store.images == null
+                                  ? null
+                                  : _insertImage,
                             ),
                           ),
                         ),

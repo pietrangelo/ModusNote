@@ -1578,5 +1578,13 @@
   "exitFocusMode": "Leave focus mode",
   "@exitFocusMode": {
     "description": "Editor: back from focus mode to the whole page."
+  },
+  "insertImage": "Insert picture",
+  "@insertImage": {
+    "description": "Markdown toolbar: picks a picture and puts it in the text where the cursor is."
+  },
+  "imageMissing": "Picture not available",
+  "@imageMissing": {
+    "description": "In the text of a note: a picture whose details this vault does not have."
   }
 }

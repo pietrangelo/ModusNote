@@ -78,6 +78,29 @@ abstract final class MarkdownCommands {
     );
   }
 
+  /// The picture [blob] in place of the selection, on a line of its own;
+  /// a selection on one line becomes its caption. The cursor goes after
+  /// it, where the picture shows.
+  static TextEditingValue image(TextEditingValue value, BlobId blob) {
+    if (!_valid(value)) return value;
+    final text = value.text;
+    final selection = value.selection;
+    final selected = selection.textInside(text);
+    final picture = InlineImages.markdown(
+      selected.contains('\n') ? '' : selected,
+      blob,
+    );
+    final head = selection.textBefore(text);
+    final tail = selection.textAfter(text);
+    final lead = head.isEmpty || head.endsWith('\n') ? '' : '\n';
+    final trail = tail.startsWith('\n') ? '' : '\n';
+    final before = '$head$lead$picture';
+    return TextEditingValue(
+      text: '$before$trail$tail',
+      selection: TextSelection.collapsed(offset: before.length),
+    );
+  }
+
   /// Fences the lines the selection touches as a code block.
   static TextEditingValue codeBlock(TextEditingValue value) {
     if (!_valid(value)) return value;

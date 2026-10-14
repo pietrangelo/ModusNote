@@ -8,6 +8,7 @@ import '../l10n/generated/app_localizations.dart';
 import '../theme/golden_ratio.dart';
 import '../theme/modus_colors.dart';
 import 'attachments/attachments_input.dart';
+import 'editor/inline_picture.dart';
 import 'editor/markdown_controller.dart';
 import 'editor/markdown_toolbar.dart';
 import 'schema_text.dart';
@@ -195,6 +196,7 @@ class _DynamicFormRendererState extends State<DynamicFormRenderer> {
               error: _errorFor(body.key, text),
               value: _values[body.key],
               target: widget.markdownTarget,
+              pictures: widget.attachments,
               autofocus: widget.autofocus && title == null,
               onChanged: (v) => _set(body.key, v),
             ),
@@ -613,6 +615,7 @@ class _MarkdownInput extends StatefulWidget {
     required this.value,
     required this.onChanged,
     this.target,
+    this.pictures,
     this.autofocus = false,
   });
 
@@ -622,6 +625,10 @@ class _MarkdownInput extends StatefulWidget {
   final FieldValue? value;
   final ValueChanged<FieldValue?> onChanged;
   final ValueNotifier<MarkdownEditingController?>? target;
+
+  /// Opens and measures the pictures written in the text; without it they
+  /// stay Markdown.
+  final AttachmentHooks? pictures;
   final bool autofocus;
 
   @override
@@ -636,12 +643,18 @@ class _MarkdownInputState extends State<_MarkdownInput> {
     },
   );
   late var _reported = _controller.text;
+  final _focus = FocusNode();
+
+  /// Pictures decrypted while this field is shown, each once.
+  final _opened = <BlobId, Future<Uint8List>>{};
 
   @override
   void initState() {
     super.initState();
     // Typing, toolbar buttons and shortcuts all change the text here.
     _controller.addListener(_report);
+    // The cursor opens a picture's Markdown only while the field is used.
+    _focus.addListener(() => _controller.editing = _focus.hasFocus);
     // The toolbar is outside this form: tell it after this frame is built.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) widget.target?.value = _controller;
@@ -666,7 +679,20 @@ class _MarkdownInputState extends State<_MarkdownInput> {
     } else {
       _controller.dispose();
     }
+    _focus.dispose();
     super.dispose();
+  }
+
+  Widget Function(InlineImage)? _pictureBuilder(double width) {
+    final hooks = widget.pictures;
+    if (hooks == null) return null;
+    return (picture) => InlinePicture(
+      key: ValueKey('picture-${picture.start}-${picture.blob.value}'),
+      picture: picture,
+      size: hooks.imageSize?.call(picture.blob),
+      maxWidth: width,
+      bytes: () => _opened[picture.blob] ??= hooks.openImage(picture.blob),
+    );
   }
 
   @override
@@ -677,14 +703,20 @@ class _MarkdownInputState extends State<_MarkdownInput> {
     },
     child: Semantics(
       label: widget.label,
-      child: TextField(
-        controller: _controller,
-        autofocus: widget.autofocus,
-        decoration: _pageDecoration(widget.hint, widget.error),
-        minLines: 8,
-        maxLines: null,
-        keyboardType: TextInputType.multiline,
-        inputFormatters: const [MarkdownListFormatter()],
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          _controller.pictureBuilder = _pictureBuilder(constraints.maxWidth);
+          return TextField(
+            controller: _controller,
+            focusNode: _focus,
+            autofocus: widget.autofocus,
+            decoration: _pageDecoration(widget.hint, widget.error),
+            minLines: 8,
+            maxLines: null,
+            keyboardType: TextInputType.multiline,
+            inputFormatters: const [MarkdownListFormatter()],
+          );
+        },
       ),
     ),
   );
