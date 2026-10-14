@@ -70,6 +70,11 @@ final class VaultNoteStore extends ChangeNotifier implements NoteStore {
   /// Called after each saved change, once it is queued for the server.
   VoidCallback? onWrite;
 
+  /// Called with the recordings and pictures a saved change stopped
+  /// referencing (a note deleted for good, a take or picture removed), so
+  /// the shared storage can let them go too.
+  Future<void> Function(Set<BlobId> ids)? onRelease;
+
   /// Records that are not a valid note of a known schema: kept in the vault
   /// (a newer app may read them) but not shown. A note of an older version
   /// of its type is shown as the current version, and written as such only
@@ -132,12 +137,15 @@ final class VaultNoteStore extends ChangeNotifier implements NoteStore {
     await _put(after);
     // Only once the note no longer points at them.
     final kept = {for (final blob in after.blobs) blob.id};
+    final released = before == null
+        ? const <BlobId>{}
+        : RecordedNote.released(before: before, after: after);
     await _delete({
-      if (before != null)
-        ...RecordedNote.released(before: before, after: after),
+      ...released,
       for (final blob in [...takes, ...pictures])
         if (!kept.contains(blob.id)) blob.id,
     });
+    await _release(released);
   }
 
   @override
@@ -170,7 +178,9 @@ final class VaultNoteStore extends ChangeNotifier implements NoteStore {
     _notes.remove(id);
     notifyListeners();
     onWrite?.call();
-    await _delete(_orphaned([note]));
+    final orphaned = _orphaned([note]);
+    await _delete(orphaned);
+    await _release(orphaned);
   }
 
   @override
@@ -242,6 +252,18 @@ final class VaultNoteStore extends ChangeNotifier implements NoteStore {
         for (final blob in note.blobs)
           if (!kept.contains(blob.id)) blob.id,
     };
+  }
+
+  /// Takes never saved in a note were never uploaded: only what a saved
+  /// note let go of is released.
+  Future<void> _release(Set<BlobId> ids) async {
+    if (ids.isEmpty) return;
+    try {
+      await onRelease?.call(ids);
+    } on Object {
+      // The note is saved either way; a blob left on the server is found
+      // by the next sweep.
+    }
   }
 
   Future<void> _delete(Set<BlobId> ids) async {

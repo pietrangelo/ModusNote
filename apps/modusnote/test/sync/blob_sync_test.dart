@@ -20,8 +20,14 @@ import '../vault/support.dart';
 /// The workspace's shared storage in memory.
 final class MemoryRemote implements RemoteBlobStore {
   final objects = <BlobId, Uint8List>{};
+  final storedAt = <BlobId, DateTime>{};
   final uploads = <BlobId>[];
+  final deletions = <BlobId>[];
+  var listings = 0;
   var online = true;
+
+  /// When uploads happen, as R2 would stamp them.
+  DateTime now = DateTime.utc(2026, 10, 13, 9);
 
   @override
   Future<void> upload(
@@ -36,6 +42,27 @@ final class MemoryRemote implements RemoteBlobStore {
       bytes.add(piece);
     }
     objects.putIfAbsent(id, bytes.takeBytes);
+    storedAt.putIfAbsent(id, () => now);
+  }
+
+  @override
+  Future<void> delete(List<BlobId> ids) async {
+    if (!online) throw const RemoteBlobUnavailableException();
+    deletions.addAll(ids);
+    for (final id in ids) {
+      objects.remove(id);
+      storedAt.remove(id);
+    }
+  }
+
+  @override
+  Future<StoredBlobPage> list({String? after}) async {
+    if (!online) throw const RemoteBlobUnavailableException();
+    listings++;
+    return StoredBlobPage([
+      for (final MapEntry(:key, :value) in storedAt.entries)
+        StoredBlob(key, storedAt: value),
+    ]);
   }
 
   @override
@@ -57,21 +84,41 @@ final class DeviceBlobs {
       subkeys: SodiumSubkeyDerivationService(sodium),
     );
     replication = BlobReplication(local: local, remote: remote);
+    pruning = BlobPruning(remote: remote);
   }
 
   final files = MemoryFileSystem();
   late final EncryptedBlobStorage storage;
   late final BlobReplication replication;
+  late final BlobPruning pruning;
 
-  /// The sealed device setting, as the vault would keep it.
-  Uint8List? setting;
+  /// The sealed device settings, as the vault would keep them.
+  final settings = <String, Uint8List?>{};
+
+  /// What the device's clock says.
+  DateTime now = DateTime.utc(2026, 10, 13, 9);
+
+  /// Whether the vault agrees with the server, as the gate would tell.
+  var unsent = false;
+  var unreadable = false;
 
   BlobSync sync(VaultNoteStore store) => BlobSync(
     replication: replication,
+    pruning: pruning,
     blobs: () => store.blobs,
-    load: () async => setting,
-    save: (value) async => setting = value,
+    canPrune: () => !unreadable,
+    unsentWrites: () async => unsent,
+    clock: () => now,
+    load: (name) async => settings[name],
+    save: (name, value) async => settings[name] = value,
   );
+
+  /// Wires [store] as the gate does: what its notes let go of is released.
+  BlobSync attach(VaultNoteStore store) {
+    final sync = this.sync(store);
+    store.onRelease = sync.release;
+    return sync;
+  }
 }
 
 DynamicEntry songWith(String id, BlobId track) => switch (DynamicEntry.create(
@@ -225,12 +272,155 @@ void main() {
     );
   });
 
+  group('deleting on the server', () {
+    late BlobSync sync;
+
+    setUp(() async {
+      sync = phone.attach(store);
+      await sync.afterSync();
+      expect(remote.objects.keys, [take.id]);
+    });
+
+    test('a note deleted for good takes its recording with it', () async {
+      await store.moveToTrash(EntryId(noteId));
+      await sync.afterSync();
+      expect(remote.objects.keys, [take.id], reason: 'the trash keeps it');
+
+      await store.deleteForever(EntryId(noteId));
+      await sync.afterSync();
+
+      expect(remote.objects, isEmpty);
+      expect(remote.deletions, [take.id]);
+      // Nothing left to remember about it.
+      await sync.afterSync();
+      expect(remote.deletions, [take.id]);
+    });
+
+    test('a recording removed from a note goes too', () async {
+      final emptied = switch (DynamicEntry.create(
+        schema: SeedSchemas.songSketchV1,
+        id: EntryId(noteId),
+        attributes: {FieldKey('title'): const TextValue('Ritornello')},
+        at: DateTime.utc(2026, 10, 14),
+      )) {
+        Valid(:final value) => value,
+        Invalid(:final violations) => throw StateError('$violations'),
+      };
+      await store.save(emptied);
+
+      await sync.afterSync();
+
+      expect(remote.objects, isEmpty);
+    });
+
+    test('offline, the deletion waits for the next sync', () async {
+      await store.moveToTrash(EntryId(noteId));
+      await store.deleteForever(EntryId(noteId));
+      remote.online = false;
+      await expectLater(
+        sync.prune(),
+        throwsA(isA<RemoteBlobUnavailableException>()),
+      );
+
+      remote.online = true;
+      await phone.sync(store).afterSync();
+
+      expect(remote.objects, isEmpty);
+    });
+
+    test('nothing goes while edits still wait for the server', () async {
+      await store.moveToTrash(EntryId(noteId));
+      await store.deleteForever(EntryId(noteId));
+      phone.unsent = true;
+
+      await sync.afterSync();
+      expect(remote.objects.keys, [take.id]);
+
+      phone.unsent = false;
+      await sync.afterSync();
+      expect(remote.objects, isEmpty);
+    });
+
+    test('a sweep deletes old blobs no note references, once a day', () async {
+      // Left by a device that deleted a note before this feature.
+      remote.objects[BlobId('left-behind')] = Uint8List(41);
+      remote.storedAt[BlobId('left-behind')] = DateTime.utc(2026, 10, 1);
+      // Uploaded an hour ago by a device whose note this one has not
+      // pulled yet.
+      remote.objects[BlobId('just-uploaded')] = Uint8List(41);
+      remote.storedAt[BlobId('just-uploaded')] = phone.now.subtract(
+        const Duration(hours: 1),
+      );
+      final listings = remote.listings;
+
+      await phone.attach(store).afterSync();
+
+      expect(remote.objects.keys, {take.id, BlobId('just-uploaded')});
+      expect(remote.listings, listings + 1);
+
+      final later = phone.attach(store);
+      await later.afterSync();
+      phone.now = phone.now.add(const Duration(hours: 2));
+      await later.afterSync();
+      expect(remote.listings, listings + 2, reason: 'once per day');
+
+      phone.now = phone.now.add(const Duration(days: 1));
+      await later.afterSync();
+      expect(remote.objects.keys, [take.id]);
+    });
+  });
+
   group('adversary', () {
+    test('nothing is deleted while a note this app cannot read exists, '
+        'since it may reference blobs this app does not see', () async {
+      final sync = phone.attach(store);
+      await sync.afterSync();
+      remote.objects[BlobId('newer-app')] = Uint8List(41);
+      remote.storedAt[BlobId('newer-app')] = DateTime.utc(2026, 10, 1);
+      await store.moveToTrash(EntryId(noteId));
+      await store.deleteForever(EntryId(noteId));
+      phone.unreadable = true;
+
+      await phone.attach(store).afterSync();
+
+      expect(remote.deletions, isEmpty);
+    });
+
+    test('a released blob a note takes back is kept', () async {
+      final sync = phone.attach(store);
+      await sync.afterSync();
+      await sync.release([take.id]);
+
+      await sync.afterSync();
+
+      expect(remote.objects.keys, [take.id]);
+      expect(remote.deletions, isEmpty);
+    });
+
+    test('a damaged list of released blobs deletes nothing it names '
+        'wrongly', () async {
+      final sync = phone.attach(store);
+      await sync.afterSync();
+      phone.settings[BlobSync.releasedSetting] = Uint8List.fromList(
+        '../other\n${take.id.value}\n\xff'.codeUnits,
+      );
+
+      await phone.attach(store).afterSync();
+
+      expect(remote.objects.keys, [take.id]);
+      expect(phone.settings[BlobSync.releasedSetting], isEmpty);
+    });
+
     test(
       'a damaged memory of uploads only costs a harmless re-upload',
       () async {
         await phone.sync(store).uploadPending();
-        phone.setting = Uint8List.fromList([0xff, 0xfe, 0x0a, 0x00]);
+        phone.settings[BlobSync.sentSetting] = Uint8List.fromList([
+          0xff,
+          0xfe,
+          0x0a,
+          0x00,
+        ]);
 
         await phone.sync(store).uploadPending();
 

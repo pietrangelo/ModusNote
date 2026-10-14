@@ -182,6 +182,19 @@ void main() {
       expect(server.rows.map((row) => row.record), [note, other]);
       expect(alice.store.outbox.pending, isEmpty);
     });
+
+    test('the engine says whether edits still wait for the server', () async {
+      expect(await alice.engine.hasUnsentWrites(), isFalse);
+      server.online = false;
+      await alice.engine.write(note, RevisionContents(text('uno')));
+      await alice.engine.sync();
+      expect(await alice.engine.hasUnsentWrites(), isTrue);
+
+      server.online = true;
+      await alice.engine.sync();
+
+      expect(await alice.engine.hasUnsentWrites(), isFalse);
+    });
   });
 
   group('between devices', () {

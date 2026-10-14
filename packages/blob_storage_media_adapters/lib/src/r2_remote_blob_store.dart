@@ -9,6 +9,8 @@ import 'package:schema_dynamic_content/schema_dynamic_content.dart';
 /// [RemoteBlobStore] on Cloudflare R2. The `blob-url` Edge Function checks
 /// that the session's account belongs to the workspace and answers with a
 /// URL for one object, valid for minutes; the bytes then go straight to R2.
+/// Deleting and listing the function does itself, so R2 never gives a
+/// client a URL that deletes.
 ///
 /// The session token goes to Supabase only, never to R2, and no error
 /// carries it or a presigned URL. Responses are untrusted: a URL that is
@@ -34,6 +36,9 @@ final class R2RemoteBlobStore implements RemoteBlobStore {
   final Duration _timeout;
 
   static final _workspacePattern = RegExp(r'^[0-9a-f]{32}$');
+
+  /// Ids per deletion call: the function's own limit.
+  static const maxDeletions = 50;
 
   static String _checkedWorkspace(String workspace) {
     if (!_workspacePattern.hasMatch(workspace)) {
@@ -103,7 +108,78 @@ final class R2RemoteBlobStore implements RemoteBlobStore {
     }
   }
 
+  @override
+  Future<void> delete(List<BlobId> ids) async {
+    for (var start = 0; start < ids.length; start += maxDeletions) {
+      final end = start + maxDeletions < ids.length
+          ? start + maxDeletions
+          : ids.length;
+      await _call({
+        'workspace_id': _workspace,
+        'method': 'DELETE',
+        'blob_ids': [for (final id in ids.sublist(start, end)) id.value],
+      });
+    }
+  }
+
+  @override
+  Future<StoredBlobPage> list({String? after}) async {
+    final json = await _call({
+      'workspace_id': _workspace,
+      'method': 'LIST',
+      'cursor': ?after,
+    });
+    if (json case {'blobs': final List<Object?> listed}) {
+      final cursor = json['cursor'];
+      if (cursor == null || cursor is String && cursor.isNotEmpty) {
+        return StoredBlobPage([
+          for (final entry in listed) ?_storedBlob(entry),
+        ], next: cursor as String?);
+      }
+    }
+    throw const MalformedBlobException('malformed blob listing');
+  }
+
+  static final _utcTimestamp = RegExp(
+    r'^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,6})?Z$',
+  );
+
+  /// One listed blob, or null for an entry that is not one: it is
+  /// skipped, never deleted by mistake under another name.
+  static StoredBlob? _storedBlob(Object? entry) {
+    if (entry case {'id': final String id, 'stored_at': final String storedAt}
+        when _utcTimestamp.hasMatch(storedAt)) {
+      final time = DateTime.tryParse(storedAt);
+      try {
+        if (time != null) return StoredBlob(BlobId(id), storedAt: time);
+      } on InvalidSchemaException {
+        return null;
+      }
+    }
+    return null;
+  }
+
   Future<Uri> _presign(BlobId id, String method) async {
+    final json = await _call({
+      'workspace_id': _workspace,
+      'blob_id': id.value,
+      'method': method,
+    });
+    if (json case {'url': final String url}) {
+      final uri = Uri.tryParse(url);
+      if (uri != null &&
+          uri.isScheme('https') &&
+          uri.host.isNotEmpty &&
+          uri.userInfo.isEmpty) {
+        return uri;
+      }
+    }
+    throw const MalformedBlobException('malformed presign response');
+  }
+
+  /// Asks the `blob-url` function with the session token; the decoded
+  /// JSON answer.
+  Future<Object?> _call(Map<String, Object> body) async {
     final String token;
     try {
       token = await _accessToken();
@@ -115,36 +191,21 @@ final class R2RemoteBlobStore implements RemoteBlobStore {
       ..headers['apikey'] = _anonKey
       ..headers['Authorization'] = 'Bearer $token'
       ..headers['Content-Type'] = 'application/json'
-      ..body = jsonEncode({
-        'workspace_id': _workspace,
-        'blob_id': id.value,
-        'method': method,
-      });
+      ..body = jsonEncode(body);
     final response = await _send(request);
-    final String body;
+    final String text;
     try {
-      body = await response.stream.bytesToString().timeout(_timeout);
+      text = await response.stream.bytesToString().timeout(_timeout);
     } on Object {
       throw const RemoteBlobUnavailableException();
     }
     final status = response.statusCode;
     if (status != 200) throw _failure(status);
-    final Object? json;
     try {
-      json = jsonDecode(body);
+      return jsonDecode(text);
     } on FormatException {
-      throw const MalformedBlobException('malformed presign response');
+      throw const MalformedBlobException('malformed blob-url response');
     }
-    if (json case {'url': final String url}) {
-      final uri = Uri.tryParse(url);
-      if (uri != null &&
-          uri.isScheme('https') &&
-          uri.host.isNotEmpty &&
-          uri.userInfo.isEmpty) {
-        return uri;
-      }
-    }
-    throw const MalformedBlobException('malformed presign response');
   }
 
   Future<http.StreamedResponse> _send(http.BaseRequest request) async {

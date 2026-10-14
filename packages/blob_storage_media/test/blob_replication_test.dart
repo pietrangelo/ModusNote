@@ -45,6 +45,13 @@ final class FakeRemote implements RemoteBlobStore {
       yield Uint8List.sublistView(bytes, offset, end);
     }
   }
+
+  @override
+  Future<void> delete(List<BlobId> ids) async => ids.forEach(objects.remove);
+
+  @override
+  Future<StoredBlobPage> list({String? after}) async =>
+      const StoredBlobPage([]);
 }
 
 void main() {
