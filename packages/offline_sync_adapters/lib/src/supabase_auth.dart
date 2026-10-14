@@ -116,10 +116,12 @@ final class SupabaseAuth {
     DateTime Function()? clock,
     this._timeout = const Duration(seconds: 30),
   }) : _auth = projectUrl.resolve('/auth/v1/'),
+       _deleteAccount = projectUrl.resolve('/functions/v1/delete-account'),
        _client = client ?? http.Client(),
        _clock = clock ?? DateTime.now;
 
   final Uri _auth;
+  final Uri _deleteAccount;
   final String _anonKey;
   final http.Client _client;
   final DateTime Function() _clock;
@@ -177,6 +179,20 @@ final class SupabaseAuth {
     await _post('logout', const {}, bearer: session.accessToken);
   }
 
+  /// Deletes the account of [accessToken] for good, with everything the
+  /// server holds for it: the Edge Function `delete-account` removes the
+  /// workspaces it alone belongs to, their rows and encrypted blobs, its
+  /// place in the others and its sign-in. Offline or failing on the way,
+  /// it throws [ServerUnavailableException] and nothing is deleted yet.
+  Future<void> deleteAccount(String accessToken) async {
+    await _post(
+      '',
+      {'confirm': 'delete-account'},
+      endpoint: _deleteAccount,
+      bearer: accessToken,
+    );
+  }
+
   SupabaseSession _session(String body) {
     final Object? json;
     try {
@@ -207,12 +223,13 @@ final class SupabaseAuth {
     String path,
     Map<String, Object?> body, {
     Map<String, String>? query,
+    Uri? endpoint,
     String? bearer,
   }) async {
     final request =
         http.Request(
             'POST',
-            _auth.resolve(path).replace(queryParameters: query),
+            endpoint ?? _auth.resolve(path).replace(queryParameters: query),
           )
           ..headers['apikey'] = _anonKey
           ..headers['Content-Type'] = 'application/json'
@@ -301,6 +318,15 @@ final class SyncAccount {
     } on Object {
       // Forgotten here either way; the server lets the token expire.
     }
+  }
+
+  /// Deletes the account on the server, then forgets its session here.
+  /// Throws [ServerUnavailableException] when offline or without a session,
+  /// [SupabaseAuthRejectedException] when the server refuses the session;
+  /// either way the account is still there.
+  Future<void> deleteAccount() async {
+    await _auth.deleteAccount(await accessToken());
+    await _store(null);
   }
 
   Future<String> accessToken() {
