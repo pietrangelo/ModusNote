@@ -41,13 +41,12 @@ final class SyncController extends ChangeNotifier {
     required this._account,
     required this._onPulled,
     this._afterSync,
-    bool retired = false,
+    this._retired = false,
     this._retire,
     this._debounce = const Duration(seconds: 2),
     this._interval = const Duration(minutes: 1),
     DateTime Function()? clock,
-  }) : _clock = clock ?? DateTime.now,
-       _retired = retired;
+  }) : _clock = clock ?? DateTime.now;
 
   final SyncEngine _engine;
   final SyncAccount _account;
