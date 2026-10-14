@@ -5,13 +5,14 @@ import 'package:schema_dynamic_content/schema_dynamic_content.dart';
 import '../core/blob_exception.dart';
 import '../core/blob_metadata.dart';
 import '../core/chunk_layout.dart';
+import '../core/stored_blob.dart';
 import 'ciphertext_blob_store.dart';
 
 /// Port: the copy of a workspace's blobs every member can reach (R2 behind
 /// presigned URLs). It holds the same ciphertext as the local store and
 /// nothing else: no key, no metadata beyond the id and the size.
 ///
-/// Both methods throw [RemoteBlobUnavailableException] when the storage
+/// Every method throws [RemoteBlobUnavailableException] when the storage
 /// cannot be reached and [RemoteBlobRejectedException] when it refuses.
 abstract interface class RemoteBlobStore {
   /// Stores [ciphertext], exactly [length] bytes, as blob [id]. Blobs are
@@ -26,6 +27,14 @@ abstract interface class RemoteBlobStore {
   /// The ciphertext of blob [id]. Throws [BlobNotFoundException] when the
   /// storage holds none (not uploaded yet).
   Stream<Uint8List> download(BlobId id);
+
+  /// Deletes blobs [ids], however many. An id the storage does not hold is
+  /// already deleted, and that is not an error.
+  Future<void> delete(List<BlobId> ids);
+
+  /// One page of the blobs the storage holds for the workspace, starting
+  /// after the cursor [after] of the previous page.
+  Future<StoredBlobPage> list({String? after});
 }
 
 /// Use case: copies blobs between this device and the workspace's shared

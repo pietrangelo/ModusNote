@@ -66,34 +66,98 @@ export async function presignUrl(request: PresignRequest): Promise<string> {
     ["X-Amz-Expires", String(request.expiresSeconds)],
     ["X-Amz-SignedHeaders", signedHeaders],
   ]);
-  const canonicalQuery = [...query.keys()]
-    .sort()
-    .map((key) => `${uriEncode(key)}=${uriEncode(query.get(key)!)}`)
-    .join("&");
+  const canonicalQuery = canonicalQueryOf(query);
   const canonicalPath = uriEncode(request.path, true);
-
-  const canonicalRequest = [
+  const signature = await sign(request, timestamp, [
     request.method,
     canonicalPath,
     canonicalQuery,
     headerNames.map((name) => `${name}:${headers.get(name)}\n`).join(""),
     signedHeaders,
     "UNSIGNED-PAYLOAD",
-  ].join("\n");
+  ]);
+
+  return `https://${request.host}${canonicalPath}?${canonicalQuery}&X-Amz-Signature=${signature}`;
+}
+
+export interface SignedRequest {
+  method: string;
+  host: string;
+  path: string;
+  // Request parameters, such as a listing's prefix.
+  query?: Record<string, string>;
+  region: string;
+  service: string;
+  accessKeyId: string;
+  secretAccessKey: string;
+  date: Date;
+}
+
+// SHA-256 of an empty body: these requests carry none.
+const emptyPayload = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+
+// Signature Version 4 in the Authorization header, for the requests the
+// function makes itself (deleting, listing): R2 presigns only object
+// operations, and nothing of these leaves the function.
+export async function signRequest(
+  request: SignedRequest,
+): Promise<{ url: string; headers: Record<string, string> }> {
+  const timestamp = request.date.toISOString().replace(/[-:]|\.\d{3}/g, "");
+  const scope = `${timestamp.slice(0, 8)}/${request.region}/${request.service}/aws4_request`;
+  const headers: Record<string, string> = {
+    host: request.host,
+    "x-amz-content-sha256": emptyPayload,
+    "x-amz-date": timestamp,
+  };
+  const headerNames = Object.keys(headers).sort();
+  const signedHeaders = headerNames.join(";");
+  const canonicalQuery = canonicalQueryOf(new Map(Object.entries(request.query ?? {})));
+  const canonicalPath = uriEncode(request.path, true);
+  const signature = await sign(request, timestamp, [
+    request.method,
+    canonicalPath,
+    canonicalQuery,
+    headerNames.map((name) => `${name}:${headers[name]}\n`).join(""),
+    signedHeaders,
+    emptyPayload,
+  ]);
+  return {
+    url: `https://${request.host}${canonicalPath}${canonicalQuery ? `?${canonicalQuery}` : ""}`,
+    headers: {
+      "x-amz-content-sha256": emptyPayload,
+      "x-amz-date": timestamp,
+      Authorization:
+        `AWS4-HMAC-SHA256 Credential=${request.accessKeyId}/${scope},` +
+        `SignedHeaders=${signedHeaders},Signature=${signature}`,
+    },
+  };
+}
+
+function canonicalQueryOf(query: Map<string, string>): string {
+  return [...query.keys()]
+    .sort()
+    .map((key) => `${uriEncode(key)}=${uriEncode(query.get(key)!)}`)
+    .join("&");
+}
+
+async function sign(
+  request: { region: string; service: string; secretAccessKey: string },
+  timestamp: string,
+  canonicalRequest: string[],
+): Promise<string> {
+  const day = timestamp.slice(0, 8);
+  const scope = `${day}/${request.region}/${request.service}/aws4_request`;
   const stringToSign = [
     "AWS4-HMAC-SHA256",
     timestamp,
     scope,
-    await sha256Hex(canonicalRequest),
+    await sha256Hex(canonicalRequest.join("\n")),
   ].join("\n");
-
   let key: ArrayBuffer = await hmac(encoder.encode(`AWS4${request.secretAccessKey}`), day);
   for (const part of [request.region, request.service, "aws4_request"]) {
     key = await hmac(key, part);
   }
-  const signature = hex(await hmac(key, stringToSign));
-
-  return `https://${request.host}${canonicalPath}?${canonicalQuery}&X-Amz-Signature=${signature}`;
+  return hex(await hmac(key, stringToSign));
 }
 
 // One object per blob, `<workspace>/<blob>.enc`, as on the local disk.
@@ -107,4 +171,9 @@ export function r2ObjectUrl(
     host: `${accountId}.r2.cloudflarestorage.com`,
     path: `/${bucket}/${workspace}/${blob}.enc`,
   };
+}
+
+// The bucket itself, for listing a workspace's objects.
+export function r2BucketUrl(accountId: string, bucket: string): { host: string; path: string } {
+  return { host: `${accountId}.r2.cloudflarestorage.com`, path: `/${bucket}` };
 }

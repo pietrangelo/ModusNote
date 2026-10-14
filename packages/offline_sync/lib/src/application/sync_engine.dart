@@ -145,6 +145,10 @@ final class SyncEngine {
     await _store.saveOutbox((await _store.loadOutbox()).enqueue(row));
   }
 
+  /// Whether edits written here still wait in the queue for the server.
+  Future<bool> hasUnsentWrites() async =>
+      (await _store.loadOutbox()).pending.isNotEmpty;
+
   /// Throws [LedgerRollbackException] when the server hides or forks the
   /// membership log, and [TamperedWorkspaceDataException] when it serves a
   /// log that fails verification; nothing past that point is applied.
