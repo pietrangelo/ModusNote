@@ -2,14 +2,21 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:blob_storage_media/blob_storage_media.dart';
+import 'package:schema_dynamic_content/schema_dynamic_content.dart';
+
+/// A workspace's shared storage as the open vault uses it: copying blobs
+/// and deleting the ones no note references.
+typedef SharedBlobs = ({BlobReplication replication, BlobPruning pruning});
 
 /// Keeps the vault's recordings and pictures in the workspace's shared
 /// storage: every blob a note references and this device holds goes up
 /// once, after the notes sync; one from another device comes down the
-/// first time it is played or shown.
+/// first time it is played or shown; one no note references any more is
+/// deleted there too.
 ///
-/// Which blobs the server already has is remembered as a device setting
-/// sealed in the vault ([load] and [save]), so the server learns nothing
+/// What this device knows about the server (which blobs it already has,
+/// which ones notes here let go of) is kept as device settings sealed in
+/// the vault ([load] and [save], by name), so the server learns nothing
 /// new and nothing is sent twice.
 final class BlobSync {
   BlobSync({
@@ -17,13 +24,40 @@ final class BlobSync {
     required this._blobs,
     required this._load,
     required this._save,
-  });
+    this._pruning,
+    bool Function()? canPrune,
+    Future<bool> Function()? unsentWrites,
+    DateTime Function()? clock,
+    this._sweepEvery = const Duration(days: 1),
+  }) : _canPrune = canPrune ?? (() => true),
+       _unsentWrites = unsentWrites ?? (() async => false),
+       _clock = clock ?? DateTime.now;
+
+  /// Blobs the server holds, uploaded or downloaded here.
+  static const sentSetting = 'sync.blobs-sent';
+
+  /// Blobs notes on this device stopped referencing, still to delete on
+  /// the server.
+  static const releasedSetting = 'sync.blobs-released';
 
   final BlobReplication _replication;
+  final BlobPruning? _pruning;
   final Iterable<KeyedBlob> Function() _blobs;
-  final Future<Uint8List?> Function() _load;
-  final Future<void> Function(Uint8List? value) _save;
-  Set<String>? _sent;
+  final Future<Uint8List?> Function(String name) _load;
+  final Future<void> Function(String name, Uint8List? value) _save;
+  final bool Function() _canPrune;
+  final Future<bool> Function() _unsentWrites;
+  final DateTime Function() _clock;
+  final Duration _sweepEvery;
+  Future<Set<String>>? _sent;
+  Future<Set<String>>? _released;
+  DateTime? _swept;
+
+  /// Runs after each sync that reached the server.
+  Future<void> afterSync() async {
+    await uploadPending();
+    await prune();
+  }
 
   /// Uploads the blobs the server does not have yet. Stops at the first
   /// failure: what went up stays recorded as sent.
@@ -34,7 +68,7 @@ final class BlobSync {
       if (sent.contains(id) || !await _replication.isLocal(blob.id)) continue;
       await _replication.upload(blob.blob);
       sent.add(id);
-      await _store(sent);
+      await _store(sentSetting, sent);
     }
   }
 
@@ -44,13 +78,75 @@ final class BlobSync {
     if (await _replication.isLocal(blob.id)) return;
     await _replication.ensureLocal(blob);
     final sent = await _sentIds();
-    if (sent.add(blob.id.value)) await _store(sent);
+    if (sent.add(blob.id.value)) await _store(sentSetting, sent);
   }
 
-  Future<Set<String>> _sentIds() async {
-    if (_sent case final sent?) return sent;
-    final stored = await _load();
-    return _sent = {
+  /// Notes here stopped referencing [ids] (deleted for good, or a
+  /// recording or picture removed): they go from the server at the next
+  /// [prune], wherever they were uploaded from.
+  Future<void> release(Iterable<BlobId> ids) async {
+    final released = await _releasedIds();
+    final before = released.length;
+    released.addAll([for (final id in ids) id.value]);
+    if (released.length != before) await _store(releasedSetting, released);
+  }
+
+  /// Deletes on the server the released blobs no note took back, and, at
+  /// most once every [_sweepEvery], every older blob no note references.
+  ///
+  /// Only from a vault that agrees with the server: with edits still
+  /// queued, the server's notes may reference what this device let go of;
+  /// with a record this app cannot read, a note of a newer app may
+  /// reference blobs this one does not see.
+  Future<void> prune() async {
+    final pruning = _pruning;
+    if (pruning == null || !_canPrune() || await _unsentWrites()) return;
+    final referenced = {for (final blob in _blobs()) blob.id};
+    final released = await _releasedIds();
+    final sent = await _sentIds();
+    if (released.isNotEmpty) {
+      final snapshot = {...released};
+      final deleted = await pruning.deleteReleased([
+        for (final id in snapshot) ?_blobId(id),
+      ], referenced: referenced);
+      // Taken back by a note, deleted, or not an id at all: done with.
+      released.removeAll(snapshot);
+      await _store(releasedSetting, released);
+      await _forget(sent, deleted);
+    }
+    final now = _clock();
+    if (_swept case final swept? when now.difference(swept) < _sweepEvery) {
+      return;
+    }
+    final deleted = await pruning.sweep(referenced: referenced, now: now);
+    _swept = now;
+    await _forget(sent, deleted);
+  }
+
+  /// A blob deleted on the server is no longer there: should a note take
+  /// it back, it goes up again.
+  Future<void> _forget(Set<String> sent, Set<BlobId> deleted) async {
+    final before = sent.length;
+    sent.removeAll([for (final id in deleted) id.value]);
+    if (sent.length != before) await _store(sentSetting, sent);
+  }
+
+  static BlobId? _blobId(String value) {
+    try {
+      return BlobId(value);
+    } on InvalidSchemaException {
+      return null;
+    }
+  }
+
+  // Futures, so calls racing on the first read share one set.
+  Future<Set<String>> _sentIds() => _sent ??= _restore(sentSetting);
+
+  Future<Set<String>> _releasedIds() => _released ??= _restore(releasedSetting);
+
+  Future<Set<String>> _restore(String name) async {
+    final stored = await _load(name);
+    return {
       if (stored != null)
         for (final line
             in utf8.decode(stored, allowMalformed: true).split('\n'))
@@ -58,6 +154,6 @@ final class BlobSync {
     };
   }
 
-  Future<void> _store(Set<String> sent) =>
-      _save(Uint8List.fromList(utf8.encode(sent.join('\n'))));
+  Future<void> _store(String name, Set<String> ids) =>
+      _save(name, Uint8List.fromList(utf8.encode(ids.join('\n'))));
 }

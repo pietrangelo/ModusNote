@@ -26,6 +26,12 @@ final class FakeCloud {
   /// Body the Edge Function answers with instead of a URL.
   String? presignBody;
 
+  /// What the Edge Function was asked, in order.
+  final calls = <Map<String, Object?>>[];
+
+  /// Answers deletions and listings: the JSON body for each call.
+  Object? Function(Map<String, Object?> call) answer = (_) => {'deleted': 1};
+
   /// Status R2 answers with instead of doing the work.
   int? r2Status;
 
@@ -38,8 +44,17 @@ final class FakeCloud {
     bodies['${request.method} ${request.url.host}'] = bytes;
     if (offline) throw http.ClientException('no network');
     if (request.url.path == '/functions/v1/blob-url') {
+      final call = (jsonDecode(utf8.decode(bytes)) as Map)
+          .cast<String, Object?>();
+      calls.add(call);
       if (presignStatus case final status?) {
         return http.StreamedResponse(Stream.value(utf8.encode('{}')), status);
+      }
+      if (call['method'] case 'DELETE' || 'LIST') {
+        return http.StreamedResponse(
+          Stream.value(utf8.encode(presignBody ?? jsonEncode(answer(call)))),
+          200,
+        );
       }
       return http.StreamedResponse(
         Stream.value(
@@ -153,6 +168,99 @@ void main() {
     await expectLater(download(), throwsA(isA<BlobNotFoundException>()));
   });
 
+  group('deleting', () {
+    test('the function deletes the blobs, at most 50 a call', () async {
+      final ids = [for (var i = 0; i < 120; i++) BlobId('b$i')];
+
+      await store().delete(ids);
+
+      expect(cloud.calls.map((call) => call['method']), everyElement('DELETE'));
+      expect(
+        cloud.calls.map((call) => call['workspace_id']),
+        everyElement(workspace),
+      );
+      expect(
+        [for (final call in cloud.calls) (call['blob_ids']! as List).length],
+        [50, 50, 20],
+      );
+      expect(
+        [for (final call in cloud.calls) ...call['blob_ids']! as List],
+        [for (final id in ids) id.value],
+      );
+      expect(
+        cloud.requests.map((request) => request.url.host),
+        everyElement('project.supabase.co'),
+      );
+      expect(cloud.requests.first.headers['Authorization'], 'Bearer $token');
+    });
+
+    test('nothing to delete sends nothing', () async {
+      await store().delete(const []);
+
+      expect(cloud.requests, isEmpty);
+    });
+
+    test('the function failing is unavailable, refusing is refused', () async {
+      cloud.presignStatus = 503;
+      await expectLater(
+        store().delete([id]),
+        throwsA(isA<RemoteBlobUnavailableException>()),
+      );
+      cloud.presignStatus = 403;
+      await expectLater(
+        store().delete([id]),
+        throwsA(isA<RemoteBlobRejectedException>()),
+      );
+    });
+  });
+
+  group('listing', () {
+    test(
+      'a page names the blobs, their upload times and the next cursor',
+      () async {
+        cloud.answer = (call) => {
+          'blobs': [
+            {
+              'id': 'take-1',
+              'size': 4136,
+              'stored_at': '2026-10-01T08:00:00.000Z',
+            },
+            {
+              'id': 'photo_2',
+              'size': 99,
+              'stored_at': '2026-10-02T09:30:00.000Z',
+            },
+          ],
+          'cursor': 'next+page/=',
+        };
+
+        final page = await store().list(after: 'this-page');
+
+        expect(cloud.calls.single, {
+          'workspace_id': workspace,
+          'method': 'LIST',
+          'cursor': 'this-page',
+        });
+        expect(page.blobs.map((blob) => blob.id), [
+          BlobId('take-1'),
+          BlobId('photo_2'),
+        ]);
+        expect(page.blobs.first.storedAt, DateTime.utc(2026, 10, 1, 8));
+        expect(page.next, 'next+page/=');
+      },
+    );
+
+    test('the first page sends no cursor, the last has none', () async {
+      cloud.answer = (_) => {'blobs': <Object>[], 'cursor': null};
+
+      final page = await store().list();
+
+      expect(cloud.calls.single.containsKey('cursor'), isFalse);
+      expect(page.blobs, isEmpty);
+      expect(page.next, isNull);
+    });
+  });
+
   group('failures', () {
     test('no network is unavailable, to be retried', () async {
       cloud.offline = true;
@@ -246,6 +354,47 @@ void main() {
 
         await expectLater(upload(), throwsA(isA<MalformedBlobException>()));
         expect(cloud.requests, hasLength(1));
+      });
+    }
+
+    test(
+      'listed entries that are not a blob id and a UTC time are dropped',
+      () async {
+        cloud.answer = (_) => {
+          'blobs': [
+            {'id': '../other', 'stored_at': '2026-10-01T08:00:00.000Z'},
+            {'id': 'no-time'},
+            {'id': 'bad-time', 'stored_at': 'yesterday'},
+            {'id': 'local-time', 'stored_at': '2026-10-01T08:00:00'},
+            {'id': 7, 'stored_at': '2026-10-01T08:00:00.000Z'},
+            'take-1',
+            {'id': 'kept', 'stored_at': '2026-10-01T08:00:00.000Z'},
+          ],
+        };
+
+        final page = await store().list();
+
+        expect(page.blobs.map((blob) => blob.id), [BlobId('kept')]);
+      },
+    );
+
+    for (final (name, body) in [
+      ('no blobs', jsonEncode({'cursor': null})),
+      ('blobs that are not a list', jsonEncode({'blobs': 'all'})),
+      (
+        'a cursor that is not text',
+        jsonEncode({'blobs': <Object>[], 'cursor': 7}),
+      ),
+      ('an empty cursor', jsonEncode({'blobs': <Object>[], 'cursor': ''})),
+      ('not JSON', '<html>'),
+    ]) {
+      test('a listing with $name is malformed', () async {
+        cloud.presignBody = body;
+
+        await expectLater(
+          store().list(),
+          throwsA(isA<MalformedBlobException>()),
+        );
       });
     }
 

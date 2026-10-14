@@ -44,7 +44,7 @@ class VaultGate extends StatefulWidget {
     this.recorderFor,
     this.playbackFor,
     this.imagesFor,
-    this.replicationFor,
+    this.sharedBlobsFor,
     this.autoLockFor,
     this.account,
     this.syncFor,
@@ -81,9 +81,9 @@ class VaultGate extends StatefulWidget {
   )?
   imagesFor;
 
-  /// Connects the open vault's recordings to the workspace's shared
-  /// storage; null without a server, which keeps them on the device.
-  final BlobReplication Function(SyncEngine engine)? replicationFor;
+  /// Connects the open vault's recordings and pictures to the workspace's
+  /// shared storage; null without a server, which keeps them on the device.
+  final SharedBlobs Function(SyncEngine engine)? sharedBlobsFor;
 
   /// Builds the auto-lock of an open vault; tests shorten its times.
   final AutoLock Function(VoidCallback onLock)? autoLockFor;
@@ -142,9 +142,6 @@ final class _Open extends _Stage {
 /// The Supabase session, sealed in the vault under the local key: it opens
 /// only the account's rows (ciphertext), but it is still a credential.
 const _sessionSetting = 'sync.session';
-
-/// The recordings already in the workspace's shared storage.
-const _sentBlobsSetting = 'sync.blobs-sent';
 
 enum _Problem {
   tooShort,
@@ -239,11 +236,11 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
     await Future<void>.delayed(Duration.zero);
     try {
       final vault = await opening();
-      final replication = widget.account == null
+      final shared = widget.account == null
           ? null
-          : widget.replicationFor?.call(vault.engine);
+          : widget.sharedBlobsFor?.call(vault.engine);
       BlobSync? blobs;
-      final ensureLocal = replication == null
+      final ensureLocal = shared == null
           ? null
           : (SealedBlob blob) => blobs!.ensureLocal(blob);
       final store = await VaultNoteStore.open(
@@ -253,8 +250,9 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
         playback: widget.playbackFor?.call(vault.engine, ensureLocal),
         images: widget.imagesFor?.call(vault.engine, ensureLocal),
       );
-      if (replication != null) {
-        blobs = _blobSync(vault, store, replication);
+      if (shared != null) {
+        blobs = _blobSync(vault, store, shared);
+        store.onRelease = blobs.release;
       }
       final sync = await _connect(vault, store, blobs);
       if (!mounted) {
@@ -371,31 +369,35 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
           engine: vault.engine,
           account: account,
           onPulled: store.reload,
-          afterSync: blobs?.uploadPending,
+          afterSync: blobs?.afterSync,
         );
     store.onWrite = sync.changed;
     return sync;
   }
 
-  /// Which blobs the server holds is a sealed setting, like the
-  /// session; a damaged one only means checking them again.
+  /// Which blobs the server holds, and which ones to delete there, are
+  /// sealed settings, like the session; a damaged one only means checking
+  /// them again, or leaving blobs for the next sweep.
   BlobSync _blobSync(
     UnlockedVault vault,
     VaultNoteStore store,
-    BlobReplication replication,
+    SharedBlobs shared,
   ) {
     final keeper = widget.keeper;
     return BlobSync(
-      replication: replication,
+      replication: shared.replication,
+      pruning: shared.pruning,
       blobs: () => store.blobs,
-      load: () async {
+      canPrune: () => store.unreadable == 0,
+      unsentWrites: vault.engine.hasUnsentWrites,
+      load: (name) async {
         try {
-          return await keeper.loadSetting(vault, _sentBlobsSetting);
+          return await keeper.loadSetting(vault, name);
         } on MalformedSyncDataException {
           return null;
         }
       },
-      save: (value) => keeper.saveSetting(vault, _sentBlobsSetting, value),
+      save: (name, value) => keeper.saveSetting(vault, name, value),
     );
   }
 

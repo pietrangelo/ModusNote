@@ -48,12 +48,15 @@ Future<Widget> buildHome() async {
       server: cloud.server,
     ),
     account: cloud.account,
-    replicationFor: cloud.remoteBlobs == null
+    sharedBlobsFor: cloud.remoteBlobs == null
         ? null
-        : (engine) => BlobReplication(
-            local: blobStore,
-            remote: cloud.remoteBlobs!(engine.ledger.workspace.id.hex),
-          ),
+        : (engine) {
+            final remote = cloud.remoteBlobs!(engine.ledger.workspace.id.hex);
+            return (
+              replication: BlobReplication(local: blobStore, remote: remote),
+              pruning: BlobPruning(remote: remote),
+            );
+          },
     passwordFrom: (bytes) => SodiumPasswordSecret.fromUtf8Bytes(sodium, bytes),
     catalog: SeedSchemas.catalog,
     recorderFor: (engine) => NoteRecorder(
