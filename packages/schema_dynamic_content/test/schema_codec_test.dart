@@ -8,7 +8,7 @@ import 'fixtures.dart';
 /// Builds a random but valid schema, so the round-trip property covers every
 /// field type and constraint combination rather than a handful of fixtures.
 SchemaDefinition randomSchema(Random random) {
-  FieldType randomType() => switch (random.nextInt(12)) {
+  FieldType randomType() => switch (random.nextInt(14)) {
     0 => TextFieldType(maxLength: 1 + random.nextInt(5000)),
     1 => const RichTextFieldType(),
     2 => const MarkdownFieldType(),
@@ -26,6 +26,8 @@ SchemaDefinition randomSchema(Random random) {
     ]),
     9 => TagListFieldType(maxTags: 1 + random.nextInt(64)),
     10 => const AudioBlobFieldType(),
+    11 => PasswordFieldType(maxLength: 1 + random.nextInt(1024)),
+    12 => const UrlFieldType(),
     _ => const BooleanFieldType(),
   };
 

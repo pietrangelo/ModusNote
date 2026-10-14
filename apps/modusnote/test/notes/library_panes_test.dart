@@ -199,6 +199,14 @@ void main() {
 
     final top = find.byKey(ValueKey('nav-category-${novels.value}'));
     final inner = find.byKey(ValueKey('nav-category-${crime.value}'));
+    // Below the note types, which fill a laptop's height.
+    final column = find
+        .descendant(
+          of: find.byKey(const ValueKey('nav-column')),
+          matching: find.byType(Scrollable),
+        )
+        .first;
+    await tester.scrollUntilVisible(inner, Spacing.xxl, scrollable: column);
     expect(top, findsOneWidget);
     expect(
       tester.getTopLeft(find.text('Gialli')).dx,
@@ -220,6 +228,13 @@ void main() {
     );
     expect(store.categoryOf(added.id), novels);
 
+    await tester.scrollUntilVisible(
+      nav('all'),
+      -Spacing.xxl,
+      scrollable: column,
+    );
+    await tester.ensureVisible(nav('all'));
+    await tester.pumpAndSettle();
     await select(tester, nav('all'));
     expect(row(song), findsOneWidget);
   });

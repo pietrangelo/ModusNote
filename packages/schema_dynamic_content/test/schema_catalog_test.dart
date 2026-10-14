@@ -44,6 +44,7 @@ void main() {
       SchemaId('book_chapter', 1),
       SchemaId('book_character', 1),
       SchemaId('book_place', 1),
+      SchemaId('credential', 1),
       SchemaId('quick_note', 1),
     ]);
   });

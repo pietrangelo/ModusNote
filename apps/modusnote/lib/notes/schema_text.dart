@@ -48,6 +48,7 @@ final class SchemaText {
     ViolationCode.tooManyItems => _l10n.violationTooManyItems,
     ViolationCode.emptyItem => _l10n.violationEmptyItem,
     ViolationCode.duplicateItem => _l10n.violationDuplicateItem,
+    ViolationCode.invalidUrl => _l10n.violationInvalidUrl,
   };
 
   static String _readable(String identifier) => identifier.replaceAll('_', ' ');
@@ -166,6 +167,14 @@ final class SchemaText {
     'schema.book_place.field.period' => _l10n.schemaBookPlaceFieldPeriod,
     'schema.book_place.field.attachments' =>
       _l10n.schemaBookPlaceFieldAttachments,
+    'schema.credential.label' => _l10n.schemaCredentialLabel,
+    'schema.credential.field.description' =>
+      _l10n.schemaCredentialFieldDescription,
+    'schema.credential.field.username' => _l10n.schemaCredentialFieldUsername,
+    'schema.credential.field.password' => _l10n.schemaCredentialFieldPassword,
+    'schema.credential.field.link' => _l10n.schemaCredentialFieldLink,
+    'schema.credential.field.password_expiry' =>
+      _l10n.schemaCredentialFieldPasswordExpiry,
     _ => null,
   };
 }
