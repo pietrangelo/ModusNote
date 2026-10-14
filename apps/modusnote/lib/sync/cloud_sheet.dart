@@ -131,6 +131,7 @@ class _CloudSheetState extends State<CloudSheet> {
       SyncState.offline => l10n.cloudStateOffline,
       SyncState.failed => switch (sync.problem) {
         SyncProblem.untrusted => l10n.cloudStateUntrusted,
+        SyncProblem.full => l10n.cloudStateFull,
         SyncProblem.refused || null => l10n.cloudStateRefused,
       },
     };

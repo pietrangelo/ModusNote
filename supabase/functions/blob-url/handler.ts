@@ -17,6 +17,10 @@ export interface HandlerConfig {
   // True when the token's account belongs to the workspace; throws when
   // the database cannot be asked.
   authorize: (token: string, workspace: string) => Promise<boolean>;
+  // Records an upload of `size` bytes against the account's quotas
+  // (reserve_blob_upload, as the caller); throws when the database cannot
+  // be asked.
+  reserve: (token: string, workspace: string, blob: string, size: number) => Promise<Reservation>;
   // How the function reaches R2 for deleting and listing; the global
   // fetch when absent.
   r2Fetch?: (
@@ -24,6 +28,8 @@ export interface HandlerConfig {
     init: { method: string; headers: Record<string, string> },
   ) => Promise<Response>;
 }
+
+export type Reservation = "ok" | "denied" | "too-large" | "over-budget";
 
 const workspacePattern = /^[0-9a-f]{32}$/;
 // The BlobId alphabet of the domain: no separators, so no path traversal.
@@ -136,7 +142,28 @@ export function makeHandler(config: HandlerConfig): (request: Request) => Promis
         // so a member cannot replace someone else's recording.
         const headers: Record<string, string> =
           action.method === "PUT" ? { "If-None-Match": "*" } : {};
-        const url = await sign(action.method, objectOf(workspace, action.blob), headers);
+        const signed = { ...headers };
+        if (action.method === "PUT") {
+          let reservation: Reservation;
+          try {
+            reservation = await config.reserve(token, workspace, action.blob, action.size);
+          } catch {
+            return refuse(request, 503, "authorization unavailable");
+          }
+          switch (reservation) {
+            case "denied":
+              return refuse(request, 403, "not a workspace account");
+            case "too-large":
+              return refuse(request, 413, "blob too large");
+            case "over-budget":
+              return refuse(request, 429, "daily upload budget spent");
+          }
+          // The size the quota counted is signed in: R2 refuses a body of
+          // any other length. Clients send Content-Length themselves (a
+          // browser may not set it), so it is not among the headers to send.
+          signed["Content-Length"] = String(action.size);
+        }
+        const url = await sign(action.method, objectOf(workspace, action.blob), signed);
         return reply(request, 200, {
           url,
           method: action.method,
@@ -190,7 +217,8 @@ export function makeHandler(config: HandlerConfig): (request: Request) => Promis
 }
 
 type Action =
-  | { method: "GET" | "PUT"; workspace: string; blob: string }
+  | { method: "GET"; workspace: string; blob: string }
+  | { method: "PUT"; workspace: string; blob: string; size: number }
   | { method: "DELETE"; workspace: string; blobs: string[] }
   | { method: "LIST"; workspace: string; cursor: string | null };
 
@@ -204,7 +232,11 @@ function parseAction(body: Record<string, unknown>): Action | null {
     case "PUT": {
       const blob = body.blob_id;
       if (typeof blob !== "string" || !blobPattern.test(blob)) return null;
-      return { method, workspace, blob };
+      if (method === "GET") return { method, workspace, blob };
+      // The database holds the actual limit; this only keeps the number exact.
+      const size = body.size;
+      if (typeof size !== "number" || !Number.isSafeInteger(size) || size < 1) return null;
+      return { method, workspace, blob, size };
     }
     case "DELETE": {
       const blobs = body.blob_ids;

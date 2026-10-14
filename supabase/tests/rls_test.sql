@@ -424,3 +424,206 @@ select pg_temp.check(
   'adversary: another account''s workspace is untouched'
 );
 commit;
+
+-- Quotas: what one account can make the server hold. Small limits here so
+-- the tests stay small; the migration sets the real ones.
+\set gus   '''00000000-0000-0000-0000-0000000000a1'''
+\set hana  '''00000000-0000-0000-0000-0000000000a2'''
+\set full_ '''d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0'''
+\set spare '''d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1'''
+
+-- Raises unless the statement is refused with the given SQLSTATE.
+create function pg_temp.refused_with(code text, statement text) returns void
+language plpgsql as $$
+begin
+  execute statement;
+  raise exception 'expected refusal %: %', code, statement;
+exception
+  when others then
+    if sqlstate <> code then raise; end if;
+end;
+$$;
+
+begin;
+insert into auth.users (id) values (:gus), (:hana);
+update public.quotas set value = 200 where name = 'account_bytes';
+update public.quotas set value = 3 where name = 'workspaces_per_account';
+update public.quotas set value = 2 where name = 'accounts_per_workspace';
+update public.quotas set value = 2 where name = 'links_per_quarter_hour';
+update public.quotas set value = 100 where name = 'blob_bytes';
+update public.quotas set value = 250 where name = 'blob_bytes_per_day';
+commit;
+
+begin;
+select pg_temp.act_as(:gus);
+insert into public.workspaces (id) values (:full_), (:spare), ('d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3');
+select pg_temp.refused_with('PT413', $q$
+  insert into public.workspaces (id) values ('d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2')
+$q$);
+select pg_temp.check(true, 'an account founds only so many workspaces');
+delete from public.workspace_accounts where workspace_id = 'd3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3';
+select pg_temp.refused_with('PT413', $q$
+  insert into public.workspaces (id) values ('d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2')
+$q$);
+select pg_temp.check(true, 'adversary: leaving a workspace does not give back its slot');
+commit;
+
+begin;
+select pg_temp.act_as(:gus);
+insert into public.sync_rows (workspace_id, record_id, epoch, ciphertext)
+values (:full_, repeat('1', 32), 0, decode(repeat('ab', 150), 'hex'));
+insert into public.membership_records (workspace_id, sequence, record)
+values (:full_, 0, decode(repeat('ab', 40), 'hex'));
+commit;
+
+begin;
+select pg_temp.act_as(:gus);
+select pg_temp.refused_with('PT413', $q$
+  insert into public.sync_rows (workspace_id, record_id, epoch, ciphertext)
+  values ('d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0', repeat('2', 32), 0, decode(repeat('ab', 61), 'hex'))
+$q$);
+select pg_temp.refused_with('PT413', $q$
+  insert into public.key_bundles (workspace_id, bundle)
+  values ('d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0', decode(repeat('ab', 61), 'hex'))
+$q$);
+select pg_temp.refused_with('PT413', $q$
+  insert into public.sync_rows (workspace_id, record_id, epoch, ciphertext)
+  values ('d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1', repeat('2', 32), 0, decode(repeat('ab', 61), 'hex'))
+$q$);
+select pg_temp.check(true, 'the workspaces an account founded cannot grow past its bytes');
+insert into public.sync_rows (workspace_id, record_id, epoch, ciphertext, supersedes)
+values (:full_, repeat('1', 32), 0, decode(repeat('ab', 155), 'hex'), 1);
+select pg_temp.check(
+  (select count(*) from public.sync_rows where workspace_id = :full_) = 1,
+  'an edit that supersedes its old revision fits in a full workspace'
+);
+commit;
+
+begin;
+select pg_temp.check(
+  (select bytes from public.workspace_usage where workspace_id = :full_) = 155 + 40,
+  'usage counts every stream, minus the rows a compaction dropped'
+);
+commit;
+
+begin;
+select pg_temp.act_as(:gus);
+insert into public.workspace_accounts (workspace_id, user_id) values (:full_, :hana);
+select pg_temp.refused_with('PT413', $q$
+  insert into public.workspace_accounts (workspace_id, user_id)
+  values ('d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0', '00000000-0000-0000-0000-0000000000a3')
+$q$);
+select pg_temp.check(true, 'a workspace admits only so many accounts');
+commit;
+
+begin;
+select pg_temp.act_as(:gus);
+insert into public.device_links (link_id, kind, payload)
+values (repeat('e', 32), 'offer', '\x01'), (repeat('e', 32), 'answer', '\x01');
+select pg_temp.refused_with('PT429', $q$
+  insert into public.device_links (link_id, kind, payload)
+  values (repeat('e', 32), 'offer', '\x01')
+$q$);
+select pg_temp.check(true, 'an account posts only so many link rows at a time');
+commit;
+
+begin;
+update public.device_links set created_at = now() - interval '16 minutes'
+where user_id = :gus::uuid;
+commit;
+
+begin;
+select pg_temp.act_as(:gus);
+insert into public.device_links (link_id, kind, payload)
+values (repeat('e', 32), 'offer', '\x01');
+commit;
+
+begin;
+select pg_temp.check(
+  (select count(*) from public.device_links where user_id = :gus::uuid) = 1,
+  'expired link rows are dropped and free their slots'
+);
+commit;
+
+-- Uploads to R2: the blob-url function reserves before it signs.
+begin;
+select pg_temp.act_as(:gus);
+select pg_temp.check(
+  public.reserve_blob_upload(:full_, 'blob-a', 100),
+  'a member reserves an upload'
+);
+select pg_temp.check(
+  public.reserve_blob_upload(:full_, 'blob-a', 100),
+  'an upload retried counts once'
+);
+select pg_temp.refused_with('PT413', $q$
+  select public.reserve_blob_upload('d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0', 'blob-b', 101)
+$q$);
+select pg_temp.refused_with('PT413', $q$
+  select public.reserve_blob_upload('d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0', 'blob-b', 0)
+$q$);
+select pg_temp.check(true, 'a blob is refused over the size limit or empty');
+select public.reserve_blob_upload(:full_, 'blob-b', 100);
+select pg_temp.refused_with('PT429', $q$
+  select public.reserve_blob_upload('d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0', 'blob-c', 51)
+$q$);
+select pg_temp.check(true, 'the uploads of a day stay within the budget');
+select pg_temp.refused_with('22023', $q$
+  select public.reserve_blob_upload('d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0', '../x', 1)
+$q$);
+select pg_temp.check(true, 'adversary: a blob id outside the alphabet is refused');
+commit;
+
+begin;
+select pg_temp.act_as(:hana);
+select pg_temp.check(
+  public.reserve_blob_upload(:full_, 'blob-c', 100),
+  'the budget is per account, not per workspace'
+);
+commit;
+
+begin;
+select pg_temp.act_as(:mallory);
+select pg_temp.refused($q$
+  select public.reserve_blob_upload('d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0', 'blob-d', 1)
+$q$);
+select pg_temp.check(true, 'adversary: a non-member reserves nothing');
+commit;
+
+begin;
+update public.blob_uploads set created_at = now() - interval '25 hours'
+where user_id = :gus::uuid;
+commit;
+
+begin;
+select pg_temp.act_as(:gus);
+select pg_temp.check(
+  public.reserve_blob_upload(:full_, 'blob-e', 100),
+  'the budget renews after a day'
+);
+select pg_temp.refused($q$ select * from public.blob_uploads $q$);
+select pg_temp.refused($q$ select * from public.workspace_usage $q$);
+select pg_temp.refused($q$ update public.quotas set value = 1 $q$);
+select pg_temp.refused($q$ select public.quota('blob_bytes') $q$);
+select pg_temp.check(true, 'adversary: clients neither read nor change quotas and usage');
+commit;
+
+begin;
+set local role anon;
+select pg_temp.refused($q$
+  select public.reserve_blob_upload('d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0', 'blob-f', 1)
+$q$);
+select pg_temp.check(true, 'the anonymous role reserves nothing');
+commit;
+
+begin;
+select pg_temp.act_as(:gus);
+select public.delete_account();
+commit;
+
+begin;
+select pg_temp.check(
+  not exists (select 1 from public.blob_uploads where user_id = :gus::uuid),
+  'a deleted account leaves no upload records'
+);
+commit;
