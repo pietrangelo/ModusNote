@@ -1,10 +1,20 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <!-- Recording audio notes; audio is encrypted in memory before storage. -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- Sync with Supabase and the recordings on R2. Flutter declares it
+         only for debug and profile builds: without it here, the build sent
+         to Google Play could not sync. -->
+    <uses-permission android:name="android.permission.INTERNET" />
     <application
         android:label="Modus Notes"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules">
+        <!-- No Google Drive backup nor device-to-device transfer: the vault
+             holds this device's own identity, and a copy restored on another
+             phone would sign as this one. The encrypted backup is the app's
+             own (.mnbackup); notes move between devices by linking them. -->
         <activity
             android:name=".MainActivity"
             android:exported="true"

@@ -97,6 +97,20 @@ jobs:
         working-directory: apps/modusnote
         run: flutter test
 
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Android App Bundle
+        # The same release build Google Play gets, signed with the debug key
+        # (the upload key lives only in release-android.yml): native
+        # libraries 16 KB aligned, network and backup rules in the manifest.
+        working-directory: apps/modusnote
+        run: |
+          flutter build appbundle --release
+          tool/check_android_bundle.sh build/app/outputs/bundle/release/app-release.aab
+
       - name: Web build
         working-directory: apps/modusnote
         run: |
