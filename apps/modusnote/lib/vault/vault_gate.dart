@@ -143,6 +143,9 @@ final class _Open extends _Stage {
 /// only the account's rows (ciphertext), but it is still a credential.
 const _sessionSetting = 'sync.session';
 
+/// Present once the vault's account was deleted (see SyncController.retired).
+const _retiredSetting = 'sync.retired';
+
 enum _Problem {
   tooShort,
   mismatch,
@@ -370,6 +373,12 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
           account: account,
           onPulled: store.reload,
           afterSync: blobs?.afterSync,
+          retired: await _isRetired(vault),
+          retire: () => keeper.saveSetting(
+            vault,
+            _retiredSetting,
+            Uint8List.fromList(const [1]),
+          ),
         );
     store.onWrite = sync.changed;
     return sync;
@@ -409,6 +418,16 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
       return stored == null ? null : SupabaseSession.fromBytes(stored);
     } on MalformedSyncDataException {
       return null;
+    }
+  }
+
+  /// A damaged mark still counts: syncing a retired vault again would push
+  /// to a workspace the server no longer has.
+  Future<bool> _isRetired(UnlockedVault vault) async {
+    try {
+      return await widget.keeper.loadSetting(vault, _retiredSetting) != null;
+    } on MalformedSyncDataException {
+      return true;
     }
   }
 

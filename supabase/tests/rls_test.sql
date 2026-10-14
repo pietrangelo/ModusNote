@@ -253,3 +253,104 @@ set local role anon;
 select pg_temp.refused($q$ select * from public.device_links $q$);
 select pg_temp.check(true, 'the anonymous role cannot reach device links');
 commit;
+
+-- Deleting an account: everything of the caller goes, and nothing of a
+-- workspace another account still belongs to.
+\set carol '''00000000-0000-0000-0000-00000000000c'''
+\set dave  '''00000000-0000-0000-0000-00000000000d'''
+\set solo  '''0123456789abcdef0123456789abcdef'''
+\set shared '''fedcba9876543210fedcba9876543210'''
+
+begin;
+insert into auth.users (id) values (:carol), (:dave);
+select pg_temp.act_as(:carol);
+insert into public.workspaces (id) values (:solo), (:shared);
+insert into public.sync_rows (workspace_id, record_id, epoch, ciphertext)
+values (:solo, repeat('3', 32), 0, decode(repeat('ab', 41), 'hex')),
+       (:shared, repeat('4', 32), 0, decode(repeat('ab', 41), 'hex'));
+insert into public.membership_records (workspace_id, sequence, record)
+values (:solo, 0, '\x01'), (:shared, 0, '\x01');
+insert into public.key_bundles (workspace_id, bundle) values (:solo, '\x01');
+insert into public.workspace_accounts (workspace_id, user_id) values (:shared, :dave);
+insert into public.device_links (link_id, kind, payload)
+values (repeat('c', 32), 'offer', '\x01');
+select pg_temp.check(
+  (select array_agg(w) from public.sole_workspaces() w) = array[:solo],
+  'sole_workspaces names only the workspaces nobody else belongs to'
+);
+commit;
+
+begin;
+select pg_temp.act_as(:dave);
+select pg_temp.check(
+  (select count(*) from public.sole_workspaces()) = 0,
+  'a co-member alone in nothing has no sole workspaces'
+);
+commit;
+
+begin;
+select pg_temp.act_as(:carol);
+select pg_temp.check(
+  (select array_agg(w) from public.delete_account() w) = array[:solo],
+  'delete_account returns the workspaces it deleted'
+);
+commit;
+
+begin;
+select pg_temp.check(
+  not exists (select 1 from auth.users where id = :carol::uuid),
+  'the account is gone'
+);
+select pg_temp.check(
+  exists (select 1 from auth.users where id = :dave::uuid),
+  'other accounts stay'
+);
+select pg_temp.check(
+  not exists (select 1 from public.workspaces where id = :solo)
+  and not exists (select 1 from public.sync_rows where workspace_id = :solo)
+  and not exists (select 1 from public.membership_records where workspace_id = :solo)
+  and not exists (select 1 from public.key_bundles where workspace_id = :solo),
+  'a workspace of that account alone goes with all its rows'
+);
+select pg_temp.check(
+  (select count(*) from public.sync_rows where workspace_id = :shared) = 1
+  and (select count(*) from public.membership_records where workspace_id = :shared) = 1,
+  'adversary: a workspace another account belongs to keeps its rows'
+);
+select pg_temp.check(
+  not exists (select 1 from public.workspace_accounts where user_id = :carol::uuid),
+  'the account leaves every workspace'
+);
+select pg_temp.check(
+  not exists (select 1 from public.device_links where user_id = :carol::uuid),
+  'its link rows go too'
+);
+commit;
+
+begin;
+select pg_temp.act_as(:dave);
+select pg_temp.check(
+  (select count(*) from public.sync_rows where workspace_id = :shared) = 1,
+  'the remaining account still reads its workspace'
+);
+commit;
+
+begin;
+select pg_temp.act_as(null);
+do $$
+begin
+  perform public.delete_account();
+  raise exception 'expected refusal';
+exception
+  when insufficient_privilege then null;
+end;
+$$;
+select pg_temp.check(true, 'adversary: no account, nothing to delete');
+commit;
+
+begin;
+set local role anon;
+select pg_temp.refused($q$ select public.delete_account() $q$);
+select pg_temp.refused($q$ select public.sole_workspaces() $q$);
+select pg_temp.check(true, 'the anonymous role cannot delete accounts');
+commit;

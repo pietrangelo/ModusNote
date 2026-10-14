@@ -333,6 +333,55 @@ void main() {
       expect(requests.last.url.path, '/auth/v1/logout');
     });
 
+    test('deleting the account asks the server, then forgets it', () async {
+      final signedIn = account();
+      await signedIn.signIn('someone@example.com', '123456');
+      respond = (_) => http.Response('{"deleted":true}', 200);
+
+      await signedIn.deleteAccount();
+
+      final request = requests.last;
+      expect(request.method, 'POST');
+      expect(request.url.toString(), '$project/functions/v1/delete-account');
+      expect(request.headers['Authorization'], 'Bearer access-1');
+      expect(request.headers['apikey'], 'public-anon-key');
+      expect(jsonDecode(request.body), {'confirm': 'delete-account'});
+      expect(signedIn.signedIn, isFalse);
+      expect(persisted.last, isNull);
+    });
+
+    test('a deletion that fails keeps the account signed in', () async {
+      final signedIn = account();
+      await signedIn.signIn('someone@example.com', '123456');
+
+      respond = (_) => http.Response('{"error":"storage unavailable"}', 503);
+      await expectLater(
+        signedIn.deleteAccount(),
+        throwsA(isA<ServerUnavailableException>()),
+      );
+      respond = (_) => http.Response('{"error":"session refused"}', 401);
+      await expectLater(
+        signedIn.deleteAccount(),
+        throwsA(
+          isA<SupabaseAuthRejectedException>().having(
+            (e) => e.status,
+            'status',
+            401,
+          ),
+        ),
+      );
+      expect(signedIn.signedIn, isTrue);
+      expect(persisted.last, isNotNull);
+    });
+
+    test('without a session there is nothing to delete', () async {
+      await expectLater(
+        account().deleteAccount(),
+        throwsA(isA<ServerUnavailableException>()),
+      );
+      expect(requests, isEmpty);
+    });
+
     test('detaching on lock drops the session from memory', () async {
       final signedIn = account();
       await signedIn.signIn('a@b.it', '123456');
