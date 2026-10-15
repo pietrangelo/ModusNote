@@ -41,6 +41,15 @@ VaultKeeper vaultKeeper({
     final DeviceLinkChannel links => links,
     _ => null,
   },
+  // And invites another account, keeping its list of accounts in step.
+  invites: switch (server) {
+    final InviteChannel invites => invites,
+    _ => null,
+  },
+  accounts: switch (server) {
+    final MemberAccounts accounts => accounts,
+    _ => null,
+  },
 );
 
 /// The server the vault syncs with and the account that opens it.

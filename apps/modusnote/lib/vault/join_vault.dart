@@ -21,6 +21,7 @@ class JoinVaultScreen extends StatefulWidget {
   const JoinVaultScreen({
     required this.account,
     required this.join,
+    this.accept,
     required this.onJoined,
     required this.onBack,
     this.pollEvery = const Duration(seconds: 2),
@@ -33,6 +34,10 @@ class JoinVaultScreen extends StatefulWidget {
   /// Posts this device's answer; see [VaultKeeper.join]. The passphrase
   /// arrives as UTF-8, to be moved into native memory at once.
   final Future<LinkRequest> Function(LinkCode code, Uint8List passphrase) join;
+
+  /// Posts this device's answer to another person's invitation; see
+  /// [VaultKeeper.acceptInvite]. Null where invitations are not offered.
+  final Future<LinkRequest> Function(InviteCode code, Uint8List secret)? accept;
 
   /// The vault was created; the gate takes it from here.
   final Future<void> Function(UnlockedVault vault) onJoined;
@@ -75,7 +80,12 @@ class _JoinVaultScreenState extends State<JoinVaultScreen> {
   }
 
   Future<void> _submit() async {
-    final code = LinkCode.tryParse(_code.text);
+    // A link code (another device of this account) or an invitation (from
+    // another person): their lengths tell them apart.
+    final Object? code = switch (widget.accept) {
+      null => LinkCode.tryParse(_code.text),
+      _ => LinkCode.tryParse(_code.text) ?? InviteCode.tryParse(_code.text),
+    };
     final mismatch = _passphrase.text != _confirmation.text;
     // As on the create form: the Strings are dropped at once.
     final bytes = Uint8List.fromList(utf8.encode(_passphrase.text));
@@ -97,7 +107,10 @@ class _JoinVaultScreenState extends State<JoinVaultScreen> {
     // Let the progress indicator paint before Argon2id holds the isolate.
     await Future<void>.delayed(Duration.zero);
     try {
-      final request = await widget.join(code!, bytes);
+      final request = switch (code) {
+        final InviteCode invite => await widget.accept!(invite, bytes),
+        _ => await widget.join(code! as LinkCode, bytes),
+      };
       if (!mounted) return request.cancel();
       _code.clear();
       setState(() => _request = request);

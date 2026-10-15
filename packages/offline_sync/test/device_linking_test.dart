@@ -23,9 +23,23 @@ Uint8List bytes(String text) => Uint8List.fromList(utf8.encode(text));
 
 /// One device: its own disk, the account's server and link channel.
 final class Device {
-  Device(this.server, this.links, this.clock, {this.prf});
+  Device(
+    this.server,
+    this.links,
+    this.clock, {
+    this.prf,
+    this.invites,
+    AccountId? account,
+  }) : account = account ?? phoneAccount;
+
+  /// The account of the person every device here belongs to, unless told.
+  static final phoneAccount = AccountId.parse(
+    '00000000-0000-4000-8000-00000000000a',
+  );
 
   final PasskeyPrf? prf;
+  final FakeInviteChannel? invites;
+  final AccountId account;
   final FakeSyncServer server;
   final FakeLinkChannel links;
   final FakeClock clock;
@@ -46,6 +60,8 @@ final class Device {
     kdf: KdfParameters.interactive,
     links: links,
     passkeys: prf,
+    invites: invites,
+    accounts: FakeMemberAccounts(account),
   );
 }
 
@@ -71,6 +87,7 @@ void main() {
   });
 
   setUp(() async {
+    FakeMemberAccounts.reset();
     server = FakeSyncServer();
     links = FakeLinkChannel();
     clock = FakeClock(DateTime.utc(2026, 10, 13, 12));
@@ -425,6 +442,244 @@ void main() {
         throwsA(isA<RemovedFromWorkspaceException>()),
       );
       expect(joined.engine.removed, isFalse);
+    });
+  });
+
+  group('invites', () {
+    final inviteCode = InviteCode.tryParse('K7MQ4X-T9ABC-D2EFG')!;
+    final friendAccount = AccountId.parse(
+      '00000000-0000-4000-8000-0000000000b0',
+    );
+    late FakeInviteChannel invites;
+    late Device owner;
+    late Device friend;
+    late UnlockedVault ownerVault;
+
+    setUp(() async {
+      invites = FakeInviteChannel();
+      owner = Device(server, links, clock, invites: invites);
+      // The founder's vault, reopened with an invite channel.
+      founder.lock();
+      owner.vaults
+        ..header = phone.vaults.header
+        ..membership.addAll(phone.vaults.membership)
+        ..bundles.addAll(phone.vaults.bundles)
+        ..settings.addAll(phone.vaults.settings);
+      owner.records.addAll(phone.records);
+      ownerVault = await owner.keeper.unlock(password('frase del telefono'));
+      addTearDown(ownerVault.lock);
+      // Registering the workspace let the founder's account in.
+      FakeMemberAccounts.accounts[owner.account] = true;
+      friend = Device(
+        server,
+        FakeLinkChannel(),
+        clock,
+        invites: invites,
+        account: friendAccount,
+      );
+    });
+
+    Future<InviteOffering> invite({Role role = Role.editor}) =>
+        owner.keeper.offerInvite(
+          ownerVault,
+          secret(inviteCode.toBytes()),
+          lookup: inviteCode.lookup,
+          role: role,
+        );
+
+    Future<LinkRequest> accept({InviteCode? typed}) {
+      final code = typed ?? inviteCode;
+      return friend.keeper.acceptInvite(
+        code: secret(code.toBytes()),
+        lookup: code.lookup,
+        account: friendAccount,
+        passphrase: password('frase di Bea'),
+      );
+    }
+
+    Future<UnlockedVault> joined({Role role = Role.editor}) async {
+      final offering = await invite(role: role);
+      final request = await accept();
+      expect(await offering.poll(), isNotNull);
+      final vault = await request.poll();
+      addTearDown(() => vault?.lock());
+      return vault!;
+    }
+
+    test('an invited person joins with the code and reads the notes', () async {
+      final bea = await joined();
+      await bea.engine.sync();
+
+      expect(bea.workspace, ownerVault.workspace);
+      expect(await read(bea, note), 'dal telefono');
+      expect(invites.closed, [inviteCode.lookup]);
+    });
+
+    test(
+      'the person gets the role chosen, and the account is let in',
+      () async {
+        final bea = await joined();
+
+        final member = ownerVault.engine.ledger.workspace.member(bea.member);
+        expect(member?.role, Role.editor);
+        expect(FakeMemberAccounts.accounts[friendAccount], isFalse);
+        expect(FakeMemberAccounts.members[bea.member], friendAccount);
+      },
+    );
+
+    test('an editor writes and the owner reads it', () async {
+      final bea = await joined();
+      await bea.engine.write(other, RevisionContents(bytes('da Bea')));
+      await bea.engine.sync();
+
+      await ownerVault.engine.sync();
+
+      expect(await read(ownerVault, other), 'da Bea');
+    });
+
+    test('a reader reads but cannot write', () async {
+      final bea = await joined(role: Role.viewer);
+      await bea.engine.sync();
+
+      expect(await read(bea, note), 'dal telefono');
+      await expectLater(
+        bea.engine.write(other, RevisionContents(bytes('da Bea'))),
+        throwsA(isA<NotAuthorizedException>()),
+      );
+    });
+
+    test('an invited owner may manage the workspace', () async {
+      await joined(role: Role.owner);
+
+      expect(FakeMemberAccounts.accounts[friendAccount], isTrue);
+    });
+
+    test('removing the person also shuts their account out', () async {
+      final bea = await joined();
+
+      await ownerVault.engine.revoke(bea.member);
+
+      expect(FakeMemberAccounts.accounts.containsKey(friendAccount), isFalse);
+      expect(FakeMemberAccounts.accounts.containsKey(owner.account), isTrue);
+    });
+
+    test('an account shut out offline is shut out by the next sync', () async {
+      final bea = await joined();
+      final accounts = FakeMemberAccounts(owner.account)..online = false;
+      final offline = VaultKeeper(
+        vaults: owner.vaults,
+        records: (workspace) =>
+            owner.records.putIfAbsent(workspace, FakeLocalStore.new),
+        server: server,
+        identities: SodiumIdentityService(sodium),
+        keys: SodiumKeyDerivationService(sodium),
+        subkeys: SodiumSubkeyDerivationService(sodium),
+        envelopes: SodiumEnvelopeEncryptor(sodium),
+        encapsulation: SodiumKeyEncapsulation(sodium),
+        clock: clock,
+        random: Random.secure(),
+        kdf: KdfParameters.interactive,
+        accounts: accounts,
+      );
+      ownerVault.lock();
+      final reopened = await offline.unlock(password('frase del telefono'));
+      addTearDown(reopened.lock);
+
+      await expectLater(
+        reopened.engine.revoke(bea.member),
+        throwsA(isA<ServerUnavailableException>()),
+      );
+      expect(FakeMemberAccounts.accounts.containsKey(friendAccount), isTrue);
+      accounts.online = true;
+      await reopened.engine.sync();
+
+      expect(FakeMemberAccounts.accounts.containsKey(friendAccount), isFalse);
+    });
+
+    test('removing one of one\'s own devices keeps one\'s account', () async {
+      final laptop = Device(server, links, clock);
+      final offering = await owner.keeper.offerLink(
+        ownerVault,
+        secret(code.toBytes()),
+      );
+      final request = await join(laptop);
+      expect(await offering.poll(), isNotNull);
+      final linked = (await request.poll())!;
+      addTearDown(linked.lock);
+
+      await ownerVault.engine.revoke(linked.member);
+
+      expect(FakeMemberAccounts.accounts.containsKey(owner.account), isTrue);
+    });
+
+    group('adversary', () {
+      test('a wrong code opens nothing and posts nothing', () async {
+        final offering = await invite();
+        addTearDown(offering.cancel);
+        final wrong = InviteCode.tryParse('K7MQ4X-T9ABC-D2EFH')!;
+
+        await expectLater(
+          accept(typed: wrong),
+          throwsA(isA<LinkCodeRejectedException>()),
+        );
+        expect(invites.posted, isEmpty);
+        expect(friend.vaults.header, isNull);
+      });
+
+      test('an answer sealed without the code admits no one', () async {
+        final offering = await invite();
+        addTearDown(offering.cancel);
+        final intruder = SodiumIdentityService(sodium).generateIdentity();
+        addTearDown(intruder.dispose);
+        final envelopes = SodiumEnvelopeEncryptor(sodium);
+        final guess = envelopes.generateKey();
+        addTearDown(guess.dispose);
+        invites.posted.add(
+          InviteAnswer(
+            lookup: inviteCode.lookup,
+            sealedJoiner: envelopes.seal(
+              InviteAnswer.joiner(intruder.publicIdentity, friendAccount),
+              key: guess,
+              associatedData: InviteAnswer.associatedData(inviteCode.lookup),
+            ),
+          ),
+        );
+
+        expect(await offering.poll(), isNull);
+        expect(FakeMemberAccounts.accounts.containsKey(friendAccount), isFalse);
+        expect(server.membershipLog, hasLength(1));
+      });
+
+      test(
+        'the server learns the lookup, never the rest of the code',
+        () async {
+          final offering = await invite();
+          addTearDown(offering.cancel);
+          await accept().then((request) => addTearDown(request.cancel));
+
+          final secretPart = String.fromCharCodes(
+            inviteCode.toBytes().sublist(InviteCode.lookupLength),
+          );
+          for (final wire in [
+            ...invites.offers.map((offer) => offer.toBytes()),
+            ...invites.posted.map((answer) => answer.toBytes()),
+          ]) {
+            expect(String.fromCharCodes(wire), isNot(contains(secretPart)));
+          }
+        },
+      );
+
+      test('an expired invitation admits no one', () async {
+        final offering = await invite();
+        await accept().then((request) => addTearDown(request.cancel));
+        clock.advance(VaultKeeper.linkLifetime);
+
+        await expectLater(
+          offering.poll(),
+          throwsA(isA<LinkExpiredException>()),
+        );
+        expect(server.membershipLog, hasLength(1));
+      });
     });
   });
 

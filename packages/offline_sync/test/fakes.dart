@@ -201,6 +201,93 @@ final class FakeLinkChannel implements DeviceLinkChannel {
   }
 }
 
+/// Where an owner and another person's device meet: it relays offers by
+/// lookup and answers to whoever asks.
+final class FakeInviteChannel implements InviteChannel {
+  var online = true;
+  final offers = <InviteOffer>[];
+  final posted = <InviteAnswer>[];
+  final closed = <String>[];
+
+  void _check() {
+    if (!online) throw const ServerUnavailableException();
+  }
+
+  @override
+  Future<void> postInvite(InviteOffer offer) async {
+    _check();
+    offers.add(offer);
+  }
+
+  @override
+  Future<InviteOffer?> invite(String lookup) async {
+    _check();
+    return offers.where((offer) => offer.lookup == lookup).lastOrNull;
+  }
+
+  @override
+  Future<void> postInviteAnswer(InviteAnswer answer) async {
+    _check();
+    posted.add(answer);
+  }
+
+  @override
+  Future<List<InviteAnswer>> inviteAnswers(String lookup) async {
+    _check();
+    return [...posted.where((answer) => answer.lookup == lookup)];
+  }
+
+  @override
+  Future<void> closeInvite(String lookup) async {
+    _check();
+    closed.add(lookup);
+  }
+}
+
+/// The server's list of accounts and of which account each member uses,
+/// with the rule `remove_member` follows: an account goes when no member
+/// uses it any more, unless it is the caller's own.
+final class FakeMemberAccounts implements MemberAccounts {
+  FakeMemberAccounts(this.caller);
+
+  /// The account this device signs in with.
+  final AccountId caller;
+  var online = true;
+
+  /// Shared by every device of a test.
+  static final accounts = <AccountId, bool>{};
+  static final members = <MemberId, AccountId>{};
+
+  static void reset() {
+    accounts.clear();
+    members.clear();
+  }
+
+  @override
+  Future<void> admitMember(
+    WorkspaceId workspace,
+    MemberId member, {
+    AccountId? account,
+    bool manages = false,
+  }) async {
+    if (!online) throw const ServerUnavailableException();
+    final target = account ?? caller;
+    accounts[target] = (accounts[target] ?? false) || manages;
+    members.putIfAbsent(member, () => target);
+  }
+
+  @override
+  Future<void> removeMember(WorkspaceId workspace, MemberId member) async {
+    if (!online) throw const ServerUnavailableException();
+    final account = members.remove(member);
+    if (account != null &&
+        account != caller &&
+        !members.containsValue(account)) {
+      accounts.remove(account);
+    }
+  }
+}
+
 /// The local database: it is handed only sealed records and rows.
 final class FakeLocalStore implements LocalRecordStore {
   final records = <RecordId, EncryptedEnvelope>{};

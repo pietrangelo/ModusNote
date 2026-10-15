@@ -202,7 +202,9 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(
-        find.text('Il codice è formato da 10 lettere e cifre.'),
+        find.text(
+          'Il codice è formato da 10 lettere e cifre, o 16 se è un invito.',
+        ),
         findsOneWidget,
       );
     });
