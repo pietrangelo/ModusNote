@@ -90,3 +90,14 @@ CloudWiring cloudWiring(SyncConfig? config) {
     ),
   );
 }
+
+/// The device's list of vaults, beside their databases.
+const shelfDatabaseName = 'vaults.sqlite';
+
+/// Where a vault of the shelf keeps its database and its blobs: the first
+/// vault under the names the app always used, so a device that had one
+/// vault opens it unchanged, the others under their own id.
+({String database, String blobs}) vaultStorageNames(ShelfId id) =>
+    id == ShelfId.first
+    ? (database: 'vault.sqlite', blobs: 'blobs')
+    : (database: 'vault-$id.sqlite', blobs: 'blobs-$id');
