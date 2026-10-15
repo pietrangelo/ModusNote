@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:blob_storage_media/blob_storage_media.dart';
 import 'package:blob_storage_media_adapters/blob_storage_media_adapters.dart';
 import 'package:blob_storage_media_recorder_adapters/blob_storage_media_recorder_adapters.dart';
@@ -6,6 +8,8 @@ import 'package:file/local.dart';
 import 'package:flutter/widgets.dart';
 import 'package:identity_cryptography/identity_cryptography.dart';
 import 'package:identity_cryptography_adapters/identity_cryptography_adapters.dart';
+import 'package:offline_sync/offline_sync.dart';
+import 'package:offline_sync_adapters/offline_sync_adapters.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:schema_dynamic_content/schema_dynamic_content.dart';
 import 'package:sodium/sodium_sumo.dart';
@@ -17,38 +21,85 @@ import '../audio/note_recorder.dart';
 import '../sync/sync_config.dart';
 import '../audio/soloud_player.dart';
 import '../vault/vault_gate.dart';
+import '../vault/vault_shelf_gate.dart';
 import 'gallery_image_chooser.dart';
 import 'local_reminder_scheduler.dart';
 import 'vault_wiring.dart';
 
 /// libsodium is built by the `sodium` package's build hook and loaded once
-/// here; the vault lives in one SQLite file in the app's private support
-/// directory, which holds only envelopes and the sealed vault header, and
-/// recordings and pictures are `.enc` blobs beside it.
+/// here. Every vault of the device ([VaultShelf]) lives in its own SQLite
+/// file in the app's private support directory, which holds only envelopes
+/// and the sealed vault header, and its recordings and pictures are `.enc`
+/// blobs in a folder of its own beside it.
 Future<Widget> buildHome() async {
   final sodium = await SodiumSumoInit.init();
-  final directory = await getApplicationSupportDirectory();
-  final database = sqlite3.open('${directory.path}/vault.sqlite');
-  final blobStore = FileSystemCiphertextBlobStore(
-    const LocalFileSystem().directory('${directory.path}/blobs'),
+  final directory = (await getApplicationSupportDirectory()).path;
+  final player = SoloudRecordingPlayer();
+  final cloud = cloudWiring(SyncConfig.fromEnvironment());
+  return VaultShelfGate(
+    store: SqliteShelfStore(sqlite3.open('$directory/$shelfDatabaseName')),
+    open: (entry) async {
+      final names = vaultStorageNames(entry.id);
+      final path = '$directory/${names.database}';
+      final database = sqlite3.open(path);
+      final blobFolder = const LocalFileSystem().directory(
+        '$directory/${names.blobs}',
+      );
+      final blobStore = FileSystemCiphertextBlobStore(blobFolder);
+      // Takes interrupted by a crash or a kill are partial ciphertext: drop
+      // them.
+      await blobStore.discardIncomplete();
+      final keeper = vaultKeeper(
+        sodium: sodium,
+        database: database,
+        kdf: KdfParameters.moderate,
+        server: cloud.server,
+      );
+      return ShelfVault(
+        build: (switcher) => _gate(
+          sodium: sodium,
+          keeper: keeper,
+          blobStore: blobStore,
+          player: player,
+          cloud: cloud,
+          scope: entry.scope,
+          switcher: switcher,
+        ),
+        isEmpty: () async => !await keeper.exists,
+        close: () async => database.close(),
+        erase: () async {
+          database.close();
+          for (final suffix in const ['', '-wal', '-shm', '-journal']) {
+            final file = File('$path$suffix');
+            if (await file.exists()) await file.delete();
+          }
+          if (await blobFolder.exists()) {
+            await blobFolder.delete(recursive: true);
+          }
+        },
+      );
+    },
   );
-  // Takes interrupted by a crash or a kill are partial ciphertext: drop them.
-  await blobStore.discardIncomplete();
+}
+
+VaultGate _gate({
+  required SodiumSumo sodium,
+  required VaultKeeper keeper,
+  required CiphertextBlobStore blobStore,
+  required SoloudRecordingPlayer player,
+  required CloudWiring cloud,
+  required int scope,
+  required ShelfSwitcher switcher,
+}) {
   final blobs = EncryptedBlobStorage(
     store: blobStore,
     encryptor: SodiumEnvelopeEncryptor(sodium),
     subkeys: SodiumSubkeyDerivationService(sodium),
   );
-  final player = SoloudRecordingPlayer();
-  final cloud = cloudWiring(SyncConfig.fromEnvironment());
   return VaultGate(
-    keeper: vaultKeeper(
-      sodium: sodium,
-      database: database,
-      kdf: KdfParameters.moderate,
-      server: cloud.server,
-    ),
+    keeper: keeper,
     account: cloud.account,
+    switcher: switcher,
     sharedBlobsFor: cloud.remoteBlobs == null
         ? null
         : (engine) {
@@ -63,6 +114,7 @@ Future<Widget> buildHome() async {
     remindersFor: (l10n) => LocalReminderScheduler(
       channel: l10n.reminderChannel,
       description: l10n.reminderChannelDescription,
+      scope: scope,
     ),
     recorderFor: (engine) => NoteRecorder(
       capture: createPlatformAudioCapture,

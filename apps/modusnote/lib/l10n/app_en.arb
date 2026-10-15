@@ -1885,5 +1885,67 @@
   "reminderChannelDescription": "Reminders a week before, the day before and the day a password expires.",
   "@reminderChannelDescription": {
     "description": "Description of the Android notification channel."
+  },
+  "shelfDefaultName": "My vault",
+  "@shelfDefaultName": {
+    "description": "Name shown for the device's first vault until the person names it."
+  },
+  "shelfSwitch": "Vault: {name}. Switch vault",
+  "@shelfSwitch": {
+    "description": "Lock screen: screen-reader label of the button that opens the vault picker.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "shelfTitle": "Vaults on this device",
+  "@shelfTitle": {
+    "description": "Vault picker: title."
+  },
+  "shelfBody": "Each vault has its own notes, passphrase and members. Their names stay on this device and are not encrypted.",
+  "@shelfBody": {
+    "description": "Vault picker: explanation under the title."
+  },
+  "shelfRename": "Rename",
+  "@shelfRename": {
+    "description": "Vault picker: renames a vault."
+  },
+  "shelfAdd": "New vault",
+  "@shelfAdd": {
+    "description": "Vault picker: adds a vault to this device."
+  },
+  "shelfAddBody": "Then create it with a new passphrase, or link it to a vault someone shared with you.",
+  "@shelfAddBody": {
+    "description": "New vault dialog: what happens next."
+  },
+  "shelfFull": "This device already holds {count} vaults.",
+  "@shelfFull": {
+    "description": "Vault picker: why no vault can be added.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "shelfRemove": "Remove this empty vault",
+  "@shelfRemove": {
+    "description": "Vault picker: removes the current vault, which holds nothing yet."
+  },
+  "shelfName": "Name",
+  "@shelfName": {
+    "description": "New vault dialog: name field."
+  },
+  "shelfNameInvalid": "Write a name of one line, at most 40 characters.",
+  "@shelfNameInvalid": {
+    "description": "New vault dialog: the name is not acceptable."
+  },
+  "shelfCreate": "Add",
+  "@shelfCreate": {
+    "description": "New vault dialog: confirms."
+  },
+  "shelfSave": "Save",
+  "@shelfSave": {
+    "description": "Rename vault dialog: confirms."
   }
 }
