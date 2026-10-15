@@ -175,6 +175,19 @@ final class SchemaText {
     'schema.credential.field.link' => _l10n.schemaCredentialFieldLink,
     'schema.credential.field.password_expiry' =>
       _l10n.schemaCredentialFieldPasswordExpiry,
+    'schema.journal.label' => _l10n.schemaJournalLabel,
+    'schema.journal.field.title' => _l10n.schemaJournalFieldTitle,
+    'schema.journal.field.date' => _l10n.schemaJournalFieldDate,
+    'schema.journal.field.page' => _l10n.schemaJournalFieldPage,
+    'schema.journal.field.mood' => _l10n.schemaJournalFieldMood,
+    'schema.journal.field.mood.great' => _l10n.schemaJournalFieldMoodGreat,
+    'schema.journal.field.mood.good' => _l10n.schemaJournalFieldMoodGood,
+    'schema.journal.field.mood.neutral' => _l10n.schemaJournalFieldMoodNeutral,
+    'schema.journal.field.mood.low' => _l10n.schemaJournalFieldMoodLow,
+    'schema.journal.field.mood.hard' => _l10n.schemaJournalFieldMoodHard,
+    'schema.journal.field.recording' => _l10n.schemaJournalFieldRecording,
+    'schema.journal.field.attachments' => _l10n.schemaJournalFieldAttachments,
+    'schema.journal.field.tags' => _l10n.schemaJournalFieldTags,
     _ => null,
   };
 }

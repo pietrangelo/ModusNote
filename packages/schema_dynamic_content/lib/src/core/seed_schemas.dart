@@ -1,6 +1,7 @@
 import 'field_type.dart';
 import 'field_value.dart';
 import 'identifiers.dart';
+import 'journal.dart';
 import 'label.dart';
 import 'schema_catalog.dart';
 import 'schema_definition.dart';
@@ -131,6 +132,19 @@ abstract final class SeedSchemas {
     ('password_expiry', const DateFieldType(), false),
   ]);
 
+  /// A page of a daily journal: the day it is about, a page of Markdown,
+  /// the mood of the day, a recording, pictures and tags. The title is
+  /// optional; without one the day names the page ([Journal]).
+  static final journalV1 = _seed('journal', NoteIcon.calendar, NoteTint.rose, [
+    ('title', TextFieldType(maxLength: 200), false),
+    ('date', const DateFieldType(), true),
+    ('page', const MarkdownFieldType(), false),
+    ('mood', ChoiceFieldType(Journal.moods), false),
+    ('recording', const AudioBlobFieldType(), false),
+    ('attachments', AttachmentsFieldType(), false),
+    ('tags', TagListFieldType(), false),
+  ]);
+
   /// A to-do is a list of tasks, with an optional title. A [taskV1] note
   /// becomes a one-task list: its description, made one safe line, and
   /// its completed flag.
@@ -166,6 +180,7 @@ abstract final class SeedSchemas {
   static final all = List<SchemaDefinition>.unmodifiable([
     songSketchV1,
     dreamLogV1,
+    journalV1,
     taskV2,
     documentV1,
     bookV1,

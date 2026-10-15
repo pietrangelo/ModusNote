@@ -19,6 +19,7 @@ abstract final class NoteAppearance {
     NoteIcon.person => Icons.person_outline,
     NoteIcon.place => Icons.place_outlined,
     NoteIcon.key => Icons.key_outlined,
+    NoteIcon.calendar => Icons.calendar_today_outlined,
     null => Icons.description_outlined,
   };
 }

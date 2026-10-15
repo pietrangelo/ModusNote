@@ -2089,5 +2089,140 @@
         "type": "String"
       }
     }
+  },
+  "schemaJournalLabel": "Daily journal",
+  "@schemaJournalLabel": {
+    "description": "Localization of the seed schema key schema.journal.label."
+  },
+  "schemaJournalFieldTitle": "Title",
+  "@schemaJournalFieldTitle": {
+    "description": "Localization of the seed schema key schema.journal.field.title."
+  },
+  "schemaJournalFieldDate": "Day",
+  "@schemaJournalFieldDate": {
+    "description": "Localization of the seed schema key schema.journal.field.date."
+  },
+  "schemaJournalFieldPage": "Page",
+  "@schemaJournalFieldPage": {
+    "description": "Localization of the seed schema key schema.journal.field.page."
+  },
+  "schemaJournalFieldMood": "Mood",
+  "@schemaJournalFieldMood": {
+    "description": "Localization of the seed schema key schema.journal.field.mood."
+  },
+  "schemaJournalFieldMoodGreat": "Great",
+  "@schemaJournalFieldMoodGreat": {
+    "description": "Localization of the seed schema key schema.journal.field.mood.great."
+  },
+  "schemaJournalFieldMoodGood": "Good",
+  "@schemaJournalFieldMoodGood": {
+    "description": "Localization of the seed schema key schema.journal.field.mood.good."
+  },
+  "schemaJournalFieldMoodNeutral": "Neutral",
+  "@schemaJournalFieldMoodNeutral": {
+    "description": "Localization of the seed schema key schema.journal.field.mood.neutral."
+  },
+  "schemaJournalFieldMoodLow": "Low",
+  "@schemaJournalFieldMoodLow": {
+    "description": "Localization of the seed schema key schema.journal.field.mood.low."
+  },
+  "schemaJournalFieldMoodHard": "Hard",
+  "@schemaJournalFieldMoodHard": {
+    "description": "Localization of the seed schema key schema.journal.field.mood.hard."
+  },
+  "schemaJournalFieldRecording": "Recording",
+  "@schemaJournalFieldRecording": {
+    "description": "Localization of the seed schema key schema.journal.field.recording."
+  },
+  "schemaJournalFieldAttachments": "Attachments",
+  "@schemaJournalFieldAttachments": {
+    "description": "Localization of the seed schema key schema.journal.field.attachments."
+  },
+  "schemaJournalFieldTags": "Tags",
+  "@schemaJournalFieldTags": {
+    "description": "Localization of the seed schema key schema.journal.field.tags."
+  },
+  "journalToday": "Today's journal",
+  "@journalToday": {
+    "description": "Opens today's journal page, or starts one."
+  },
+  "onThisDay": "On this day",
+  "@onThisDay": {
+    "description": "Section under a journal page, and palette command: pages of the same day in earlier years."
+  },
+  "yearsAgo": "{years, plural, =1{A year ago} other{{years} years ago}}",
+  "@yearsAgo": {
+    "description": "How long ago an earlier journal page was written.",
+    "placeholders": {
+      "years": {
+        "type": "int"
+      }
+    }
+  },
+  "journalCalendar": "Journal calendar",
+  "@journalCalendar": {
+    "description": "Accessibility label of the month of journal pages."
+  },
+  "previousMonth": "Previous month",
+  "@previousMonth": {
+    "description": "Calendar button: the month before."
+  },
+  "nextMonth": "Next month",
+  "@nextMonth": {
+    "description": "Calendar button: the month after."
+  },
+  "calendarToday": "Today",
+  "@calendarToday": {
+    "description": "Calendar button: back to the current month."
+  },
+  "notWrittenToday": "You haven't written today yet",
+  "@notWrittenToday": {
+    "description": "Under the journal calendar while today has no page."
+  },
+  "journalDayWritten": "{day}, written",
+  "@journalDayWritten": {
+    "description": "Accessibility label of a calendar day with a journal page.",
+    "placeholders": {
+      "day": {
+        "type": "String"
+      }
+    }
+  },
+  "journalReminder": "Daily reminder",
+  "@journalReminder": {
+    "description": "Switch: a notification each day to write in the journal."
+  },
+  "journalReminderHint": "At {time}, only on days without a page",
+  "@journalReminderHint": {
+    "description": "Under the daily reminder switch.",
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "journalReminderTime": "Reminder time",
+  "@journalReminderTime": {
+    "description": "Button that picks the time of the daily reminder."
+  },
+  "journalReminderTitle": "Journal",
+  "@journalReminderTitle": {
+    "description": "Title of the daily journal notification."
+  },
+  "journalReminderBody": "Time to write in your journal.",
+  "@journalReminderBody": {
+    "description": "Body of the daily journal notification: never the content of a note."
+  },
+  "journalReminderChannel": "Journal",
+  "@journalReminderChannel": {
+    "description": "Android notification channel of the daily journal reminder."
+  },
+  "journalSettings": "Journal settings",
+  "@journalSettings": {
+    "description": "Button that opens the journal's settings."
+  },
+  "iconCalendar": "Calendar",
+  "@iconCalendar": {
+    "description": "Name of the calendar icon a category may take."
   }
 }
