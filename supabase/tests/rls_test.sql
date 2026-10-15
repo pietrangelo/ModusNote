@@ -670,3 +670,184 @@ select pg_temp.check(
   'a deleted account leaves no upload records'
 );
 commit;
+
+-- Members, accounts and invites between accounts.
+\set olga  '''00000000-0000-0000-0000-0000000000a1'''
+\set pete  '''00000000-0000-0000-0000-0000000000a2'''
+\set quinn '''00000000-0000-0000-0000-0000000000a3'''
+\set team  '''a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0'''
+\set olga_phone  '''1111111111111111111111111111111111111111111111111111111111111111'''
+\set olga_laptop '''2222222222222222222222222222222222222222222222222222222222222222'''
+\set pete_phone  '''3333333333333333333333333333333333333333333333333333333333333333'''
+\set pete_tablet '''4444444444444444444444444444444444444444444444444444444444444444'''
+
+begin;
+select pg_temp.act_as(:olga);
+insert into public.workspaces (id) values (:team);
+select public.admit_member(:team, :olga_phone);
+select public.admit_member(:team, :olga_laptop);
+select public.admit_member(:team, :pete_phone, :pete::uuid, false);
+select pg_temp.check(
+  (select count(*) from public.workspace_accounts where workspace_id = :team) = 2,
+  'admitting members adds each account once'
+);
+select pg_temp.check(
+  not (select can_manage from public.workspace_accounts
+       where workspace_id = :team and user_id = :pete::uuid),
+  'an invited editor does not manage'
+);
+commit;
+
+begin;
+select pg_temp.act_as(:pete);
+select pg_temp.check(
+  (select count(*) from public.workspace_members where workspace_id = :team) = 3,
+  'an admitted account sees who signs in as whom'
+);
+select pg_temp.refused(format($q$ select public.admit_member(%L, %L, %L::uuid) $q$,
+  :team, :pete_tablet, :quinn));
+select pg_temp.refused(format($q$ select public.remove_member(%L, %L) $q$,
+  :team, :olga_phone));
+select pg_temp.refused($q$ insert into public.workspace_members values
+  ('a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0', repeat('5', 64), '00000000-0000-0000-0000-0000000000a3') $q$);
+select pg_temp.check(true, 'adversary: a non-managing account admits and removes no one');
+commit;
+
+begin;
+select pg_temp.act_as(:quinn);
+select pg_temp.check(
+  (select count(*) from public.workspace_members) = 0,
+  'adversary: an outsider sees no members'
+);
+select pg_temp.refused(format($q$ select public.admit_member(%L, %L) $q$,
+  :team, :pete_tablet));
+select pg_temp.check(true, 'adversary: an outsider admits itself to no workspace');
+commit;
+
+begin;
+select pg_temp.act_as(:olga);
+select public.admit_member(:team, :pete_phone, :pete::uuid, true);
+select pg_temp.check(
+  (select can_manage from public.workspace_accounts
+   where workspace_id = :team and user_id = :pete::uuid),
+  'admitting again as an owner grants management'
+);
+commit;
+
+begin;
+select pg_temp.act_as(:pete);
+select public.admit_member(:team, :pete_tablet);
+select public.remove_member(:team, :pete_phone);
+select pg_temp.check(
+  exists (select 1 from public.workspace_accounts
+          where workspace_id = :team and user_id = :pete::uuid),
+  'removing one device keeps an account another device still uses'
+);
+commit;
+
+begin;
+select pg_temp.act_as(:olga);
+select public.remove_member(:team, :olga_laptop);
+select pg_temp.check(
+  exists (select 1 from public.workspace_accounts
+          where workspace_id = :team and user_id = :olga::uuid),
+  'removing one of one''s own devices keeps one''s own account'
+);
+select public.remove_member(:team, :pete_tablet);
+select pg_temp.check(
+  not exists (select 1 from public.workspace_accounts
+              where workspace_id = :team and user_id = :pete::uuid),
+  'removing an account''s last device removes the account'
+);
+commit;
+
+begin;
+select pg_temp.act_as(:pete);
+select pg_temp.check(
+  (select count(*) from public.sync_rows where workspace_id = :team) = 0
+    and (select count(*) from public.workspace_members) = 0,
+  'a removed account reads nothing more'
+);
+commit;
+
+begin;
+select pg_temp.act_as(:olga);
+insert into public.workspace_invites (lookup, kind, payload)
+values ('K7MQ4X', 'offer', '\x01');
+commit;
+
+begin;
+select pg_temp.act_as(:quinn);
+select pg_temp.check(
+  public.invite_offer('K7MQ4X') = '\x01'::bytea,
+  'an invited account finds the offer by its lookup'
+);
+select pg_temp.check(
+  public.invite_offer('K7MQ4Y') is null,
+  'another lookup finds nothing'
+);
+select pg_temp.check(
+  (select count(*) from public.workspace_invites) = 0,
+  'adversary: offers cannot be listed'
+);
+insert into public.workspace_invites (lookup, kind, payload)
+values ('K7MQ4X', 'answer', '\x02');
+select pg_temp.refused($q$
+  insert into public.workspace_invites (lookup, kind, payload, user_id)
+  values ('K7MQ4X', 'answer', '\x03', '00000000-0000-0000-0000-0000000000a1')
+$q$);
+select pg_temp.check(true, 'adversary: an answer cannot be posted as another account');
+commit;
+
+begin;
+select pg_temp.act_as(:pete);
+insert into public.workspace_invites (lookup, kind, payload)
+values ('K7MQ4X', 'answer', '\x04');
+select pg_temp.check(
+  (select count(*) from public.workspace_invites) = 1,
+  'adversary: an answerer reads only its own answer'
+);
+commit;
+
+begin;
+select pg_temp.act_as(:olga);
+select pg_temp.check(
+  (select count(*) from public.workspace_invites where kind = 'answer') = 2,
+  'the inviter reads the answers to its offer'
+);
+delete from public.workspace_invites where lookup = 'K7MQ4X';
+commit;
+
+begin;
+select pg_temp.check(
+  not exists (select 1 from public.workspace_invites where lookup = 'K7MQ4X'),
+  'the inviter clears its offer and the answers'
+);
+update public.workspace_invites set created_at = now() - interval '16 minutes';
+commit;
+
+begin;
+select pg_temp.act_as(:olga);
+insert into public.workspace_invites (lookup, kind, payload)
+values ('ABCDEF', 'offer', '\x05');
+commit;
+
+begin;
+update public.workspace_invites set created_at = now() - interval '16 minutes'
+where lookup = 'ABCDEF';
+commit;
+
+begin;
+select pg_temp.act_as(:quinn);
+select pg_temp.check(
+  public.invite_offer('ABCDEF') is null,
+  'an offer is good for a quarter of an hour'
+);
+commit;
+
+begin;
+set local role anon;
+select pg_temp.refused($q$ select public.invite_offer('ABCDEF') $q$);
+select pg_temp.refused($q$ select public.admit_member('a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0', repeat('6', 64)) $q$);
+select pg_temp.check(true, 'the anonymous role finds no offers and admits no one');
+commit;
