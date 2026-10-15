@@ -6,6 +6,7 @@ import '../l10n/generated/app_localizations.dart';
 import '../theme/golden_ratio.dart';
 import '../theme/modus_colors.dart';
 import '../vault/auto_lock.dart';
+import 'members_sheet.dart';
 import 'sign_in_form.dart';
 import 'sync_controller.dart';
 
@@ -132,6 +133,7 @@ class _CloudSheetState extends State<CloudSheet> {
       SyncState.failed => switch (sync.problem) {
         SyncProblem.untrusted => l10n.cloudStateUntrusted,
         SyncProblem.full => l10n.cloudStateFull,
+        SyncProblem.removed => l10n.cloudStateRemoved,
         SyncProblem.refused || null => l10n.cloudStateRefused,
       },
     };
@@ -174,6 +176,13 @@ class _CloudSheetState extends State<CloudSheet> {
           label: Text(l10n.linkDeviceAction),
         ),
       ],
+      const SizedBox(height: Spacing.s),
+      OutlinedButton.icon(
+        key: const ValueKey('members'),
+        onPressed: () => MembersSheet.show(context, sync),
+        icon: const Icon(Icons.group_outlined),
+        label: Text(l10n.membersAction),
+      ),
       const SizedBox(height: Spacing.s),
       OutlinedButton(
         onPressed: syncing || _deleting ? null : sync.signOut,
