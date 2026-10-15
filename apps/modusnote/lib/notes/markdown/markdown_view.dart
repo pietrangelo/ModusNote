@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../../l10n/generated/app_localizations.dart';
 import '../../theme/golden_ratio.dart';
-import '../../theme/modus_colors.dart';
 import 'markdown_document.dart';
+import '../../theme/modus_palette.dart';
 
 /// Shows a [MarkdownDocument] as Flutter widgets. Nothing is turned into
 /// HTML, nothing is fetched and nothing can be tapped open: links show
@@ -46,31 +46,31 @@ class _Blocks extends StatelessWidget {
       MdList() => _ListView(block),
       MdQuote(:final blocks) => Container(
         padding: const EdgeInsets.only(left: Spacing.m),
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           border: Border(
             left: BorderSide(
-              color: ModusColors.rhythmVioletText,
+              color: ModusPalette.of(context).violet,
               width: Spacing.xxs,
             ),
           ),
         ),
         child: DefaultTextStyle.merge(
-          style: const TextStyle(color: ModusColors.dustSilver),
+          style: TextStyle(color: ModusPalette.of(context).muted),
           child: _Blocks(blocks),
         ),
       ),
       MdCodeBlock(:final text) => Container(
         padding: const EdgeInsets.all(Spacing.m),
-        decoration: const BoxDecoration(
-          color: ModusColors.abyssalSlate,
-          borderRadius: BorderRadius.all(Radius.circular(Radii.small)),
+        decoration: BoxDecoration(
+          color: ModusPalette.of(context).surface,
+          borderRadius: const BorderRadius.all(Radius.circular(Radii.small)),
         ),
         child: SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           child: Text(text, style: body.copyWith(fontFamily: _monospace)),
         ),
       ),
-      MdRule() => const Divider(color: ModusColors.dustSilver),
+      MdRule() => Divider(color: ModusPalette.of(context).muted),
     };
   }
 }
@@ -98,21 +98,21 @@ class _ListView extends StatelessWidget {
               SizedBox(
                 width: Spacing.l,
                 child: switch (item.checked) {
-                  true => const Icon(
+                  true => Icon(
                     Icons.check_box,
-                    key: ValueKey('task-done'),
+                    key: const ValueKey('task-done'),
                     size: IconSizes.inline,
-                    color: ModusColors.cadenceCyan,
+                    color: ModusPalette.of(context).success,
                   ),
-                  false => const Icon(
+                  false => Icon(
                     Icons.check_box_outline_blank,
-                    key: ValueKey('task-open'),
+                    key: const ValueKey('task-open'),
                     size: IconSizes.inline,
-                    color: ModusColors.dustSilver,
+                    color: ModusPalette.of(context).muted,
                   ),
                   null => Text(
                     list.ordered ? '${list.start + index}.' : '•',
-                    style: body.copyWith(color: ModusColors.dustSilver),
+                    style: body.copyWith(color: ModusPalette.of(context).muted),
                   ),
                 },
               ),
@@ -140,7 +140,10 @@ class _Inline extends StatelessWidget {
         ? style
         : style.copyWith(color: inherited);
     return Text.rich(
-      TextSpan(style: base, children: _spans(inlines, base, l10n)),
+      TextSpan(
+        style: base,
+        children: _spans(inlines, base, l10n, ModusPalette.of(context)),
+      ),
     );
   }
 
@@ -148,39 +151,45 @@ class _Inline extends StatelessWidget {
     List<MdInline> inlines,
     TextStyle style,
     AppLocalizations l10n,
+    ModusPalette palette,
   ) => [
     for (final inline in inlines)
       switch (inline) {
         MdText(:final text) => TextSpan(text: text),
         MdCode(:final text) => TextSpan(
           text: text,
-          style: const TextStyle(
+          style: TextStyle(
             fontFamily: _monospace,
-            backgroundColor: ModusColors.abyssalSlate,
+            backgroundColor: palette.surface,
           ),
         ),
         MdStrong(:final children) => TextSpan(
           style: _weight(style, FontWeight.w700),
-          children: _spans(children, _weight(style, FontWeight.w700), l10n),
+          children: _spans(
+            children,
+            _weight(style, FontWeight.w700),
+            l10n,
+            palette,
+          ),
         ),
         MdEmphasis(:final children) => TextSpan(
           style: const TextStyle(fontStyle: FontStyle.italic),
-          children: _spans(children, style, l10n),
+          children: _spans(children, style, l10n, palette),
         ),
         MdStrike(:final children) => TextSpan(
           style: const TextStyle(decoration: TextDecoration.lineThrough),
-          children: _spans(children, style, l10n),
+          children: _spans(children, style, l10n, palette),
         ),
         MdLink(:final children, :final url) => TextSpan(
           children: [
             TextSpan(
               style: const TextStyle(decoration: TextDecoration.underline),
-              children: _spans(children, style, l10n),
+              children: _spans(children, style, l10n, palette),
             ),
             if (url.isNotEmpty)
               TextSpan(
                 text: ' ($url)',
-                style: const TextStyle(color: ModusColors.dustSilver),
+                style: TextStyle(color: palette.muted),
               ),
           ],
         ),
@@ -191,13 +200,13 @@ class _Inline extends StatelessWidget {
               child: Icon(
                 Icons.image_not_supported_outlined,
                 size: IconSizes.inline,
-                color: ModusColors.dustSilver,
+                color: palette.muted,
                 semanticLabel: l10n.markdownImage,
               ),
             ),
             TextSpan(
               text: alt.isEmpty ? '' : ' $alt',
-              style: const TextStyle(color: ModusColors.dustSilver),
+              style: TextStyle(color: palette.muted),
             ),
           ],
         ),

@@ -5,10 +5,10 @@ import 'package:flutter/material.dart';
 
 import '../l10n/generated/app_localizations.dart';
 import '../theme/golden_ratio.dart';
-import '../theme/modus_colors.dart';
 import '../vault/auto_lock.dart';
 import 'audio_diagnostics.dart';
 import 'note_recorder.dart';
+import '../theme/modus_palette.dart';
 
 /// The sheet shown while a take is recorded: elapsed time, stop to attach,
 /// discard to throw it away. Dismissing it any other way discards too.
@@ -129,7 +129,7 @@ class _RecordingSheetState extends State<RecordingSheet> {
             Icon(
               failure == null ? Icons.mic : Icons.mic_off,
               size: IconSizes.prominent,
-              color: ModusColors.rhythmVioletText,
+              color: ModusPalette.of(context).violet,
             ),
             const SizedBox(height: Spacing.m),
             if (failure != null) ...[
@@ -160,7 +160,7 @@ class _RecordingSheetState extends State<RecordingSheet> {
               Text(
                 l10n.recordingEncrypted,
                 style: theme.textTheme.bodySmall?.copyWith(
-                  color: ModusColors.dustSilver,
+                  color: ModusPalette.of(context).muted,
                 ),
                 textAlign: TextAlign.center,
               ),

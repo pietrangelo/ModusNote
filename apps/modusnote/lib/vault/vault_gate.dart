@@ -26,12 +26,12 @@ import '../sync/invite_sheet.dart';
 import '../sync/link_device_sheet.dart';
 import '../sync/sync_controller.dart';
 import '../theme/golden_ratio.dart';
-import '../theme/modus_colors.dart';
 import 'auto_lock.dart';
 import 'join_vault.dart';
 import 'passphrase_warning.dart';
 import 'vault_note_store.dart';
 import 'vault_shelf_gate.dart';
+import '../theme/modus_palette.dart';
 
 /// Moves a UTF-8 passphrase into native memory and wipes the buffer.
 typedef PasswordFactory = PasswordSecret Function(Uint8List utf8Bytes);
@@ -752,7 +752,7 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
                     Icon(
                       Icons.lock_outline,
                       size: IconSizes.prominent,
-                      color: ModusColors.aureoGold,
+                      color: ModusPalette.of(context).primary,
                     ),
                     const SizedBox(height: Spacing.l),
                     Text(
@@ -765,7 +765,7 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
                       Text(
                         l10n.vaultCreateBody,
                         style: theme.textTheme.bodyMedium?.copyWith(
-                          color: ModusColors.dustSilver,
+                          color: ModusPalette.of(context).muted,
                         ),
                         textAlign: TextAlign.center,
                       ),
@@ -840,7 +840,7 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
                       Text(
                         l10n.vaultOpening,
                         style: theme.textTheme.bodySmall?.copyWith(
-                          color: ModusColors.dustSilver,
+                          color: ModusPalette.of(context).muted,
                         ),
                         textAlign: TextAlign.center,
                       ),

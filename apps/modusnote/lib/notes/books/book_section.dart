@@ -7,6 +7,7 @@ import '../note_appearance.dart';
 import '../note_title.dart';
 import '../schema_text.dart';
 import 'book_outline.dart';
+import '../../theme/modus_palette.dart';
 
 /// Under a book: how far the writing has come, and its chapters,
 /// characters and places, each one tap away, with a button to write a
@@ -79,7 +80,7 @@ class BookSection extends StatelessWidget {
             leading ??
             Icon(
               NoteAppearance.icon(schema?.icon),
-              color: NoteAppearance.tint(schema?.tint),
+              color: ModusPalette.of(context).tint(schema?.tint),
             ),
         title: Text(
           title.isEmpty ? l10n.untitled : title,

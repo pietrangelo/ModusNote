@@ -8,8 +8,8 @@ import 'package:offline_sync_adapters/offline_sync_adapters.dart';
 
 import '../l10n/generated/app_localizations.dart';
 import '../theme/golden_ratio.dart';
-import '../theme/modus_colors.dart';
 import '../vault/auto_lock.dart';
+import '../theme/modus_palette.dart';
 
 /// A one-time code on show and the offer behind it: [poll] admits whoever
 /// answers with the code, [cancel] withdraws it.
@@ -246,7 +246,7 @@ class _CodeAdmissionPanelState extends State<CodeAdmissionPanel> {
     final texts = widget.texts;
     final theme = Theme.of(context);
     final muted = theme.textTheme.bodyMedium?.copyWith(
-      color: ModusColors.dustSilver,
+      color: ModusPalette.of(context).muted,
     );
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -265,7 +265,7 @@ class _CodeAdmissionPanelState extends State<CodeAdmissionPanel> {
             key: const ValueKey('link-code'),
             textAlign: TextAlign.center,
             style: theme.textTheme.headlineMedium?.copyWith(
-              color: ModusColors.aureoGold,
+              color: ModusPalette.of(context).primary,
             ),
           ),
           const SizedBox(height: Spacing.l),
@@ -284,9 +284,9 @@ class _CodeAdmissionPanelState extends State<CodeAdmissionPanel> {
         _Stage.linked => [
           Row(
             children: [
-              const Icon(
+              Icon(
                 Icons.check_circle_outline,
-                color: ModusColors.cadenceCyan,
+                color: ModusPalette.of(context).success,
               ),
               const SizedBox(width: Spacing.m),
               Expanded(

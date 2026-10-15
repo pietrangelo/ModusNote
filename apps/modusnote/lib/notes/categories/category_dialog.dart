@@ -5,6 +5,7 @@ import '../../l10n/generated/app_localizations.dart';
 import '../../theme/golden_ratio.dart';
 import '../note_appearance.dart';
 import '../random_id.dart';
+import '../../theme/modus_palette.dart';
 
 /// Asks for a category's name, icon and colour. Returns the new or changed
 /// category, or null when the person cancels. [parent] places a new one;
@@ -68,7 +69,7 @@ class _CategoryDialogState extends State<_CategoryDialog> {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
-    final tint = CategoryAppearance.tint(_tint);
+    final tint = ModusPalette.of(context).tint(_tint);
     return AlertDialog(
       title: Text(
         widget.existing == null
@@ -134,7 +135,7 @@ class _CategoryDialogState extends State<_CategoryDialog> {
                     isSelected: choice == _tint,
                     tooltip: _tintName(l10n, choice),
                     onPressed: () => setState(() => _tint = choice),
-                    color: CategoryAppearance.tint(choice),
+                    color: ModusPalette.of(context).tint(choice),
                     icon: Icon(
                       choice == _tint ? Icons.check_circle : Icons.circle,
                     ),

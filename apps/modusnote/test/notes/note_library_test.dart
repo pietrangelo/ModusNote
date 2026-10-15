@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:modusnote/notes/note_appearance.dart';
 import 'package:modusnote/notes/note_editor.dart';
 import 'package:modusnote/notes/note_library.dart';
 import 'package:modusnote/notes/note_store.dart';
 import 'package:modusnote/theme/modus_colors.dart';
+import 'package:modusnote/theme/modus_palette.dart';
 import 'package:schema_dynamic_content/schema_dynamic_content.dart';
 
 import 'harness.dart';
@@ -102,7 +102,7 @@ void main() {
     ]) {
       expect(
         tester.widget<Card>(cardOf(text)).color,
-        NoteAppearance.wash(tint),
+        ModusPalette.modus.wash(tint),
         reason: text,
       );
     }

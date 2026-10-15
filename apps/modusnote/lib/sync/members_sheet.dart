@@ -4,9 +4,9 @@ import 'package:offline_sync/offline_sync.dart';
 
 import '../l10n/generated/app_localizations.dart';
 import '../theme/golden_ratio.dart';
-import '../theme/modus_colors.dart';
 import '../vault/auto_lock.dart';
 import 'sync_controller.dart';
+import '../theme/modus_palette.dart';
 
 /// The start of a member's public signing key, in four groups: devices
 /// have no names, so this is how two screens are compared.
@@ -74,7 +74,7 @@ class _MembersSheetState extends State<MembersSheet> {
                 Text(
                   l10n.membersBody,
                   style: theme.textTheme.bodyMedium?.copyWith(
-                    color: ModusColors.dustSilver,
+                    color: ModusPalette.of(context).muted,
                   ),
                 ),
                 const SizedBox(height: Spacing.m),
@@ -125,7 +125,7 @@ class _MembersSheetState extends State<MembersSheet> {
       contentPadding: EdgeInsets.zero,
       leading: Icon(
         mine ? Icons.smartphone : Icons.devices_outlined,
-        color: mine ? ModusColors.aureoGold : null,
+        color: mine ? ModusPalette.of(context).primary : null,
       ),
       title: Text(mine ? l10n.membersThisDevice : l10n.membersDevice),
       subtitle: Text(

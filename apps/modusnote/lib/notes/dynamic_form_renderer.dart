@@ -6,7 +6,6 @@ import 'package:schema_dynamic_content/schema_dynamic_content.dart';
 import '../audio/recording_sheet.dart' show formatLength;
 import '../l10n/generated/app_localizations.dart';
 import '../theme/golden_ratio.dart';
-import '../theme/modus_colors.dart';
 import 'attachments/attachments_input.dart';
 import 'credentials/password_input.dart';
 import 'credentials/url_input.dart';
@@ -14,6 +13,7 @@ import 'editor/inline_picture.dart';
 import 'editor/markdown_controller.dart';
 import 'editor/markdown_toolbar.dart';
 import 'schema_text.dart';
+import '../theme/modus_palette.dart';
 
 /// What the user has entered so far. [unreadable] holds fields whose input
 /// cannot become a value at all (a number field with letters in it): the
@@ -856,8 +856,8 @@ class _ChecklistInputState extends State<_ChecklistInput> {
             children: [
               Checkbox(
                 value: row.done,
-                activeColor: ModusColors.cadenceCyan,
-                checkColor: ModusColors.deepVoid,
+                activeColor: ModusPalette.of(context).success,
+                checkColor: ModusPalette.of(context).onAccent,
                 onChanged: (value) {
                   setState(() => row.done = value ?? false);
                   _report();
@@ -873,7 +873,7 @@ class _ChecklistInputState extends State<_ChecklistInput> {
                   ),
                   style: row.done
                       ? theme.textTheme.bodyLarge?.copyWith(
-                          color: ModusColors.dustSilver,
+                          color: ModusPalette.of(context).muted,
                           decoration: TextDecoration.lineThrough,
                         )
                       : null,
@@ -890,7 +890,7 @@ class _ChecklistInputState extends State<_ChecklistInput> {
               if (_rows.length > 1)
                 IconButton(
                   icon: const Icon(Icons.close, size: IconSizes.inline),
-                  color: ModusColors.dustSilver,
+                  color: ModusPalette.of(context).muted,
                   tooltip: l10n.removeTask,
                   onPressed: () => _remove(index),
                 ),
@@ -1367,7 +1367,7 @@ class _AudioInput extends StatelessWidget {
               attached ? Icons.graphic_eq : Icons.mic_none,
               size: IconSizes.inline,
               // Violet tags audio; the tint is the variant legible as an icon.
-              color: ModusColors.rhythmVioletText,
+              color: ModusPalette.of(context).violet,
             ),
             const SizedBox(width: Spacing.s),
             Expanded(
