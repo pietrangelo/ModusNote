@@ -425,6 +425,49 @@ select pg_temp.check(
 );
 commit;
 
+-- Heads: the newest position of each stream, in one request.
+\set kim  '''00000000-0000-0000-0000-0000000000b1'''
+\set lia  '''00000000-0000-0000-0000-0000000000b2'''
+\set heads_ws '''a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1'''
+
+begin;
+select pg_temp.act_as(:kim);
+insert into public.workspaces (id) values (:heads_ws);
+select pg_temp.check(
+  (select (rows, key_bundles, membership) = (0::bigint, 0::bigint, 0::bigint)
+   from public.sync_heads(:heads_ws)),
+  'an empty workspace has every head at zero'
+);
+insert into public.sync_rows (workspace_id, record_id, epoch, ciphertext)
+values (:heads_ws, repeat('a', 32), 0, decode(repeat('ab', 41), 'hex')),
+       (:heads_ws, repeat('b', 32), 0, decode(repeat('ab', 41), 'hex'));
+insert into public.sync_rows (workspace_id, record_id, epoch, ciphertext, supersedes)
+values (:heads_ws, repeat('a', 32), 0, decode(repeat('ab', 41), 'hex'), 2);
+insert into public.membership_records (workspace_id, sequence, record)
+values (:heads_ws, 0, '\x01'), (:heads_ws, 1, '\x02');
+insert into public.key_bundles (workspace_id, bundle) values (:heads_ws, '\x01');
+select pg_temp.check(
+  (select (rows, key_bundles, membership) = (3::bigint, 1::bigint, 2::bigint)
+   from public.sync_heads(:heads_ws)),
+  'heads are the newest row and bundle positions and the membership count'
+);
+commit;
+
+begin;
+select pg_temp.act_as(:lia);
+select pg_temp.check(
+  (select (rows, key_bundles, membership) = (0::bigint, 0::bigint, 0::bigint)
+   from public.sync_heads(:heads_ws)),
+  'adversary: another account learns nothing about a workspace, not even that it exists'
+);
+commit;
+
+begin;
+set local role anon;
+select pg_temp.refused($q$ select * from public.sync_heads('a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1') $q$);
+select pg_temp.check(true, 'the anonymous role reads no heads');
+commit;
+
 -- Quotas: what one account can make the server hold. Small limits here so
 -- the tests stay small; the migration sets the real ones.
 \set gus   '''00000000-0000-0000-0000-0000000000a1'''

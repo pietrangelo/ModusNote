@@ -23,6 +23,10 @@ final class OfflineSyncServer implements SyncServer {
       throw const ServerUnavailableException();
 
   @override
+  Future<SyncHeads?> heads(WorkspaceId workspace) =>
+      throw const ServerUnavailableException();
+
+  @override
   Future<List<MembershipRecord>> membership(
     WorkspaceId workspace, {
     required int from,
