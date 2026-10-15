@@ -344,6 +344,203 @@ void main() {
     });
   });
 
+  group('invites', () {
+    const lookup = 'K7MQ4X';
+    final offer = InviteOffer(
+      lookup: lookup,
+      salt: Salt.fromBytes(List.filled(Salt.length, 5)),
+      sealedInvitation: EncryptedEnvelope(
+        nonce: Nonce.fromBytes(List.filled(Nonce.length, 6)),
+        ciphertext: List.filled(
+          Invitation.length + EncryptedEnvelope.tagLength,
+          7,
+        ),
+      ),
+    );
+    InviteAnswer answer(int marker, [String at = lookup]) => InviteAnswer(
+      lookup: at,
+      sealedJoiner: EncryptedEnvelope(
+        nonce: Nonce.fromBytes(List.filled(Nonce.length, marker)),
+        ciphertext: List.filled(
+          InviteAnswer.joinerLength + EncryptedEnvelope.tagLength,
+          marker,
+        ),
+      ),
+    );
+    String bytea(List<int> bytes) => '\\x${hex(bytes)}';
+
+    test('offer and answer are posted under the lookup only', () async {
+      respond = (_) => http.Response('', 201);
+
+      await server().postInvite(offer);
+      await server().postInviteAnswer(answer(1));
+
+      final [posted, answered] = requests;
+      expect(posted.url.path, '/rest/v1/workspace_invites');
+      expect(jsonDecode(posted.body), [
+        {'lookup': lookup, 'kind': 'offer', 'payload': bytea(offer.toBytes())},
+      ]);
+      expect(jsonDecode(answered.body), [
+        {
+          'lookup': lookup,
+          'kind': 'answer',
+          'payload': bytea(answer(1).toBytes()),
+        },
+      ]);
+    });
+
+    test('the offer is found through invite_offer', () async {
+      respond = (_) => http.Response(jsonEncode(bytea(offer.toBytes())), 200);
+
+      expect(await server().invite(lookup), offer);
+      expect(requests.single.url.path, '/rest/v1/rpc/invite_offer');
+      expect(jsonDecode(requests.single.body), {'code': lookup});
+    });
+
+    test('no offer reads as none', () async {
+      respond = (_) => http.Response('null', 200);
+
+      expect(await server().invite(lookup), isNull);
+    });
+
+    test('the answers are read in order and closing deletes them', () async {
+      respond = (_) => http.Response(
+        jsonEncode([
+          {'lookup': lookup, 'payload': bytea(answer(1).toBytes())},
+          {'lookup': lookup, 'payload': bytea(answer(2).toBytes())},
+        ]),
+        200,
+      );
+
+      expect(await server().inviteAnswers(lookup), [answer(1), answer(2)]);
+      expect(requests.single.url.queryParameters['lookup'], 'eq.$lookup');
+      expect(requests.single.url.queryParameters['kind'], 'eq.answer');
+
+      respond = (_) => http.Response('', 204);
+      await server().closeInvite(lookup);
+      expect(requests.last.method, 'DELETE');
+      expect(requests.last.url.queryParameters, {'lookup': 'eq.$lookup'});
+    });
+
+    group('adversary', () {
+      test('an offer under another lookup or garbage is no offer', () async {
+        final other = InviteOffer(
+          lookup: 'ZZZZZZ',
+          salt: offer.salt,
+          sealedInvitation: offer.sealedInvitation,
+        );
+        for (final body in [
+          jsonEncode(bytea(other.toBytes())),
+          jsonEncode(bytea(answer(1).toBytes())),
+          jsonEncode('not bytea'),
+          jsonEncode(42),
+        ]) {
+          respond = (_) => http.Response(body, 200);
+          expect(await server().invite(lookup), isNull, reason: body);
+        }
+      });
+
+      test('answers under another lookup or garbage are dropped', () async {
+        respond = (_) => http.Response(
+          jsonEncode([
+            {
+              'lookup': lookup,
+              'payload': bytea([1, 2, 3]),
+            },
+            {'lookup': lookup, 'payload': bytea(answer(3, 'ZZZZZZ').toBytes())},
+            {'lookup': lookup, 'payload': bytea(offer.toBytes())},
+            {'lookup': lookup, 'payload': bytea(answer(4).toBytes())},
+          ]),
+          200,
+        );
+
+        expect(await server().inviteAnswers(lookup), [answer(4)]);
+      });
+    });
+  });
+
+  group('member accounts', () {
+    final member = MemberId.of(
+      PublicIdentity(
+        signingKey: PublicSigningKey.fromBytes(
+          List.filled(PublicSigningKey.length, 9),
+        ),
+        encryptionKey: PublicEncryptionKey.fromBytes(
+          List.filled(PublicEncryptionKey.length, 9),
+        ),
+      ),
+    );
+    final account = AccountId.parse('00000000-0000-4000-8000-0000000000b0');
+
+    test('admitting calls admit_member with the account and role', () async {
+      respond = (_) => http.Response('', 204);
+
+      await server().admitMember(
+        workspace,
+        member,
+        account: account,
+        manages: true,
+      );
+      await server().admitMember(workspace, member);
+
+      final [other, own] = requests;
+      expect(other.url.path, '/rest/v1/rpc/admit_member');
+      expect(jsonDecode(other.body), {
+        'workspace': workspace.hex,
+        'member': member.hex,
+        'account': account.uuid,
+        'manage': true,
+      });
+      expect(jsonDecode(own.body), {
+        'workspace': workspace.hex,
+        'member': member.hex,
+        'account': null,
+        'manage': false,
+      });
+    });
+
+    test('removing calls remove_member', () async {
+      respond = (_) => http.Response('', 204);
+
+      await server().removeMember(workspace, member);
+
+      expect(requests.single.url.path, '/rest/v1/rpc/remove_member');
+      expect(jsonDecode(requests.single.body), {
+        'workspace': workspace.hex,
+        'member': member.hex,
+      });
+    });
+
+    test(
+      'a server without the functions only refuses another account',
+      () async {
+        respond = (_) => http.Response('{}', 404);
+
+        await server().admitMember(workspace, member);
+        await server().removeMember(workspace, member);
+        await expectLater(
+          server().admitMember(workspace, member, account: account),
+          throwsA(
+            isA<SyncServerRejectedException>().having(
+              (e) => e.status,
+              'status',
+              404,
+            ),
+          ),
+        );
+      },
+    );
+
+    test('a refusal is not swallowed', () async {
+      respond = (_) => http.Response('{}', 403);
+
+      await expectLater(
+        server().removeMember(workspace, member),
+        throwsA(isA<SyncServerRejectedException>()),
+      );
+    });
+  });
+
   group('availability', () {
     test('network errors, timeouts and 5xx mean offline', () async {
       for (final failure in <FutureOr<http.Response> Function(http.Request)>[
