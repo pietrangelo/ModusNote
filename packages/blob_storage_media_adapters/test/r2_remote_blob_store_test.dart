@@ -140,7 +140,13 @@ void main() {
       expect(presign.headers['Authorization'], 'Bearer $token');
       expect(
         jsonDecode(utf8.decode(cloud.bodies['POST project.supabase.co']!)),
-        {'workspace_id': workspace, 'blob_id': 'take-1', 'method': 'PUT'},
+        {
+          'workspace_id': workspace,
+          'blob_id': 'take-1',
+          'method': 'PUT',
+          // Counted against the quotas and signed into the URL.
+          'size': ciphertext.length,
+        },
       );
       expect(put.url, Uri.parse(presigned));
       expect(put.method, 'PUT');
