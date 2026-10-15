@@ -57,11 +57,16 @@ final class PageAppearance {
     this.width = PageWidth.medium,
     this.textStep = 1,
     this.font = PageFont.inter,
+    this.moods = true,
   });
 
   final PageWidth width;
 
   final PageFont font;
+
+  /// Whether the page of a note takes the mood of its type (`NoteMood`)
+  /// within the app's theme.
+  final bool moods;
 
   /// Index into [textSizes].
   final int textStep;
@@ -79,12 +84,17 @@ final class PageAppearance {
   /// What the page's text sizes are multiplied by.
   double get textFactor => textSize / TypeScale.body;
 
-  PageAppearance copyWith({PageWidth? width, int? textStep, PageFont? font}) =>
-      PageAppearance(
-        width: width ?? this.width,
-        textStep: textStep ?? this.textStep,
-        font: font ?? this.font,
-      );
+  PageAppearance copyWith({
+    PageWidth? width,
+    int? textStep,
+    PageFont? font,
+    bool? moods,
+  }) => PageAppearance(
+    width: width ?? this.width,
+    textStep: textStep ?? this.textStep,
+    font: font ?? this.font,
+    moods: moods ?? this.moods,
+  );
 
   PageAppearance wider() =>
       copyWith(width: PageWidth.values[(width.index + 1).clamp(0, _lastWidth)]);
@@ -101,33 +111,34 @@ final class PageAppearance {
   static final _lastWidth = PageWidth.values.length - 1;
   static final _lastStep = textSizes.length - 1;
 
-  static const _version = 2;
+  static const _version = 1;
 
-  /// Version, width, text step, typeface. Version 1 had no typeface.
-  Uint8List toBytes() =>
-      Uint8List.fromList([_version, width.index, textStep, font.index]);
+  /// Version, width, text step, typeface, moods.
+  Uint8List toBytes() => Uint8List.fromList([
+    _version,
+    width.index,
+    textStep,
+    font.index,
+    if (moods) 1 else 0,
+  ]);
 
-  /// What [toBytes] wrote, now or in version 1; anything else, damaged or
-  /// from a newer app, is the default page.
+  /// What [toBytes] wrote; anything else, damaged or from a newer app, is
+  /// the default page.
   static PageAppearance fromBytes(Uint8List? bytes) {
-    final length = bytes == null || bytes.isEmpty
-        ? -1
-        : switch (bytes[0]) {
-            1 => 3,
-            2 => 4,
-            _ => -1,
-          };
     if (bytes == null ||
-        bytes.length != length ||
+        bytes.length != 5 ||
+        bytes[0] != _version ||
         bytes[1] > _lastWidth ||
         bytes[2] > _lastStep ||
-        (length == 4 && bytes[3] >= PageFont.values.length)) {
+        bytes[3] >= PageFont.values.length ||
+        bytes[4] > 1) {
       return const PageAppearance();
     }
     return PageAppearance(
       width: PageWidth.values[bytes[1]],
       textStep: bytes[2],
-      font: length == 4 ? PageFont.values[bytes[3]] : PageFont.inter,
+      font: PageFont.values[bytes[3]],
+      moods: bytes[4] == 1,
     );
   }
 
@@ -136,13 +147,14 @@ final class PageAppearance {
       other is PageAppearance &&
       other.width == width &&
       other.textStep == textStep &&
-      other.font == font;
+      other.font == font &&
+      other.moods == moods;
 
   @override
-  int get hashCode => Object.hash(width, textStep, font);
+  int get hashCode => Object.hash(width, textStep, font, moods);
 
   @override
-  String toString() => 'PageAppearance($width, $textSize, $font)';
+  String toString() => 'PageAppearance($width, $textSize, $font, $moods)';
 }
 
 /// The system's text scaling with the page's size on top: the page's

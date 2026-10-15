@@ -471,5 +471,16 @@
   "pageFontAtkinson": "Atkinson Hyperlegible",
   "pageFontAtkinsonHint": "Disegnato per la massima leggibilità",
   "pageFontQuattro": "iA Writer Quattro",
-  "pageFontQuattroHint": "Pensato per scrivere"
+  "pageFontQuattroHint": "Pensato per scrivere",
+  "appearance": "Aspetto",
+  "appTheme": "Tema",
+  "themeModus": "Modus",
+  "themeModusHint": "Quello dell'app, scuro",
+  "themeRestful": "Riposante",
+  "themeRestfulHint": "Scuro e morbido, per le sessioni lunghe",
+  "themePaper": "Carta",
+  "themePaperHint": "Chiaro e caldo, per la luce del giorno",
+  "pageMoods": "Adatta al tipo di nota",
+  "pageMoodsHint": "Libri e sogni stimolano la fantasia, appunti e documenti la concentrazione",
+  "paletteTheme": "Tema: {name}"
 }

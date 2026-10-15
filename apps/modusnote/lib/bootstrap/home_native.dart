@@ -5,7 +5,6 @@ import 'package:blob_storage_media_adapters/blob_storage_media_adapters.dart';
 import 'package:blob_storage_media_recorder_adapters/blob_storage_media_recorder_adapters.dart';
 import 'package:file/local.dart';
 
-import 'package:flutter/widgets.dart';
 import 'package:identity_cryptography/identity_cryptography.dart';
 import 'package:identity_cryptography_adapters/identity_cryptography_adapters.dart';
 import 'package:offline_sync/offline_sync.dart';
@@ -21,6 +20,8 @@ import '../audio/note_recorder.dart';
 import '../sync/sync_config.dart';
 import '../audio/soloud_player.dart';
 import '../vault/vault_gate.dart';
+import '../appearance/theme_memory.dart';
+import 'home.dart' show AppHome;
 import '../vault/vault_shelf_gate.dart';
 import 'gallery_image_chooser.dart';
 import 'local_reminder_scheduler.dart';
@@ -31,13 +32,14 @@ import 'vault_wiring.dart';
 /// file in the app's private support directory, which holds only envelopes
 /// and the sealed vault header, and its recordings and pictures are `.enc`
 /// blobs in a folder of its own beside it.
-Future<Widget> buildHome() async {
+Future<AppHome> buildHome() async {
   final sodium = await SodiumSumoInit.init();
   final directory = (await getApplicationSupportDirectory()).path;
   final player = SoloudRecordingPlayer();
   final cloud = cloudWiring(SyncConfig.fromEnvironment());
-  return VaultShelfGate(
-    store: SqliteShelfStore(sqlite3.open('$directory/$shelfDatabaseName')),
+  final shelf = sqlite3.open('$directory/$shelfDatabaseName');
+  final home = VaultShelfGate(
+    store: SqliteShelfStore(shelf),
     open: (entry) async {
       final names = vaultStorageNames(entry.id);
       final path = '$directory/${names.database}';
@@ -80,6 +82,7 @@ Future<Widget> buildHome() async {
       );
     },
   );
+  return (home: home, themes: SqliteThemeMemory(shelf));
 }
 
 VaultGate _gate({

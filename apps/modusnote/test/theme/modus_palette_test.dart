@@ -18,6 +18,7 @@ void main() {
       expect(palette.text, ModusColors.pureMist);
       expect(palette.muted, ModusColors.dustSilver);
       expect(palette.primary, ModusColors.aureoGold);
+      expect(palette.gold, ModusColors.aureoGold);
       expect(palette.onAccent, ModusColors.deepVoid);
       expect(palette.violetFill, ModusColors.rhythmViolet);
       expect(palette.violet, ModusColors.rhythmVioletText);
@@ -26,7 +27,7 @@ void main() {
     });
 
     test('gives each note tint its accent, silver for none', () {
-      expect(palette.tint(NoteTint.gold), palette.primary);
+      expect(palette.tint(NoteTint.gold), palette.gold);
       expect(palette.tint(NoteTint.violet), palette.violet);
       expect(palette.tint(NoteTint.cyan), palette.success);
       expect(palette.tint(NoteTint.rose), palette.rose);
