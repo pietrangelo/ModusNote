@@ -6,6 +6,7 @@ import '../../theme/golden_ratio.dart';
 import '../note_appearance.dart';
 import '../note_title.dart';
 import 'page_index.dart';
+import '../../theme/modus_palette.dart';
 
 /// Under a document page: the index of its manual, one section per
 /// category, the open page marked, every other page one tap away, and a
@@ -69,7 +70,7 @@ class PageIndexSection extends StatelessWidget {
                   Icon(
                     CategoryAppearance.icon(section.category.icon),
                     size: IconSizes.inline,
-                    color: CategoryAppearance.tint(section.category.tint),
+                    color: ModusPalette.of(context).tint(section.category.tint),
                   ),
                   const SizedBox(width: Spacing.s),
                   Expanded(
@@ -112,7 +113,7 @@ class PageIndexSection extends StatelessWidget {
         selected: open,
         leading: Icon(
           NoteAppearance.icon(schema?.icon),
-          color: open ? null : NoteAppearance.tint(schema?.tint),
+          color: open ? null : ModusPalette.of(context).tint(schema?.tint),
         ),
         title: Text(
           title.isEmpty ? l10n.untitled : title,

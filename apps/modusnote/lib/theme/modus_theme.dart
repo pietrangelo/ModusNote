@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'golden_ratio.dart';
-import 'modus_colors.dart';
+import 'modus_palette.dart';
 
 /// Dark-native Material theme built only from the design tokens.
 abstract final class ModusTheme {
@@ -15,27 +15,31 @@ abstract final class ModusTheme {
   /// web would try to download one from Google.
   static const symbolFont = 'NotoSansSymbols';
 
-  static ThemeData dark() {
-    const scheme = ColorScheme(
-      brightness: Brightness.dark,
-      primary: ModusColors.aureoGold,
-      onPrimary: ModusColors.deepVoid,
-      secondary: ModusColors.rhythmViolet,
-      onSecondary: ModusColors.pureMist,
-      tertiary: ModusColors.cadenceCyan,
-      onTertiary: ModusColors.deepVoid,
-      error: Color(0xFFFF8A80),
-      onError: ModusColors.deepVoid,
-      surface: ModusColors.abyssalSlate,
-      onSurface: ModusColors.pureMist,
-      onSurfaceVariant: ModusColors.dustSilver,
-      outline: ModusColors.dustSilver,
+  static ThemeData dark() => of(ModusPalette.modus);
+
+  /// The Material theme of [palette], which it also carries for widgets.
+  static ThemeData of(ModusPalette palette) {
+    final scheme = ColorScheme(
+      brightness: palette.brightness,
+      primary: palette.primary,
+      onPrimary: palette.onAccent,
+      secondary: palette.violetFill,
+      onSecondary: palette.onVioletFill,
+      tertiary: palette.success,
+      onTertiary: palette.onAccent,
+      error: palette.error,
+      onError: palette.onAccent,
+      surface: palette.surface,
+      onSurface: palette.text,
+      onSurfaceVariant: palette.muted,
+      outline: palette.muted,
     );
-    final textTheme = _textTheme();
+    final textTheme = _textTheme(palette);
     return ThemeData(
       useMaterial3: true,
       colorScheme: scheme,
-      scaffoldBackgroundColor: ModusColors.deepVoid,
+      extensions: [palette],
+      scaffoldBackgroundColor: palette.background,
       textTheme: textTheme,
       // Material lays the date picker's header out in a fixed 120 dp box,
       // sized for its own 32 sp headline; a title 1 at the golden line
@@ -44,19 +48,19 @@ abstract final class ModusTheme {
         headerHeadlineStyle: textTheme.headlineMedium,
         headerHelpStyle: textTheme.labelMedium,
       ),
-      cardTheme: const CardThemeData(
-        color: ModusColors.abyssalSlate,
-        margin: EdgeInsets.all(Spacing.s),
-        shape: RoundedRectangleBorder(
+      cardTheme: CardThemeData(
+        color: palette.surface,
+        margin: const EdgeInsets.all(Spacing.s),
+        shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.all(Radius.circular(Radii.card)),
         ),
       ),
     );
   }
 
-  static TextTheme _textTheme() {
+  static TextTheme _textTheme(ModusPalette palette) {
     TextStyle title(double size, FontWeight weight) =>
-        _style(titleFont, size, weight, ModusColors.pureMist);
+        _style(titleFont, size, weight, palette.text);
     TextStyle body(double size, Color color) =>
         _style(bodyFont, size, FontWeight.w400, color);
 
@@ -70,17 +74,17 @@ abstract final class ModusTheme {
       titleLarge: title(TypeScale.title2, FontWeight.w600),
       titleMedium: title(TypeScale.body, FontWeight.w600),
       titleSmall: title(TypeScale.body, FontWeight.w500),
-      bodyLarge: body(TypeScale.body, ModusColors.pureMist),
-      bodyMedium: body(TypeScale.body, ModusColors.pureMist),
-      bodySmall: body(TypeScale.caption, ModusColors.dustSilver),
+      bodyLarge: body(TypeScale.body, palette.text),
+      bodyMedium: body(TypeScale.body, palette.text),
+      bodySmall: body(TypeScale.caption, palette.muted),
       labelLarge: _style(
         bodyFont,
         TypeScale.body,
         FontWeight.w600,
-        ModusColors.pureMist,
+        palette.text,
       ),
-      labelMedium: body(TypeScale.body, ModusColors.dustSilver),
-      labelSmall: body(TypeScale.caption, ModusColors.dustSilver),
+      labelMedium: body(TypeScale.body, palette.muted),
+      labelSmall: body(TypeScale.caption, palette.muted),
     );
   }
 

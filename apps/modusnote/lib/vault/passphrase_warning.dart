@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../l10n/generated/app_localizations.dart';
 import '../theme/golden_ratio.dart';
-import '../theme/modus_colors.dart';
+import '../theme/modus_palette.dart';
 
 /// Shown wherever a passphrase is chosen (a new vault, a device joining
 /// one): nobody can recover a forgotten passphrase, not even the developer,
@@ -27,11 +27,11 @@ class PassphraseWarning extends StatelessWidget {
     // A Material, not a decorated box, so the checkbox's ink shows on it.
     return Material(
       key: const ValueKey('passphrase-warning'),
-      color: ModusColors.abyssalSlate,
+      color: ModusPalette.of(context).surface,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(Radii.card),
-        side: const BorderSide(
-          color: ModusColors.aureoGold,
+        side: BorderSide(
+          color: ModusPalette.of(context).primary,
           width: Spacing.xxs,
         ),
       ),
@@ -48,10 +48,10 @@ class PassphraseWarning extends StatelessWidget {
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Icon(
+                Icon(
                   Icons.warning_amber_rounded,
                   size: IconSizes.inline,
-                  color: ModusColors.aureoGold,
+                  color: ModusPalette.of(context).primary,
                 ),
                 const SizedBox(width: Spacing.s),
                 Expanded(
@@ -60,7 +60,7 @@ class PassphraseWarning extends StatelessWidget {
                     child: Text(
                       l10n.passphraseWarningTitle,
                       style: theme.textTheme.titleMedium?.copyWith(
-                        color: ModusColors.aureoGold,
+                        color: ModusPalette.of(context).primary,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
@@ -72,7 +72,7 @@ class PassphraseWarning extends StatelessWidget {
             Text(
               l10n.passphraseWarningBody,
               style: theme.textTheme.bodyMedium?.copyWith(
-                color: ModusColors.pureMist,
+                color: ModusPalette.of(context).text,
               ),
             ),
             const SizedBox(height: Spacing.xs),
@@ -85,7 +85,7 @@ class PassphraseWarning extends StatelessWidget {
               title: Text(
                 l10n.passphraseWarningAcknowledge,
                 style: theme.textTheme.bodyMedium?.copyWith(
-                  color: ModusColors.pureMist,
+                  color: ModusPalette.of(context).text,
                   fontWeight: FontWeight.w600,
                 ),
               ),

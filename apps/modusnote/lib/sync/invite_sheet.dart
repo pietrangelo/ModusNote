@@ -6,8 +6,8 @@ import 'package:offline_sync/offline_sync.dart';
 
 import '../l10n/generated/app_localizations.dart';
 import '../theme/golden_ratio.dart';
-import '../theme/modus_colors.dart';
 import 'link_device_sheet.dart';
+import '../theme/modus_palette.dart';
 
 /// Invites another person: the owner picks what they may do, then shows a
 /// one-time code that the person types on their own device, signed in to
@@ -55,7 +55,7 @@ class _InviteSheetState extends State<InviteSheet> {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final muted = Theme.of(context).textTheme.bodyMedium
-        ?.copyWith(color: ModusColors.dustSilver);
+        ?.copyWith(color: ModusPalette.of(context).muted);
     return CodeSheetFrame(
       title: l10n.inviteTitle,
       child: _started

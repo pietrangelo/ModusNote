@@ -4,11 +4,11 @@ import 'package:offline_sync_adapters/offline_sync_adapters.dart';
 
 import '../l10n/generated/app_localizations.dart';
 import '../theme/golden_ratio.dart';
-import '../theme/modus_colors.dart';
 import '../vault/auto_lock.dart';
 import 'members_sheet.dart';
 import 'sign_in_form.dart';
 import 'sync_controller.dart';
+import '../theme/modus_palette.dart';
 
 /// The library's sync button: its icon tells the sync state, a tap opens
 /// [CloudSheet].
@@ -175,7 +175,7 @@ class _CloudSheetState extends State<CloudSheet> {
         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
           color: sync.state == SyncState.failed
               ? Theme.of(context).colorScheme.error
-              : ModusColors.dustSilver,
+              : ModusPalette.of(context).muted,
         ),
       ),
       const SizedBox(height: Spacing.l),

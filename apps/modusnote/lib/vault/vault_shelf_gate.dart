@@ -5,7 +5,7 @@ import 'package:offline_sync/offline_sync.dart';
 
 import '../l10n/generated/app_localizations.dart';
 import '../theme/golden_ratio.dart';
-import '../theme/modus_colors.dart';
+import '../theme/modus_palette.dart';
 
 /// Shows a vault's name and opens the vault picker; [created] is false while
 /// the vault has no database yet, the only time it can be removed.
@@ -274,7 +274,7 @@ Future<ShelfChoice?> showShelfPicker(
               child: Text(
                 l10n.shelfBody,
                 style: theme.textTheme.bodySmall?.copyWith(
-                  color: ModusColors.dustSilver,
+                  color: ModusPalette.of(context).muted,
                 ),
               ),
             ),
@@ -290,7 +290,7 @@ Future<ShelfChoice?> showShelfPicker(
                       ? Icons.check
                       : Icons.inventory_2_outlined,
                   color: entry.id == shelf.lastOpened
-                      ? ModusColors.aureoGold
+                      ? ModusPalette.of(context).primary
                       : null,
                 ),
                 title: Text(
@@ -400,7 +400,7 @@ class _ShelfNameDialogState extends State<_ShelfNameDialog> {
             Text(
               l10n.shelfAddBody,
               style: Theme.of(context).textTheme.bodyMedium
-                  ?.copyWith(color: ModusColors.dustSilver),
+                  ?.copyWith(color: ModusPalette.of(context).muted),
             ),
             const SizedBox(height: Spacing.m),
           ],

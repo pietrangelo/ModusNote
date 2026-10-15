@@ -27,6 +27,7 @@ import 'links/note_picker.dart';
 import 'note_appearance.dart';
 import 'note_store.dart';
 import 'schema_text.dart';
+import '../theme/modus_palette.dart';
 
 /// Where an edit stands, as the app bar shows it.
 enum SaveState { saved, saving, incomplete, failed }
@@ -826,13 +827,13 @@ class _TypeTitle extends StatelessWidget {
   final SchemaText text;
   final ValueChanged<SchemaDefinition> onSwitch;
 
-  Widget _label(SchemaDefinition schema) => Row(
+  Widget _label(BuildContext context, SchemaDefinition schema) => Row(
     mainAxisSize: MainAxisSize.min,
     children: [
       Icon(
         NoteAppearance.icon(schema.icon),
         size: IconSizes.inline,
-        color: NoteAppearance.tint(schema.tint),
+        color: ModusPalette.of(context).tint(schema.tint),
       ),
       const SizedBox(width: Spacing.s),
       Flexible(
@@ -843,7 +844,7 @@ class _TypeTitle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (schemas.isEmpty) return _label(schema);
+    if (schemas.isEmpty) return _label(context, schema);
     // A menu button with a child is not announced as a button by itself,
     // and in the app bar's title it would merge into the route's heading.
     return Semantics(
@@ -853,14 +854,14 @@ class _TypeTitle extends StatelessWidget {
         key: const ValueKey('note-type'),
         tooltip: AppLocalizations.of(context).noteType,
         onSelected: onSwitch,
-        itemBuilder: (_) => [
+        itemBuilder: (context) => [
           for (final option in schemas)
-            PopupMenuItem(value: option, child: _label(option)),
+            PopupMenuItem(value: option, child: _label(context, option)),
         ],
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Flexible(child: _label(schema)),
+            Flexible(child: _label(context, schema)),
             const Icon(Icons.arrow_drop_down),
           ],
         ),
