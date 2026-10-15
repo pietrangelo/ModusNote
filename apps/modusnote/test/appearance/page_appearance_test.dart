@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
 
@@ -46,10 +47,22 @@ void main() {
     });
   });
 
-  test('starts medium and at the body size', () {
+  test('starts medium, at the body size, in the app\'s body font', () {
     const appearance = PageAppearance();
     expect(appearance.width, PageWidth.medium);
     expect(appearance.textSize, TypeScale.body);
+    expect(appearance.font, PageFont.inter);
+  });
+
+  test('every typeface but Inter is two bundled files, roman and italic', () {
+    expect(PageFont.inter.assets, isEmpty);
+    for (final font in PageFont.values.skip(1)) {
+      expect(font.assets, hasLength(2), reason: '$font');
+      expect(font.assets.last, contains('Italic'));
+      for (final asset in font.assets) {
+        expect(File(asset).existsSync(), isTrue, reason: asset);
+      }
+    }
   });
 
   test('steps stop at both ends', () {
@@ -70,10 +83,23 @@ void main() {
     test('round-trips every combination', () {
       for (final width in PageWidth.values) {
         for (var step = 0; step < PageAppearance.textSizes.length; step++) {
-          final appearance = PageAppearance(width: width, textStep: step);
-          expect(PageAppearance.fromBytes(appearance.toBytes()), appearance);
+          for (final font in PageFont.values) {
+            final appearance = PageAppearance(
+              width: width,
+              textStep: step,
+              font: font,
+            );
+            expect(PageAppearance.fromBytes(appearance.toBytes()), appearance);
+          }
         }
       }
+    });
+
+    test('version 1, before the typeface, still reads', () {
+      expect(
+        PageAppearance.fromBytes(Uint8List.fromList([1, 2, 3])),
+        const PageAppearance(width: PageWidth.wide, textStep: 3),
+      );
     });
 
     test('anything unexpected is the default, never an error', () {
@@ -82,9 +108,12 @@ void main() {
         Uint8List(0),
         Uint8List.fromList([1, 0]),
         Uint8List.fromList([2, 0, 0]),
+        Uint8List.fromList([3, 0, 0, 0]),
         Uint8List.fromList([1, 4, 0]),
         Uint8List.fromList([1, 0, 5]),
         Uint8List.fromList([1, 0, 0, 0]),
+        Uint8List.fromList([2, 0, 0, 4]),
+        Uint8List.fromList([2, 0, 0, 0, 0]),
       ]) {
         expect(
           PageAppearance.fromBytes(bytes),

@@ -23,7 +23,11 @@ class PageAppearanceSheet extends StatelessWidget {
       isScrollControlled: true,
       // The page stays visible behind the sheet, to see the change.
       barrierColor: Colors.transparent,
-      constraints: wide ? const BoxConstraints(maxWidth: Extents.xxl) : null,
+      // The golden share of the window at most, so the page stays in sight.
+      constraints: BoxConstraints(
+        maxWidth: wide ? Extents.xxl : double.infinity,
+        maxHeight: MediaQuery.sizeOf(context).height * LayoutSplit.primary,
+      ),
       builder: (_) => PageAppearanceSheet(settings: settings),
     );
   }
@@ -69,6 +73,36 @@ class PageAppearanceSheet extends StatelessWidget {
                   selected: {page.textStep},
                   onSelectionChanged: (chosen) =>
                       settings.page = page.copyWith(textStep: chosen.single),
+                ),
+                const SizedBox(height: Spacing.l),
+                Text(l10n.pageFont, style: theme.textTheme.titleMedium),
+                RadioGroup<PageFont>(
+                  groupValue: page.font,
+                  onChanged: (font) {
+                    if (font != null) settings.page = page.copyWith(font: font);
+                  },
+                  child: Column(
+                    children: [
+                      for (final font in PageFont.values)
+                        RadioListTile<PageFont>(
+                          key: ValueKey('page-font-${font.name}'),
+                          value: font,
+                          contentPadding: EdgeInsets.zero,
+                          title: Text(switch (font) {
+                            PageFont.inter => l10n.pageFontInter,
+                            PageFont.literata => l10n.pageFontLiterata,
+                            PageFont.atkinson => l10n.pageFontAtkinson,
+                            PageFont.quattro => l10n.pageFontQuattro,
+                          }),
+                          subtitle: Text(switch (font) {
+                            PageFont.inter => l10n.pageFontInterHint,
+                            PageFont.literata => l10n.pageFontLiterataHint,
+                            PageFont.atkinson => l10n.pageFontAtkinsonHint,
+                            PageFont.quattro => l10n.pageFontQuattroHint,
+                          }),
+                        ),
+                    ],
+                  ),
                 ),
                 if (wide) ...[
                   const SizedBox(height: Spacing.l),

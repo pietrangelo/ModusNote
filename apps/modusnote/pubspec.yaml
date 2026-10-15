@@ -45,6 +45,10 @@ flutter:
   generate: true
   assets:
     - assets/brand/
+    # Typefaces for the page, loaded only when chosen (`ReadingFonts`), so
+    # they are plain assets: a font in `fonts:` is fetched at every start
+    # of the web client.
+    - assets/fonts/reading/
   fonts:
     - family: PlusJakartaSans
       fonts:
