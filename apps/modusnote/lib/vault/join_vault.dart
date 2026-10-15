@@ -12,6 +12,7 @@ import '../l10n/generated/app_localizations.dart';
 import '../sync/sign_in_form.dart';
 import '../theme/golden_ratio.dart';
 import '../theme/modus_colors.dart';
+import 'passphrase_warning.dart';
 
 /// First launch on a second device: signs in to the same account, takes
 /// the code another device shows and a passphrase for this one, then waits
@@ -58,6 +59,7 @@ class _JoinVaultScreenState extends State<JoinVaultScreen> {
   final _passphrase = TextEditingController();
   final _confirmation = TextEditingController();
   _Problem? _problem;
+  bool _acknowledged = false;
   var _busy = false;
   LinkRequest? _request;
   Timer? _next;
@@ -270,7 +272,13 @@ class _JoinVaultScreenState extends State<JoinVaultScreen> {
           enableSuggestions: false,
           keyboardType: TextInputType.visiblePassword,
           decoration: InputDecoration(labelText: l10n.passphraseConfirmLabel),
-          onSubmitted: _busy ? null : (_) => _submit(),
+          onSubmitted: _busy || !_acknowledged ? null : (_) => _submit(),
+        ),
+        const SizedBox(height: Spacing.l),
+        PassphraseWarning(
+          acknowledged: _acknowledged,
+          enabled: !_busy,
+          onChanged: (value) => setState(() => _acknowledged = value),
         ),
         if (problem != null) ...[
           const SizedBox(height: Spacing.m),
@@ -286,7 +294,7 @@ class _JoinVaultScreenState extends State<JoinVaultScreen> {
         const SizedBox(height: Spacing.l),
         FilledButton(
           key: const ValueKey('join-submit'),
-          onPressed: _busy ? null : _submit,
+          onPressed: _busy || !_acknowledged ? null : _submit,
           child: Text(l10n.joinVaultSubmit),
         ),
         if (_busy) ...[

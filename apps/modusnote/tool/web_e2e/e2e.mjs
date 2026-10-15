@@ -96,6 +96,8 @@ async function scenario(browser, origin, mode) {
   await page.getByText('Create your vault').waitFor({ timeout: 60000 });
   await type(0, passphrase);
   await type(1, passphrase);
+  await page.getByRole('checkbox', { name: /nobody can recover my notes/ }).click();
+  await settle();
   await page.getByRole('button', { name: 'Create vault' }).click();
   await page.getByText('New note').first().waitFor({ timeout: 120000 });
 
