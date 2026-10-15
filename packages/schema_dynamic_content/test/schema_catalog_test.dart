@@ -38,6 +38,7 @@ void main() {
     expect(SeedSchemas.all.map((s) => s.id), [
       SchemaId('song_sketch', 1),
       SchemaId('dream_log', 1),
+      SchemaId('journal', 1),
       SchemaId('task', 2),
       SchemaId('document', 1),
       SchemaId('book', 1),

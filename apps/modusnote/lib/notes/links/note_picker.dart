@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:schema_dynamic_content/schema_dynamic_content.dart';
 
+import '../journal/journal_days.dart';
 import '../../l10n/generated/app_localizations.dart';
 import '../../theme/golden_ratio.dart';
 import '../note_appearance.dart';
@@ -115,7 +116,7 @@ class _NotePickerState extends State<_NotePicker> {
     SchemaDefinition? schema,
   ) {
     final l10n = AppLocalizations.of(context);
-    final title = NoteTitle.of(note, schema);
+    final title = NoteTitle.of(note, schema, day: JournalDays.longIn(context));
     return ListTile(
       key: ValueKey('pick-note-${note.id.value}'),
       leading: Icon(

@@ -8,6 +8,7 @@ void main() {
     expect(SeedSchemas.all.map((s) => s.id.name), [
       'song_sketch',
       'dream_log',
+      'journal',
       'task',
       'document',
       'book',

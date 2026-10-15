@@ -1,4 +1,4 @@
-import 'package:flutter/widgets.dart';
+import 'home.dart' show AppHome;
 
-Future<Widget> buildHome() =>
+Future<AppHome> buildHome() =>
     throw UnsupportedError('no home for this platform');

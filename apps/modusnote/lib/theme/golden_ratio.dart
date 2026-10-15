@@ -51,8 +51,9 @@ abstract final class Extents {
   static const double xl = 377;
   static const double xxl = 610;
   static const double xxxl = 987;
+  static const double xxxxl = 1597;
 
-  static const all = [s, m, l, xl, xxl, xxxl];
+  static const all = [s, m, l, xl, xxl, xxxl, xxxxl];
 }
 
 abstract final class IconSizes {
