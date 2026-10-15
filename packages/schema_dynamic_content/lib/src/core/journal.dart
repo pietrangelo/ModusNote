@@ -87,14 +87,15 @@ abstract final class Journal {
   }
 
   /// The days, from [today] on, to remind the person to write: the next
-  /// [reminderDays], without today once a page of today exists.
+  /// [reminderDays], without those that already have a page.
   static List<DateValue> reminders(
     Iterable<DynamicEntry> entries, {
     required DateValue today,
   }) {
-    final written = pagesOn(entries, today).isNotEmpty;
+    final written = {for (final entry in entries) ?dayOf(entry)};
     return [
-      for (var i = written ? 1 : 0; i < reminderDays; i++) _plus(today, i),
+      for (var i = 0; i < reminderDays; i++)
+        if (_plus(today, i) case final day when !written.contains(day)) day,
     ];
   }
 

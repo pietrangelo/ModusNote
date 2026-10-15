@@ -21,6 +21,8 @@ import '../appearance/page_appearance.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../notes/note_library.dart';
 import '../notes/schema_text.dart';
+import '../notes/journal/journal_settings_sheet.dart';
+import '../reminders/journal_reminder.dart';
 import '../reminders/password_reminders.dart';
 import '../sync/blob_sync.dart';
 import '../sync/cloud_sheet.dart';
@@ -148,13 +150,23 @@ final class _Joining extends _Stage {
 }
 
 final class _Open extends _Stage {
-  const _Open(this.vault, this.store, this.autoLock, this.sync, this.reminders);
+  const _Open(
+    this.vault,
+    this.store,
+    this.autoLock,
+    this.sync,
+    this.reminders,
+    this.journal,
+  );
 
   final UnlockedVault vault;
   final VaultNoteStore store;
   final AutoLock autoLock;
   final SyncController? sync;
   final PasswordReminders? reminders;
+
+  /// The journal's daily reminder; null where there are no reminders.
+  final JournalReminderSetting? journal;
 }
 
 /// The Supabase session, sealed in the vault under the local key: it opens
@@ -167,6 +179,10 @@ const _retiredSetting = 'sync.retired';
 /// How this device shows the page of a note (width, text size): sealed
 /// like everything else in the vault, though it says nothing of the notes.
 const _pageSetting = 'ui.page';
+
+/// Whether, and when, this device reminds its person to write in the
+/// journal.
+const _journalSetting = 'journal.reminder';
 
 enum _Problem {
   tooShort,
@@ -293,6 +309,9 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
       }
       final sync = await _connect(vault, store, blobs);
       final page = await _storedPage(vault);
+      final daily = widget.remindersFor == null
+          ? const JournalReminder()
+          : await _storedJournal(vault);
       if (!mounted) {
         sync?.dispose();
         widget.account?.detach();
@@ -303,16 +322,20 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
           widget.autoLockFor?.call(_autoLocked) ??
           AutoLock(onLock: _autoLocked);
       _watchActivity(autoLock);
-      final reminders = switch (widget.remindersFor?.call(l10n)) {
-        null => null,
-        final scheduler => PasswordReminders(
-          store: store,
-          scheduler: scheduler,
-          texts: ReminderTexts(l10n),
-        ),
-      };
+      final scheduler = widget.remindersFor?.call(l10n);
+      final journal = scheduler == null ? null : _journalOf(vault, daily);
+      final reminders = scheduler == null
+          ? null
+          : PasswordReminders(
+              store: store,
+              scheduler: scheduler,
+              texts: ReminderTexts(l10n),
+              journal: journal,
+            );
       _attachAppearance(vault, page);
-      setState(() => _stage = _Open(vault, store, autoLock, sync, reminders));
+      setState(
+        () => _stage = _Open(vault, store, autoLock, sync, reminders, journal),
+      );
       sync?.start();
       reminders?.start();
     } on WrongPassphraseException {
@@ -512,6 +535,33 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
     } on MalformedSyncDataException {
       return const PageAppearance();
     }
+  }
+
+  Future<JournalReminder> _storedJournal(UnlockedVault vault) async {
+    try {
+      return JournalReminder.fromBytes(
+        await widget.keeper.loadSetting(vault, _journalSetting),
+      );
+    } on MalformedSyncDataException {
+      return const JournalReminder();
+    }
+  }
+
+  JournalReminderSetting _journalOf(
+    UnlockedVault vault,
+    JournalReminder reminder,
+  ) {
+    final keeper = widget.keeper;
+    return JournalReminderSetting(
+      reminder,
+      persist: (bytes) async {
+        try {
+          await keeper.saveSetting(vault, _journalSetting, bytes);
+        } on VaultLockedException {
+          // Locked meanwhile: the change stays on the screen only.
+        }
+      },
+    );
   }
 
   /// The app's appearance, while this vault fills it.
@@ -721,23 +771,29 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
     _Checking() => const Scaffold(
       body: Center(child: CircularProgressIndicator()),
     ),
-    _Open(:final store, :final autoLock, :final sync) => AutoLockScope(
-      autoLock: autoLock,
-      child: NoteLibraryScreen(
-        schemas: widget.catalog.current,
-        store: store,
-        cloud: sync == null
-            ? null
-            : CloudButton(
-                sync: sync,
-                onLinkDevice: widget.keeper.offersLinking ? _linkDevice : null,
-                onInvite: widget.keeper.offersInvites ? _invite : null,
-              ),
-        onLock: _lock,
-        onBackup: widget.files == null ? null : _backup,
-        onPasskey: widget.keeper.offersPasskeys ? _passkeySettings : null,
+    _Open(:final store, :final autoLock, :final sync, :final journal) =>
+      AutoLockScope(
+        autoLock: autoLock,
+        child: NoteLibraryScreen(
+          schemas: widget.catalog.current,
+          store: store,
+          cloud: sync == null
+              ? null
+              : CloudButton(
+                  sync: sync,
+                  onLinkDevice: widget.keeper.offersLinking
+                      ? _linkDevice
+                      : null,
+                  onInvite: widget.keeper.offersInvites ? _invite : null,
+                ),
+          onLock: _lock,
+          onBackup: widget.files == null ? null : _backup,
+          onPasskey: widget.keeper.offersPasskeys ? _passkeySettings : null,
+          journalSettings: journal == null
+              ? null
+              : () => JournalSettingsSheet.show(context, journal),
+        ),
       ),
-    ),
     _Joining() => JoinVaultScreen(
       account: widget.account!,
       join: _join,

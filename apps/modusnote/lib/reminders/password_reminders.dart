@@ -5,6 +5,11 @@ import 'package:schema_dynamic_content/schema_dynamic_content.dart';
 
 import '../l10n/generated/app_localizations.dart';
 import '../notes/note_store.dart';
+import 'journal_reminder.dart';
+
+/// What a reminder is about, which a phone shows as a channel of its own
+/// that the person can silence by itself.
+enum ReminderTopic { passwords, journal }
 
 /// One notification the platform shows at [at], device time.
 @immutable
@@ -14,13 +19,16 @@ final class ScheduledReminder {
     required this.at,
     required this.title,
     required this.body,
+    this.topic = ReminderTopic.passwords,
   });
 
-  /// [ReminderSlot.id]: the same for the same day and kind.
+  /// [ReminderSlot.id] or [Journal.reminderId]: the same for the same day
+  /// and kind, never the same for two reminders.
   final int id;
   final DateTime at;
   final String title;
   final String body;
+  final ReminderTopic topic;
 
   @override
   bool operator ==(Object other) =>
@@ -28,10 +36,11 @@ final class ScheduledReminder {
       other.id == id &&
       other.at == at &&
       other.title == title &&
-      other.body == body;
+      other.body == body &&
+      other.topic == topic;
 
   @override
-  int get hashCode => Object.hash(id, at, title, body);
+  int get hashCode => Object.hash(id, at, title, body, topic);
 }
 
 /// Where reminders are shown: the system's notifications on a phone.
@@ -49,7 +58,8 @@ abstract interface class ReminderScheduler {
 
 /// The words of the reminders, in the person's language. Generic on
 /// purpose: a notification is seen on a locked screen and kept by the
-/// system outside the vault, so it says how many passwords, never which.
+/// system outside the vault, so it says how many passwords, never which,
+/// and that it is time to write, never what.
 final class ReminderTexts {
   ReminderTexts(this._l10n);
 
@@ -62,21 +72,28 @@ final class ReminderTexts {
     ExpiryReminderKind.dayBefore => _l10n.reminderDayBefore(slot.count),
     ExpiryReminderKind.dayOf => _l10n.reminderDayOf(slot.count),
   };
+
+  String get journalTitle => _l10n.journalReminderTitle;
+
+  String get journalBody => _l10n.journalReminderBody;
 }
 
 /// Keeps the system's reminders in step with the credentials of an open
 /// vault: a week before a password expires, the day before and on the
-/// day, at [hour] in the morning.
+/// day, at [hour] in the morning. With the [journal]'s reminder on, also
+/// one a day at its time for the week ahead, without the days already
+/// written: not a repeating notification, which could not skip them.
 ///
 /// It plans while the vault is open; what it planned stays with the
 /// system after the vault locks, so a reminder still comes while the app
-/// is closed. Nothing about a note leaves the vault but the day and the
-/// count.
+/// is closed (the journal's for a week at most). Nothing about a note
+/// leaves the vault but the day and the count.
 final class PasswordReminders {
   PasswordReminders({
     required this.store,
     required this.scheduler,
     required this.texts,
+    this.journal,
     this.clock = DateTime.now,
     this.hour = 9,
   });
@@ -84,6 +101,9 @@ final class PasswordReminders {
   final NoteStore store;
   final ReminderScheduler scheduler;
   final ReminderTexts texts;
+
+  /// This device's choice for the journal; null where it has none.
+  final ValueListenable<JournalReminder>? journal;
   final DateTime Function() clock;
   final int hour;
 
@@ -95,6 +115,7 @@ final class PasswordReminders {
   /// Plans now and after every change to the notes.
   void start() {
     store.addListener(_changed);
+    journal?.addListener(_changed);
     _changed();
   }
 
@@ -102,6 +123,7 @@ final class PasswordReminders {
   void dispose() {
     _disposed = true;
     store.removeListener(_changed);
+    journal?.removeListener(_changed);
   }
 
   /// Done when every plan asked for so far has reached the scheduler.
@@ -118,11 +140,10 @@ final class PasswordReminders {
   @visibleForTesting
   List<ScheduledReminder> plan() {
     final now = clock();
+    final today = DateValue(now.year, now.month, now.day);
+    final daily = journal?.value;
     return [
-      for (final slot in PasswordExpiry.plan(
-        store.entries,
-        today: DateValue(now.year, now.month, now.day),
-      ))
+      for (final slot in PasswordExpiry.plan(store.entries, today: today))
         if (DateTime(slot.day.year, slot.day.month, slot.day.day, hour)
             case final at when at.isAfter(now))
           ScheduledReminder(
@@ -131,6 +152,17 @@ final class PasswordReminders {
             title: texts.title,
             body: texts.body(slot),
           ),
+      if (daily != null && daily.enabled)
+        for (final day in Journal.reminders(store.entries, today: today))
+          if (DateTime(day.year, day.month, day.day, daily.hour, daily.minute)
+              case final at when at.isAfter(now))
+            ScheduledReminder(
+              id: Journal.reminderId(day),
+              at: at,
+              title: texts.journalTitle,
+              body: texts.journalBody,
+              topic: ReminderTopic.journal,
+            ),
     ];
   }
 

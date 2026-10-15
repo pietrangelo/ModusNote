@@ -117,6 +117,8 @@ VaultGate _gate({
     remindersFor: (l10n) => LocalReminderScheduler(
       channel: l10n.reminderChannel,
       description: l10n.reminderChannelDescription,
+      journalChannel: l10n.journalReminderChannel,
+      journalDescription: l10n.journalReminderChannelDescription,
       scope: scope,
     ),
     recorderFor: (engine) => NoteRecorder(

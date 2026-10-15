@@ -140,6 +140,15 @@ void main() {
       expect(days.last, DateValue(2027, 1, 4));
     });
 
+    test('a day already written has none', () {
+      final days = Journal.reminders([
+        page(DateValue(2026, 12, 31)),
+        page(DateValue(2027, 2, 1)),
+      ], today: today);
+      expect(days, isNot(contains(DateValue(2026, 12, 31))));
+      expect(days, hasLength(Journal.reminderDays - 1));
+    });
+
     test('today goes once today is written', () {
       final days = Journal.reminders([page(today)], today: today);
       expect(days.first, DateValue(2026, 12, 30));

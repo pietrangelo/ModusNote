@@ -259,6 +259,32 @@ void main() {
       expect(find.text('Lunedì'), findsWidgets);
     });
 
+    testWidgets('the journal\'s settings are a tap away where there are any', (
+      tester,
+    ) async {
+      var opened = 0;
+      await pumpApp(
+        tester,
+        NoteLibraryScreen(
+          schemas: SeedSchemas.all,
+          store: InMemoryNoteStore(),
+          clock: clock,
+          journalSettings: () => opened++,
+        ),
+      );
+      await pickJournal(tester);
+      await tester.tap(key('journal-settings'));
+      expect(opened, 1);
+    });
+
+    testWidgets('no settings button without reminders (the web)', (
+      tester,
+    ) async {
+      await library(tester, const []);
+      await pickJournal(tester);
+      expect(key('journal-settings'), findsNothing);
+    });
+
     testWidgets('a day without a page starts one on that day', (tester) async {
       await library(tester, const []);
       await pickJournal(tester);
