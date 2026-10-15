@@ -60,7 +60,22 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  /// The side column scrolls once the types and categories outgrow it:
+  /// [target] is looked for further down, then back up.
+  Future<void> reveal(WidgetTester tester, Finder target) async {
+    final side = find.byKey(const ValueKey('pane-types'));
+    for (final step in [-Spacing.xl, Spacing.xl]) {
+      for (var i = 0; i < 21 && target.evaluate().isEmpty; i++) {
+        await tester.drag(side, Offset(0, step));
+        await tester.pump();
+      }
+    }
+  }
+
   Future<void> select(WidgetTester tester, Finder target) async {
+    if (target.evaluate().isEmpty) await reveal(tester, target);
+    await tester.ensureVisible(target);
+    await tester.pumpAndSettle();
     await tester.tap(target);
     await tester.pumpAndSettle();
   }
@@ -74,6 +89,7 @@ void main() {
     for (final schema in SeedSchemas.all) {
       expect(nav(schema.id.name), findsOneWidget);
     }
+    await reveal(tester, nav('trash'));
     expect(nav('trash'), findsOneWidget);
     expect(row(song), findsOneWidget);
     expect(row(riff), findsOneWidget);

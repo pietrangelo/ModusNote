@@ -2,6 +2,7 @@ import 'package:blob_storage_media/blob_storage_media.dart';
 import 'package:flutter/material.dart';
 import 'package:schema_dynamic_content/schema_dynamic_content.dart';
 
+import 'journal/journal_days.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../theme/golden_ratio.dart';
 import 'note_appearance.dart';
@@ -159,7 +160,11 @@ class _TrashedCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
-    final title = NoteTitle.of(note.entry, schema);
+    final title = NoteTitle.of(
+      note.entry,
+      schema,
+      day: JournalDays.longIn(context),
+    );
     final type = schema == null ? '' : SchemaText(l10n).label(schema!.label);
     return Card(
       child: Padding(
