@@ -6,7 +6,7 @@ import 'package:modusnote/theme/golden_ratio.dart';
 import 'package:modusnote/theme/modus_colors.dart';
 import 'package:modusnote/theme/modus_theme.dart';
 import 'package:schema_dynamic_content/schema_dynamic_content.dart';
-import 'package:modusnote/notes/note_appearance.dart';
+import 'package:modusnote/theme/modus_palette.dart';
 
 /// WCAG 2.x contrast ratio, computed independently of the theme.
 double contrast(Color a, Color b) {
@@ -99,7 +99,7 @@ void main() {
       for (final tint in [...NoteTint.values, null]) {
         for (final background in backgrounds) {
           expect(
-            contrast(NoteAppearance.tint(tint), background),
+            contrast(ModusPalette.modus.tint(tint), background),
             greaterThanOrEqualTo(4.5),
             reason: '$tint on $background',
           );
@@ -109,7 +109,7 @@ void main() {
 
     test('a card washed with its type\'s tint keeps its text at AA', () {
       for (final tint in [...NoteTint.values, null]) {
-        final card = NoteAppearance.wash(tint);
+        final card = ModusPalette.modus.wash(tint);
         expect(card, isNot(ModusColors.abyssalSlate), reason: '$tint');
         // Title, label and date, progress, the done check.
         for (final text in [
@@ -125,7 +125,7 @@ void main() {
         }
         // The type icon is not text: 3:1 (WCAG 1.4.11).
         expect(
-          contrast(NoteAppearance.tint(tint), card),
+          contrast(ModusPalette.modus.tint(tint), card),
           greaterThanOrEqualTo(3),
           reason: 'icon on the $tint card',
         );

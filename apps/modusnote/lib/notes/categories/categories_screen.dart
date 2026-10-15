@@ -7,6 +7,7 @@ import '../note_appearance.dart';
 import '../note_store.dart';
 import 'category_dialog.dart';
 import 'category_picker.dart';
+import '../../theme/modus_palette.dart';
 
 /// The category tree, to create, rename, restyle, move and delete
 /// categories. Deleting one never deletes notes: they move up.
@@ -172,7 +173,7 @@ class _CategoryRow extends StatelessWidget {
       ),
       leading: Icon(
         CategoryAppearance.icon(category.icon),
-        color: CategoryAppearance.tint(category.tint),
+        color: ModusPalette.of(context).tint(category.tint),
       ),
       title: Text(
         category.name.value,

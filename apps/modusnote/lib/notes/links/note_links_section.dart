@@ -5,6 +5,7 @@ import '../../l10n/generated/app_localizations.dart';
 import '../../theme/golden_ratio.dart';
 import '../note_appearance.dart';
 import '../note_title.dart';
+import '../../theme/modus_palette.dart';
 
 /// Under a note: the notes it links to and the notes that link to it,
 /// each one tap away. A link to a note that is gone (deleted, or in the
@@ -47,7 +48,9 @@ class NoteLinksSection extends StatelessWidget {
         enabled: note != null,
         leading: Icon(
           note == null ? Icons.link_off : NoteAppearance.icon(schema?.icon),
-          color: note == null ? null : NoteAppearance.tint(schema?.tint),
+          color: note == null
+              ? null
+              : ModusPalette.of(context).tint(schema?.tint),
         ),
         title: Text(
           note == null

@@ -3,10 +3,10 @@ import 'package:flutter/services.dart';
 import 'package:schema_dynamic_content/schema_dynamic_content.dart';
 
 import '../../theme/golden_ratio.dart';
-import '../../theme/modus_colors.dart';
 import '../../theme/modus_theme.dart';
 import 'markdown_commands.dart';
 import 'markdown_syntax.dart';
+import '../../theme/modus_palette.dart';
 
 /// Markdown rendered as it is typed, in the field itself: the text being
 /// edited stays the Markdown source, its markers dimmed and the rest drawn
@@ -78,6 +78,7 @@ class MarkdownEditingController extends TextEditingController {
         ? value.composing
         : TextRange.empty;
     final base = style ?? const TextStyle();
+    final palette = ModusPalette.of(context);
     final shown = _shown();
     final builder = pictureBuilder;
     final children = <InlineSpan>[];
@@ -86,7 +87,12 @@ class MarkdownEditingController extends TextEditingController {
       for (final (start, end, underline) in _split(run, composing)) {
         TextSpan piece(int from, int to) => TextSpan(
           text: text.substring(from, to),
-          style: MarkdownStyles.of(base, run.marks, underline: underline),
+          style: MarkdownStyles.of(
+            base,
+            run.marks,
+            palette,
+            underline: underline,
+          ),
         );
         var from = start;
         while (from < end) {
@@ -144,9 +150,14 @@ class MarkdownEditingController extends TextEditingController {
   }
 }
 
-/// How each [MdMark] looks, on the app's colours and type scale.
+/// How each [MdMark] looks, on the theme's colours and the type scale.
 abstract final class MarkdownStyles {
-  static TextStyle of(TextStyle base, int marks, {bool underline = false}) {
+  static TextStyle of(
+    TextStyle base,
+    int marks,
+    ModusPalette palette, {
+    bool underline = false,
+  }) {
     var style = base;
     bool has(int flag) => marks & flag != 0;
     if (has(MdMark.heading1) || has(MdMark.heading2)) {
@@ -169,11 +180,11 @@ abstract final class MarkdownStyles {
     if (has(MdMark.code)) {
       style = style.copyWith(
         fontFamily: 'monospace',
-        backgroundColor: ModusColors.abyssalSlate,
+        backgroundColor: palette.surface,
       );
     }
     if (has(MdMark.link)) {
-      style = style.copyWith(color: ModusColors.aureoGold);
+      style = style.copyWith(color: palette.primary);
     }
     final lines = <TextDecoration>[
       if (has(MdMark.strike) || has(MdMark.done)) TextDecoration.lineThrough,
@@ -183,17 +194,15 @@ abstract final class MarkdownStyles {
       style = style.copyWith(decoration: TextDecoration.combine(lines));
     }
     if (has(MdMark.done)) {
-      style = style.copyWith(color: ModusColors.dustSilver);
+      style = style.copyWith(color: palette.muted);
     }
     if (has(MdMark.listMarker)) {
       style = style.copyWith(
-        color: has(MdMark.done)
-            ? ModusColors.cadenceCyan
-            : ModusColors.aureoGold,
+        color: has(MdMark.done) ? palette.success : palette.primary,
         decoration: TextDecoration.none,
       );
     } else if (has(MdMark.marker)) {
-      style = style.copyWith(color: ModusColors.dustSilver);
+      style = style.copyWith(color: palette.muted);
     }
     return style;
   }

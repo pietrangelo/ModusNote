@@ -8,6 +8,7 @@ import 'note_appearance.dart';
 import 'note_store.dart';
 import 'note_title.dart';
 import 'schema_text.dart';
+import '../theme/modus_palette.dart';
 
 /// Notes moved to the trash: each can go back to the library or be
 /// deleted for good, recordings included, on every device.
@@ -173,7 +174,7 @@ class _TrashedCard extends StatelessWidget {
             Icon(
               NoteAppearance.icon(schema?.icon),
               size: IconSizes.inline,
-              color: NoteAppearance.tint(schema?.tint),
+              color: ModusPalette.of(context).tint(schema?.tint),
             ),
             const SizedBox(width: Spacing.m),
             Expanded(
