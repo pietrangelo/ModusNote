@@ -341,6 +341,7 @@ void main() {
           random: Random.secure(),
           kdf: KdfParameters.interactive,
           links: server,
+          accounts: server,
         );
       }
 
@@ -394,6 +395,119 @@ void main() {
             passphrase: secret(utf8.encode('frase due')),
           ),
           throwsA(isA<LinkCodeRejectedException>()),
+        );
+      });
+    });
+
+    group('inviting another account', () {
+      late SodiumSumo sodium;
+      late String owner;
+      late String friend;
+
+      setUpAll(() async => sodium = await SodiumSumoInit.init());
+      setUp(() {
+        owner = _uuid();
+        friend = _uuid();
+      });
+
+      PasswordSecret secret(List<int> utf8Bytes) =>
+          SodiumPasswordSecret.fromUtf8Bytes(
+            sodium,
+            Uint8List.fromList(utf8Bytes),
+          );
+
+      VaultKeeper keeperFor(String user) {
+        final database = sqlite3.openInMemory();
+        addTearDown(database.close);
+        final server = serverFor(user);
+        return VaultKeeper(
+          vaults: SqliteVaultStore(database),
+          records: (workspace) =>
+              SqliteLocalRecordStore(database, workspace: workspace),
+          server: server,
+          identities: SodiumIdentityService(sodium),
+          keys: SodiumKeyDerivationService(sodium),
+          subkeys: SodiumSubkeyDerivationService(sodium),
+          envelopes: SodiumEnvelopeEncryptor(sodium),
+          encapsulation: SodiumKeyEncapsulation(sodium),
+          clock: _Clock(),
+          random: Random.secure(),
+          kdf: KdfParameters.interactive,
+          invites: server,
+          accounts: server,
+        );
+      }
+
+      final code = InviteCode.tryParse('K7MQ4X-T9ABC-D2EFG')!;
+
+      Future<(UnlockedVault, UnlockedVault)> invited(Role role) async {
+        final phone = keeperFor(owner);
+        final founder = await phone.create(secret(utf8.encode('frase uno')));
+        addTearDown(founder.lock);
+        await founder.engine.sync();
+        final offering = await phone.offerInvite(
+          founder,
+          secret(code.toBytes()),
+          lookup: code.lookup,
+          role: role,
+        );
+        final request = await keeperFor(friend).acceptInvite(
+          code: secret(code.toBytes()),
+          lookup: code.lookup,
+          account: AccountId.parse(friend),
+          passphrase: secret(utf8.encode('frase di Bea')),
+        );
+        expect(await offering.poll(), isNotNull);
+        final joined = await request.poll();
+        addTearDown(() => joined?.lock());
+        return (founder, joined!);
+      }
+
+      test('the invited account joins, writes and is read', () async {
+        final (founder, bea) = await invited(Role.editor);
+        final note = RecordId.parse(_hex(16));
+        await bea.engine.write(
+          note,
+          RevisionContents(Uint8List.fromList(utf8.encode('da Bea'))),
+        );
+        await bea.engine.sync();
+        await founder.engine.sync();
+
+        expect(switch (await founder.engine.read(note)) {
+          RevisionContents(:final bytes) => utf8.decode(bytes),
+          _ => null,
+        }, 'da Bea');
+        expect(await serverFor(owner).invite(code.lookup), isNull);
+      });
+
+      test('removing the member shuts the account out', () async {
+        final (founder, bea) = await invited(Role.editor);
+        await bea.engine.sync();
+
+        await founder.engine.revoke(bea.member);
+
+        final shutOut = serverFor(friend);
+        expect(await shutOut.membership(founder.workspace, from: 0), isEmpty);
+        await expectLater(
+          shutOut.push(founder.workspace, [sealedRow(1)]),
+          throwsA(isA<SyncServerRejectedException>()),
+        );
+        expect(
+          await serverFor(owner).membership(founder.workspace, from: 0),
+          hasLength(3),
+        );
+      });
+
+      test('an invited reader cannot admit anyone', () async {
+        final (founder, _) = await invited(Role.viewer);
+
+        await expectLater(
+          serverFor(friend).admitMember(
+            founder.workspace,
+            MemberId.of(identity(7)),
+            account: AccountId.parse(_uuid()),
+          ),
+          throwsA(isA<SyncServerRejectedException>()),
         );
       });
     });

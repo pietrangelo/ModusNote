@@ -30,7 +30,15 @@ final class SyncServerRejectedException implements Exception {
 /// It is also where two devices of the same account meet to link
 /// ([DeviceLinkChannel]): `device_links` holds the two sealed messages for a
 /// few minutes, readable only by the account that posted them.
-final class SupabaseSyncServer implements SyncServer, DeviceLinkChannel {
+///
+/// Two accounts meet the same way to invite one into the other's workspace
+/// ([InviteChannel], table `workspace_invites`): the invitee finds the offer
+/// by its six-symbol lookup through `invite_offer`, and only the inviting
+/// account reads the answers. [MemberAccounts] keeps the server's list of
+/// accounts in step with the signed membership log (`admit_member`,
+/// `remove_member`).
+final class SupabaseSyncServer
+    implements SyncServer, DeviceLinkChannel, InviteChannel, MemberAccounts {
   SupabaseSyncServer({
     required Uri projectUrl,
     required this._anonKey,
@@ -247,6 +255,113 @@ final class SupabaseSyncServer implements SyncServer, DeviceLinkChannel {
           .resolve('device_links')
           .replace(queryParameters: {'link_id': 'eq.${link.hex}'}),
     ),
+  );
+
+  @override
+  Future<void> postInvite(InviteOffer offer) => _insert('workspace_invites', [
+    {
+      'lookup': offer.lookup,
+      'kind': 'offer',
+      'payload': _bytea(offer.toBytes()),
+    },
+  ]);
+
+  @override
+  Future<void> postInviteAnswer(InviteAnswer answer) =>
+      _insert('workspace_invites', [
+        {
+          'lookup': answer.lookup,
+          'kind': 'answer',
+          'payload': _bytea(answer.toBytes()),
+        },
+      ]);
+
+  /// `invite_offer` answers the bare payload, or null. A payload that does
+  /// not parse, or names another lookup, is no offer at all.
+  @override
+  Future<InviteOffer?> invite(String lookup) async {
+    final response = await _send(
+      http.Request('POST', _rest.resolve('rpc/invite_offer'))
+        ..headers['Content-Type'] = 'application/json'
+        ..body = jsonEncode({'code': lookup}),
+    );
+    final Object? payload;
+    try {
+      payload = jsonDecode(response.body);
+    } on FormatException {
+      throw const MalformedSyncDataException('response is not JSON');
+    }
+    if (payload == null) return null;
+    final offer = _link({'payload': payload}, InviteOffer.parse);
+    return offer?.lookup == lookup ? offer : null;
+  }
+
+  @override
+  Future<List<InviteAnswer>> inviteAnswers(String lookup) async {
+    final rows = await _select('workspace_invites', {
+      'select': 'lookup,payload',
+      'lookup': 'eq.$lookup',
+      'kind': 'eq.answer',
+      'order': 'id.asc',
+      'limit': '$_maxAnswers',
+    });
+    return [
+      for (final row in rows)
+        if (_link(row, InviteAnswer.parse) case final answer?
+            when answer.lookup == lookup)
+          answer,
+    ];
+  }
+
+  @override
+  Future<void> closeInvite(String lookup) => _send(
+    http.Request(
+      'DELETE',
+      _rest
+          .resolve('workspace_invites')
+          .replace(queryParameters: {'lookup': 'eq.$lookup'}),
+    ),
+  );
+
+  /// A deployment without `admit_member` answers 404: admitting another
+  /// account needs it, but one's own account is already in.
+  @override
+  Future<void> admitMember(
+    WorkspaceId workspace,
+    MemberId member, {
+    AccountId? account,
+    bool manages = false,
+  }) async {
+    try {
+      await _rpc('admit_member', {
+        'workspace': workspace.hex,
+        'member': member.hex,
+        'account': account?.uuid,
+        'manage': manages,
+      });
+    } on SyncServerRejectedException catch (error) {
+      if (error.status != 404 || account != null) rethrow;
+    }
+  }
+
+  /// Without `remove_member` (404) there is no account to remove: the
+  /// signed log alone shuts the member out, as before.
+  @override
+  Future<void> removeMember(WorkspaceId workspace, MemberId member) async {
+    try {
+      await _rpc('remove_member', {
+        'workspace': workspace.hex,
+        'member': member.hex,
+      });
+    } on SyncServerRejectedException catch (error) {
+      if (error.status != 404) rethrow;
+    }
+  }
+
+  Future<void> _rpc(String function, Map<String, Object?> arguments) => _send(
+    http.Request('POST', _rest.resolve('rpc/$function'))
+      ..headers['Content-Type'] = 'application/json'
+      ..body = jsonEncode(arguments),
   );
 
   /// More answers than a person could have typed are not read.
