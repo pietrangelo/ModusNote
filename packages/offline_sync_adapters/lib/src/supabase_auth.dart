@@ -282,6 +282,9 @@ final class SyncAccount {
 
   String? get email => _session?.email;
 
+  /// The account's id, which an invitation lets into a workspace.
+  String? get userId => _session?.userId;
+
   /// Binds the account to an open vault: [restored] is the session the
   /// vault held, [persist] seals a new one (or null) back into it.
   void attach(
