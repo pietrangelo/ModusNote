@@ -291,6 +291,18 @@
   "@recordingAttached": {
     "description": "Audio field that holds a recording."
   },
+  "passphraseWarningTitle": "Lose the passphrase, lose your notes",
+  "@passphraseWarningTitle": {
+    "description": "Heading of the warning shown wherever a vault passphrase is chosen."
+  },
+  "passphraseWarningBody": "The passphrase never leaves this device: nobody knows it, not even the people who made the app, and there is no way to reset or recover it. If you forget it, the notes on this device stay encrypted forever and nobody will ever be able to open them. Write it down somewhere safe, such as a password manager. Another linked device, with its own passphrase, keeps a copy of your notes.",
+  "@passphraseWarningBody": {
+    "description": "Explains that a forgotten passphrase means the notes are lost for good."
+  },
+  "passphraseWarningAcknowledge": "I understand: if I forget the passphrase, nobody can recover my notes.",
+  "@passphraseWarningAcknowledge": {
+    "description": "Checkbox the person must tick before creating or joining a vault."
+  },
   "vaultCreateTitle": "Create your vault",
   "@vaultCreateTitle": {
     "description": "Title of the screen that creates the encrypted vault on first launch."

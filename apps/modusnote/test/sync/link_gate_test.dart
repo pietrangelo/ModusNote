@@ -41,6 +41,8 @@ Future<void> work(WidgetTester tester) async {
 /// Taps [finder] after scrolling it into view: the forms are taller than
 /// a phone held upright.
 Future<void> tapOn(WidgetTester tester, Finder finder) async {
+  // A field that just took focus may still be scrolling itself into view.
+  await tester.pump(const Duration(milliseconds: 300));
   await tester.ensureVisible(finder);
   await tester.pump();
   await tester.tap(finder);
@@ -102,6 +104,7 @@ void main() {
       find.byKey(const ValueKey('passphrase-confirm')),
       'frase del browser',
     );
+    await tapOn(tester, find.byKey(const ValueKey('passphrase-acknowledged')));
     await tapOn(tester, find.byKey(const ValueKey('join-submit')));
     await work(tester);
   }
@@ -136,6 +139,26 @@ void main() {
       await tapOn(tester, find.byKey(const ValueKey('cloud')));
       await tester.pumpAndSettle();
       expect(find.text('Accesso effettuato come $email'), findsOneWidget);
+    });
+
+    testWidgets('joining waits for the warning to be acknowledged', (
+      tester,
+    ) async {
+      await pumpApp(tester, gate(browserDb, auth.account(), server));
+      await tester.pumpAndSettle();
+      await tapOn(tester, find.byKey(const ValueKey('join-vault')));
+      await tester.pumpAndSettle();
+      await signIn(tester);
+      final submit = find.byKey(const ValueKey('join-submit'));
+
+      expect(find.byKey(const ValueKey('passphrase-warning')), findsOneWidget);
+      expect(tester.widget<FilledButton>(submit).onPressed, isNull);
+      await tapOn(
+        tester,
+        find.byKey(const ValueKey('passphrase-acknowledged')),
+      );
+      await tester.pump();
+      expect(tester.widget<FilledButton>(submit).onPressed, isNotNull);
     });
 
     testWidgets('a wrong code is said so and nothing is created', (
@@ -227,6 +250,10 @@ void main() {
       for (final key in ['passphrase', 'passphrase-confirm']) {
         await tester.enterText(find.byKey(ValueKey(key)), 'frase lunga');
       }
+      await tapOn(
+        tester,
+        find.byKey(const ValueKey('passphrase-acknowledged')),
+      );
       await tapOn(tester, find.text('Crea il vault'));
       await tester.pumpAndSettle();
       await tapOn(tester, find.byKey(const ValueKey('cloud')));
