@@ -6,6 +6,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:schema_dynamic_content/schema_dynamic_content.dart';
 
+import '../appearance/appearance_scope.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../theme/golden_ratio.dart';
 import '../vault/auto_lock.dart';
@@ -408,6 +409,30 @@ class _NoteLibraryScreenState extends State<NoteLibraryScreen> {
             label: editor.focused ? l10n.exitFocusMode : l10n.focusMode,
             run: editor.toggleFocus,
           ),
+      ],
+      if (AppearanceScope.maybeOf(context) case final appearance?) ...[
+        PaletteCommand(
+          icon: Icons.text_increase,
+          label: l10n.largerText,
+          run: () => appearance.page = appearance.page.larger(),
+        ),
+        PaletteCommand(
+          icon: Icons.text_decrease,
+          label: l10n.smallerText,
+          run: () => appearance.page = appearance.page.smaller(),
+        ),
+        if (wide) ...[
+          PaletteCommand(
+            icon: Icons.open_in_full,
+            label: l10n.widerPage,
+            run: () => appearance.page = appearance.page.wider(),
+          ),
+          PaletteCommand(
+            icon: Icons.close_fullscreen,
+            label: l10n.narrowerPage,
+            run: () => appearance.page = appearance.page.narrower(),
+          ),
+        ],
       ],
       PaletteCommand(
         icon: Icons.delete_outline,
