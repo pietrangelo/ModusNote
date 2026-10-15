@@ -28,6 +28,7 @@ import '../theme/golden_ratio.dart';
 import '../theme/modus_colors.dart';
 import 'auto_lock.dart';
 import 'join_vault.dart';
+import 'passphrase_warning.dart';
 import 'vault_note_store.dart';
 
 /// Moves a UTF-8 passphrase into native memory and wipes the buffer.
@@ -167,6 +168,10 @@ enum _Problem {
 class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
   _Stage _stage = const _Checking();
   _Problem? _problem;
+
+  // Ticked on the warning that a forgotten passphrase cannot be recovered;
+  // creating a vault waits for it.
+  bool _acknowledged = false;
   var _busy = false;
   final _passphrase = TextEditingController();
   final _confirmation = TextEditingController();
@@ -678,7 +683,9 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
       _Problem.passkeyRejected => l10n.passkeyRejected,
       _Problem.passkeyUnsupported => l10n.passkeyUnsupported,
     };
-    final submit = _busy ? null : () => _submit(creating: creating);
+    final submit = _busy || (creating && !_acknowledged)
+        ? null
+        : () => _submit(creating: creating);
     return Scaffold(
       body: SafeArea(
         child: Center(
@@ -727,6 +734,13 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
                         label: l10n.passphraseConfirmLabel,
                         enabled: !_busy,
                         onSubmitted: submit,
+                      ),
+                      const SizedBox(height: Spacing.l),
+                      PassphraseWarning(
+                        acknowledged: _acknowledged,
+                        enabled: !_busy,
+                        onChanged: (value) =>
+                            setState(() => _acknowledged = value),
                       ),
                     ],
                     if (problem != null) ...[

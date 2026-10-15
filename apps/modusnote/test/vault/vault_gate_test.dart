@@ -43,6 +43,12 @@ void main() {
   Future<void> create(WidgetTester tester, String a, String b) async {
     await tester.enterText(passphraseField, a);
     await tester.enterText(confirmField, b);
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('passphrase-acknowledged')),
+    );
+    await tester.tap(find.byKey(const ValueKey('passphrase-acknowledged')));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Crea il vault'));
     await tester.tap(find.text('Crea il vault'));
     await tester.pumpAndSettle();
   }
@@ -62,6 +68,44 @@ void main() {
     await create(tester, 'frase lunga', 'frase lunga');
 
     expect(find.byType(NoteLibraryScreen), findsOneWidget);
+  });
+
+  testWidgets('the vault is created only after the warning is acknowledged', (
+    tester,
+  ) async {
+    await pumpApp(tester, gateOn(database));
+    final warning = find.byKey(const ValueKey('passphrase-warning'));
+    final acknowledged = find.byKey(const ValueKey('passphrase-acknowledged'));
+    final createButton = find.widgetWithText(FilledButton, 'Crea il vault');
+
+    expect(warning, findsOneWidget);
+    expect(find.text('Se perdi la passphrase, perdi le note'), findsOneWidget);
+    await tester.enterText(passphraseField, 'frase lunga');
+    await tester.enterText(confirmField, 'frase lunga');
+    expect(tester.widget<FilledButton>(createButton).onPressed, isNull);
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+    expect(find.byType(NoteLibraryScreen), findsNothing);
+
+    await tester.ensureVisible(acknowledged);
+    await tester.tap(acknowledged);
+    await tester.pumpAndSettle();
+    expect(tester.widget<FilledButton>(createButton).onPressed, isNotNull);
+    await tester.ensureVisible(createButton);
+    await tester.tap(createButton);
+    await tester.pumpAndSettle();
+    expect(find.byType(NoteLibraryScreen), findsOneWidget);
+  });
+
+  testWidgets('unlocking an existing vault shows no warning', (tester) async {
+    await pumpApp(tester, gateOn(database));
+    await create(tester, 'frase lunga', 'frase lunga');
+    await tester.tap(find.byTooltip('Blocca'));
+    await tester.pumpAndSettle();
+    await pumpApp(tester, gateOn(database));
+
+    expect(find.text('Sblocca le tue note'), findsOneWidget);
+    expect(find.byKey(const ValueKey('passphrase-warning')), findsNothing);
   });
 
   testWidgets('the passphrase must be repeated exactly', (tester) async {

@@ -47,6 +47,12 @@ void main() {
       find.byKey(const ValueKey('passphrase-confirm')),
       'frase lunga',
     );
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('passphrase-acknowledged')),
+    );
+    await tester.tap(find.byKey(const ValueKey('passphrase-acknowledged')));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Crea il vault'));
     await tester.tap(find.text('Crea il vault'));
     await tester.pumpAndSettle();
   }

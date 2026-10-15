@@ -31,7 +31,16 @@ void main() {
         'frase lunga',
       );
     }
-    await tester.tap(find.text(create ? 'Crea il vault' : 'Sblocca'));
+    if (create) {
+      await tester.ensureVisible(
+        find.byKey(const ValueKey('passphrase-acknowledged')),
+      );
+      await tester.tap(find.byKey(const ValueKey('passphrase-acknowledged')));
+      await tester.pumpAndSettle();
+    }
+    final submit = find.text(create ? 'Crea il vault' : 'Sblocca');
+    await tester.ensureVisible(submit);
+    await tester.tap(submit);
     await tester.pumpAndSettle();
   }
 
