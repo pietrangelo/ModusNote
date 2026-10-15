@@ -751,9 +751,17 @@ void main() {
       await alice.engine.write(note, RevisionContents(text('dopo')));
       await alice.engine.sync();
 
-      final report = await bob.engine.sync();
-
-      expect(report.undecryptable, 1);
+      // An honest client stops at its removal; one that pulled anyway
+      // would find the revision under an epoch it holds no key for.
+      await expectLater(
+        bob.engine.sync(),
+        throwsA(isA<RemovedFromWorkspaceException>()),
+      );
+      expect(server.rows.last.ciphertext.epoch, KeyEpoch(1));
+      expect(
+        () => bob.engine.contentKeyFor(KeyEpoch(1)),
+        throwsA(isA<MissingGroupKeyException>()),
+      );
       expect(await bob.read(note), isNull);
     });
 

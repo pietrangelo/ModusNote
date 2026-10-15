@@ -268,6 +268,166 @@ void main() {
     await expectLater(join(phone), throwsA(isA<VaultAlreadyExistsException>()));
   });
 
+  group('revocation', () {
+    final later = RecordId.parse('00112233445566778899aabbccddeeff');
+
+    test('a removed device leaves the log and the epoch moves on', () async {
+      final joined = await link(browser);
+
+      await founder.engine.revoke(joined.member);
+
+      final workspace = founder.engine.ledger.workspace;
+      expect(workspace.isMember(joined.member), isFalse);
+      expect(workspace.epoch, KeyEpoch(1));
+      expect(server.membershipLog, hasLength(3));
+      expect(server.membershipLog.last.change, MemberRevoked(joined.member));
+      expect(server.bundles.last.grants.map((grant) => grant.recipient), [
+        founder.member,
+      ]);
+    });
+
+    test('notes written afterwards reach only those who remain', () async {
+      final joined = await link(browser);
+      final tablet = Device(server, links, clock);
+      final removed = await link(tablet);
+      await joined.engine.sync();
+      await removed.engine.sync();
+
+      await founder.engine.revoke(removed.member);
+      await founder.engine.write(later, RevisionContents(bytes('segreto')));
+      await founder.engine.sync();
+
+      await joined.engine.sync();
+      expect(await read(joined, later), 'segreto');
+      await expectLater(
+        removed.engine.sync(),
+        throwsA(isA<RemovedFromWorkspaceException>()),
+      );
+      expect(removed.engine.removed, isTrue);
+      expect(server.rows.last.ciphertext.epoch, KeyEpoch(1));
+      expect(
+        () => removed.engine.contentKeyFor(KeyEpoch(1)),
+        throwsA(isA<MissingGroupKeyException>()),
+      );
+      expect(await read(removed, later), isNull);
+      expect(await read(removed, note), 'dal telefono');
+    });
+
+    test('a removed device can no longer write', () async {
+      final joined = await link(browser);
+      await founder.engine.revoke(joined.member);
+      await expectLater(
+        joined.engine.sync(),
+        throwsA(isA<RemovedFromWorkspaceException>()),
+      );
+
+      await expectLater(
+        joined.engine.write(other, RevisionContents(bytes('ancora io'))),
+        throwsA(isA<NotAuthorizedException>()),
+      );
+      await expectLater(
+        joined.engine.sync(),
+        throwsA(isA<RemovedFromWorkspaceException>()),
+      );
+    });
+
+    test('an edit pushed after removal is refused by the others', () async {
+      final joined = await link(browser);
+      await joined.engine.sync();
+      await founder.engine.revoke(joined.member);
+      // Written before it learned of its removal, sent with the next sync.
+      await joined.engine.write(note, RevisionContents(bytes('sovrascritto')));
+      await expectLater(
+        joined.engine.sync(),
+        throwsA(isA<RemovedFromWorkspaceException>()),
+      );
+
+      final report = await founder.engine.sync();
+
+      expect(report.rejected, 1);
+      expect(await read(founder, note), 'dal telefono');
+    });
+
+    test('this device cannot remove itself', () async {
+      await link(browser);
+
+      expect(
+        () => founder.engine.revoke(founder.member),
+        throwsA(isA<InvalidMembershipChangeException>()),
+      );
+    });
+
+    test('offline, nothing changes', () async {
+      final joined = await link(browser);
+      server.online = false;
+
+      await expectLater(
+        founder.engine.revoke(joined.member),
+        throwsA(isA<ServerUnavailableException>()),
+      );
+
+      expect(founder.engine.ledger.workspace.isMember(joined.member), isTrue);
+      expect(phone.vaults.membership, hasLength(2));
+    });
+
+    test('a key bundle that did not go out is sent by the next sync, '
+        'even after locking', () async {
+      final joined = await link(browser);
+      await joined.engine.sync();
+      final tablet = Device(server, links, clock);
+      final removed = await link(tablet);
+      server.dropNextBundle = true;
+
+      await expectLater(
+        founder.engine.revoke(removed.member),
+        throwsA(isA<ServerUnavailableException>()),
+      );
+      expect(founder.engine.ledger.workspace.isMember(removed.member), isFalse);
+      founder.lock();
+      final reopened = await phone.keeper.unlock(
+        password('frase del telefono'),
+      );
+      addTearDown(reopened.lock);
+      await reopened.engine.write(later, RevisionContents(bytes('dopo')));
+      await reopened.engine.sync();
+
+      await joined.engine.sync();
+      expect(await read(joined, later), 'dopo');
+      expect(
+        server.bundles.last.grants.map((grant) => grant.recipient),
+        unorderedEquals([founder.member, joined.member]),
+      );
+    });
+
+    test('the new key survives reopening offline', () async {
+      final joined = await link(browser);
+      await founder.engine.revoke(joined.member);
+      founder.lock();
+      server.online = false;
+
+      final reopened = await phone.keeper.unlock(
+        password('frase del telefono'),
+      );
+      addTearDown(reopened.lock);
+      await reopened.engine.write(later, RevisionContents(bytes('offline')));
+
+      expect(reopened.engine.currentEpoch, KeyEpoch(1));
+      expect(await read(reopened, later), 'offline');
+    });
+
+    test('a linked device can remove the one that linked it', () async {
+      final joined = await link(browser);
+
+      await joined.engine.revoke(founder.member);
+
+      await expectLater(
+        founder.engine.sync(),
+        throwsA(isA<RemovedFromWorkspaceException>()),
+      );
+      expect(joined.engine.removed, isFalse);
+    });
+  });
+
   group('adversary', () {
     test('a mistyped code opens nothing and posts nothing', () async {
       final offering = await offer();
