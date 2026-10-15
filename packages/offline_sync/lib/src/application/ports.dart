@@ -7,6 +7,7 @@ import '../core/passkey_slot.dart';
 import '../core/record_revision.dart';
 import '../core/sync_row.dart';
 import '../core/vault_header.dart';
+import '../core/vault_shelf.dart';
 
 /// Port: the zero-knowledge sync server (Supabase in production). Every
 /// method throws [ServerUnavailableException] when it cannot be reached.
@@ -193,4 +194,13 @@ abstract interface class VaultStore {
 /// Port: wall-clock time, used only to order concurrent edits.
 abstract interface class Clock {
   DateTime now();
+}
+
+/// Where the device keeps its [VaultShelf], in clear: it must be readable
+/// before any vault is unlocked. A shelf that does not read back as one is
+/// [VaultShelf.initial], never an error, so the first vault always opens.
+abstract interface class ShelfStore {
+  Future<VaultShelf> load();
+
+  Future<void> save(VaultShelf shelf);
 }

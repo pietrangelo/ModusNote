@@ -55,6 +55,23 @@ final class RemovedFromWorkspaceException extends SyncException {
   String get message => 'this device was removed from the workspace';
 }
 
+/// The device already keeps as many vaults as it may.
+final class ShelfFullException extends SyncException {
+  const ShelfFullException();
+
+  @override
+  String get message => 'no room for another vault on this device';
+}
+
+/// A vault's name is empty, too long, or holds characters that would make
+/// it render as something else.
+final class InvalidShelfLabelException extends SyncException {
+  const InvalidShelfLabelException();
+
+  @override
+  String get message => 'invalid vault name';
+}
+
 /// The sync server could not be reached; queued work stays queued.
 final class ServerUnavailableException extends SyncException {
   const ServerUnavailableException();
