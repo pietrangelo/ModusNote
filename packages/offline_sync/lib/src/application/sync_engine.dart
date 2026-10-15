@@ -179,9 +179,19 @@ final class SyncEngine {
     try {
       await _publishMembership();
       final pushed = await _push();
-      await _catchUpMembership();
-      await _acceptKeyBundles();
-      return await _pull(pushed);
+      final heads = await _server.heads(_workspace);
+      if (heads == null || heads.membership > _ledger.records.length) {
+        await _catchUpMembership();
+      }
+      if (heads == null ||
+          heads.keyBundles > await _store.loadCursor(SyncStream.keyBundles)) {
+        await _acceptKeyBundles();
+      }
+      if (heads == null ||
+          heads.rows > await _store.loadCursor(SyncStream.rows)) {
+        return await _pull(pushed);
+      }
+      return SyncReport(pushed: pushed);
     } on ServerUnavailableException {
       return const SyncReport(offline: true);
     }

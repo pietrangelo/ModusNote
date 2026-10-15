@@ -27,6 +27,13 @@ abstract interface class SyncServer {
   /// Appends [rows], then drops the rows each one supersedes.
   Future<void> push(WorkspaceId workspace, List<SealedRow> rows);
 
+  /// The newest position of each stream, in one request, so a sync that
+  /// finds nothing new costs one question instead of three. Null when the
+  /// server cannot tell (an older deployment): the device then asks for
+  /// every stream. A server that lies here can only delay what it could
+  /// already withhold.
+  Future<SyncHeads?> heads(WorkspaceId workspace);
+
   /// Rows appended after position [after], each with its own position;
   /// superseded rows are gone, so positions may skip.
   Future<List<PulledRow>> pull(WorkspaceId workspace, {required int after});
