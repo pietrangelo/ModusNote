@@ -619,6 +619,18 @@
     "description": "Members sheet: the removal failed for another reason."
   },
   "membersRemoved": "Device removed.",
+  "inviteAction": "Invite a person",
+  "inviteTitle": "Invite a person",
+  "inviteBody": "Choose what they may do. They will join with their own account and their own device, and get a code from you.",
+  "inviteRoleViewer": "Reads the notes but cannot change them.",
+  "inviteRoleEditor": "Reads and changes the notes.",
+  "inviteRoleOwner": "Like you: may also invite and remove members.",
+  "inviteCreate": "Create the code",
+  "inviteInstructions": "Give this code to the person you invite, face to face or through a channel you trust: whoever knows it gets in. In Modus Notes they choose “Link to an existing vault”, sign in with their own email and enter it. It works once, for 10 minutes.",
+  "inviteWaiting": "Waiting for the invited person…",
+  "inviteDone": "Person invited. The notes reach them with their next sync.",
+  "inviteRefused": "The server refused the invitation. Try signing out and in again.",
+  "inviteUntrusted": "The server sent data that fails verification, so no one was let in.",
   "@membersRemoved": {
     "description": "Members sheet: snackbar after removal."
   },
@@ -792,19 +804,19 @@
   "@joinVaultTitle": {
     "description": "Title of the screen that joins another device's vault."
   },
-  "joinVaultSignInBody": "Sign in with the email you use on your other device.",
+  "joinVaultSignInBody": "Sign in with the email you use on your other device or, if someone invited you, with your own.",
   "@joinVaultSignInBody": {
     "description": "Join screen: the sign-in step."
   },
-  "joinVaultBody": "On the other device, open Sync and choose “Link another device”. Enter the code it shows, then choose a passphrase for this device: it can differ from the other one's.",
+  "joinVaultBody": "On the other device, open Sync and choose “Link another device”. Enter the code it shows, then choose a passphrase for this device: it can differ from the other one's. With an invitation, enter the code the person who invited you gave you.",
   "@joinVaultBody": {
     "description": "Join screen: where the code comes from and which passphrase to choose."
   },
-  "joinVaultCodeLabel": "Link code",
+  "joinVaultCodeLabel": "Link or invitation code",
   "@joinVaultCodeLabel": {
     "description": "Join screen: the code field."
   },
-  "joinVaultCodeShape": "The code has 10 letters and digits.",
+  "joinVaultCodeShape": "The code has 10 letters and digits, or 16 for an invitation.",
   "@joinVaultCodeShape": {
     "description": "Join screen: the typed code is not a code."
   },

@@ -13,13 +13,21 @@ import 'sync_controller.dart';
 /// The library's sync button: its icon tells the sync state, a tap opens
 /// [CloudSheet].
 class CloudButton extends StatelessWidget {
-  const CloudButton({required this.sync, this.onLinkDevice, super.key});
+  const CloudButton({
+    required this.sync,
+    this.onLinkDevice,
+    this.onInvite,
+    super.key,
+  });
 
   final SyncController sync;
 
   /// Opens the linking of another device; null where linking is not
   /// offered.
   final VoidCallback? onLinkDevice;
+
+  /// Opens the invitation of another person; null where not offered.
+  final VoidCallback? onInvite;
 
   @override
   Widget build(BuildContext context) {
@@ -29,8 +37,12 @@ class CloudButton extends StatelessWidget {
       builder: (context, _) => IconButton(
         key: const ValueKey('cloud'),
         tooltip: l10n.cloudSync,
-        onPressed: () =>
-            CloudSheet.show(context, sync, onLinkDevice: onLinkDevice),
+        onPressed: () => CloudSheet.show(
+          context,
+          sync,
+          onLinkDevice: onLinkDevice,
+          onInvite: onInvite,
+        ),
         icon: Icon(switch (sync.state) {
           SyncState.signedOut => Icons.cloud_off_outlined,
           SyncState.syncing => Icons.cloud_sync_outlined,
@@ -46,18 +58,29 @@ class CloudButton extends StatelessWidget {
 /// Signs in with a code sent by email, then shows how the sync is doing
 /// and, where it is offered, links another device of the same account.
 class CloudSheet extends StatefulWidget {
-  const CloudSheet({required this.sync, this.onLinkDevice, super.key});
+  const CloudSheet({
+    required this.sync,
+    this.onLinkDevice,
+    this.onInvite,
+    super.key,
+  });
 
   final SyncController sync;
   final VoidCallback? onLinkDevice;
+  final VoidCallback? onInvite;
 
   static Future<void> show(
     BuildContext context,
     SyncController sync, {
     VoidCallback? onLinkDevice,
+    VoidCallback? onInvite,
   }) {
     final autoLock = AutoLockScope.maybeOf(context);
-    final sheet = CloudSheet(sync: sync, onLinkDevice: onLinkDevice);
+    final sheet = CloudSheet(
+      sync: sync,
+      onLinkDevice: onLinkDevice,
+      onInvite: onInvite,
+    );
     return showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -179,7 +202,8 @@ class _CloudSheetState extends State<CloudSheet> {
       const SizedBox(height: Spacing.s),
       OutlinedButton.icon(
         key: const ValueKey('members'),
-        onPressed: () => MembersSheet.show(context, sync),
+        onPressed: () =>
+            MembersSheet.show(context, sync, onInvite: widget.onInvite),
         icon: const Icon(Icons.group_outlined),
         label: Text(l10n.membersAction),
       ),

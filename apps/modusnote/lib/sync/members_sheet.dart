@@ -20,13 +20,21 @@ String memberFingerprint(MemberId member) {
 /// vault's key is rotated, so the removed device reads nothing written
 /// from then on.
 class MembersSheet extends StatefulWidget {
-  const MembersSheet({required this.sync, super.key});
+  const MembersSheet({required this.sync, this.onInvite, super.key});
 
   final SyncController sync;
 
-  static Future<void> show(BuildContext context, SyncController sync) {
+  /// Opens the invitation of another person; null where invitations are
+  /// not offered.
+  final VoidCallback? onInvite;
+
+  static Future<void> show(
+    BuildContext context,
+    SyncController sync, {
+    VoidCallback? onInvite,
+  }) {
     final autoLock = AutoLockScope.maybeOf(context);
-    final sheet = MembersSheet(sync: sync);
+    final sheet = MembersSheet(sync: sync, onInvite: onInvite);
     return showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -72,6 +80,15 @@ class _MembersSheetState extends State<MembersSheet> {
                 const SizedBox(height: Spacing.m),
                 for (final member in sync.members)
                   _row(context, member, manages: manages),
+                if (widget.onInvite case final invite? when manages) ...[
+                  const SizedBox(height: Spacing.s),
+                  OutlinedButton.icon(
+                    key: const ValueKey('invite'),
+                    onPressed: sync.state == SyncState.synced ? invite : null,
+                    icon: const Icon(Icons.person_add_alt_outlined),
+                    label: Text(l10n.inviteAction),
+                  ),
+                ],
                 if (_problem case final problem?) ...[
                   const SizedBox(height: Spacing.s),
                   Text(
