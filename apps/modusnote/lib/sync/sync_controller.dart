@@ -26,6 +26,10 @@ enum SyncProblem {
   /// The server hid or forged part of the workspace: nothing of it was
   /// applied.
   untrusted,
+
+  /// The workspace reached its storage quota on the server (HTTP 413):
+  /// edits that grow it stay queued until notes are deleted.
+  full,
 }
 
 /// Keeps an open vault in step with the server: right after unlock and
@@ -159,13 +163,13 @@ final class SyncController extends ChangeNotifier {
       if (_disposed) return;
       _lastSynced = _clock();
       _set(SyncState.synced);
-    } on SyncServerRejectedException {
-      _fail(SyncProblem.refused);
+    } on SyncServerRejectedException catch (e) {
+      _fail(e.status == 413 ? SyncProblem.full : SyncProblem.refused);
     } on RemoteBlobUnavailableException {
       // The notes went through; the recordings follow next time.
       if (!_disposed) _set(SyncState.offline);
-    } on RemoteBlobRejectedException {
-      _fail(SyncProblem.refused);
+    } on RemoteBlobRejectedException catch (e) {
+      _fail(e.status == 413 ? SyncProblem.full : SyncProblem.refused);
     } on MalformedBlobException {
       _fail(SyncProblem.untrusted);
     } on LedgerRollbackException {

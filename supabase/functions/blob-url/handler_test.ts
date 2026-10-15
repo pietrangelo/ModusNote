@@ -10,11 +10,15 @@ const secretAccessKey = "r2-secret-access-key-never-leaves";
 type Call = { token: string; workspace: string };
 type R2Call = { method: string; url: URL; headers: Record<string, string> };
 
+type Reserved = { token: string; workspace: string; blob: string; size: number };
+
 function setup(
   authorize?: HandlerConfig["authorize"],
   r2Answer: (call: R2Call) => Response | Promise<Response> = () => new Response(null, { status: 204 }),
+  reserve?: HandlerConfig["reserve"],
 ) {
   const calls: Call[] = [];
+  const reserved: Reserved[] = [];
   const r2Calls: R2Call[] = [];
   const handler = makeHandler({
     allowedOrigin: origin,
@@ -32,13 +36,19 @@ function setup(
         calls.push({ token, workspace });
         return token === "member-token";
       }),
+    reserve:
+      reserve ??
+      (async (token, workspace, blob, size) => {
+        reserved.push({ token, workspace, blob, size });
+        return "ok";
+      }),
     r2Fetch: async (url, init) => {
       const call = { method: init.method, url: new URL(url), headers: init.headers };
       r2Calls.push(call);
       return r2Answer(call);
     },
   });
-  return { handler, calls, r2Calls };
+  return { handler, calls, r2Calls, reserved };
 }
 
 function listing(keys: { key: string; modified?: string; size?: number }[], next?: string) {
@@ -91,20 +101,68 @@ test("a member gets a short-lived GET URL for the blob's object", async () => {
   assert.deepEqual(calls, [{ token: "member-token", workspace }]);
 });
 
-test("a PUT URL only creates: it is signed with If-None-Match: *", async () => {
-  const { handler } = setup();
+test("a PUT URL only creates, and only the announced size", async () => {
+  const { handler, reserved } = setup();
 
   const response = await handler(
-    request({ workspace_id: workspace, blob_id: "voice-memo", method: "PUT" }),
+    request({ workspace_id: workspace, blob_id: "voice-memo", method: "PUT", size: 4136 }),
   );
 
   const json = await response.json();
   assert.equal(json.method, "PUT");
+  // Content-Length is signed but not handed back: the client sends it
+  // itself, and a browser refuses to set it by hand.
   assert.deepEqual(json.headers, { "If-None-Match": "*" });
   assert.equal(
     new URL(json.url).searchParams.get("X-Amz-SignedHeaders"),
-    "host;if-none-match",
+    "content-length;host;if-none-match",
   );
+  assert.deepEqual(reserved, [
+    { token: "member-token", workspace, blob: "voice-memo", size: 4136 },
+  ]);
+});
+
+describe("upload quotas", () => {
+  const put = (extra: Record<string, unknown> = {}) =>
+    request({ workspace_id: workspace, blob_id: "voice-memo", method: "PUT", size: 4136, ...extra });
+
+  test("a PUT without an exact size is refused before anything is asked", async () => {
+    const { handler, calls, reserved } = setup();
+    for (const size of [undefined, 0, -1, 1.5, "4136", 2 ** 60, null]) {
+      const response = await handler(put({ size }));
+      assert.equal(response.status, 400, String(size));
+    }
+    assert.deepEqual(calls, []);
+    assert.deepEqual(reserved, []);
+  });
+
+  test("the database's answer decides, and no URL is signed when it refuses", async () => {
+    const cases = [
+      ["denied", 403],
+      ["too-large", 413],
+      ["over-budget", 429],
+    ] as const;
+    for (const [answer, status] of cases) {
+      const { handler } = setup(undefined, undefined, async () => answer);
+      const response = await handler(put());
+      assert.equal(response.status, status, answer);
+      assert.equal("url" in (await response.json()), false);
+    }
+  });
+
+  test("a database that cannot be asked is a 503, so the client retries", async () => {
+    const { handler } = setup(undefined, undefined, async () => {
+      throw new Error("connection refused");
+    });
+    const response = await handler(put());
+    assert.equal(response.status, 503);
+  });
+
+  test("a GET reserves nothing", async () => {
+    const { handler, reserved } = setup();
+    await handler(request({ workspace_id: workspace, blob_id: "voice-memo", method: "GET" }));
+    assert.deepEqual(reserved, []);
+  });
 });
 
 test("the browser preflight is answered only for the app's origin", async () => {
@@ -382,8 +440,8 @@ describe("adversary", () => {
     const { handler } = setup();
     const bodies = [
       { workspace_id: workspace, blob_id: "b", method: "GET" },
-      { workspace_id: workspace, blob_id: "b", method: "PUT" },
-      { workspace_id: workspace, blob_id: "../b", method: "PUT" },
+      { workspace_id: workspace, blob_id: "b", method: "PUT", size: 1 },
+      { workspace_id: workspace, blob_id: "../b", method: "PUT", size: 1 },
       { workspace_id: workspace, method: "DELETE", blob_ids: ["b"] },
       { workspace_id: workspace, method: "LIST" },
     ];

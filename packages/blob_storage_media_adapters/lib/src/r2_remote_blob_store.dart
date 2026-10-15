@@ -53,7 +53,9 @@ final class R2RemoteBlobStore implements RemoteBlobStore {
     Stream<Uint8List> ciphertext, {
     required int length,
   }) async {
-    final url = await _presign(id, 'PUT');
+    // The function counts the size against the account's quotas and signs
+    // it into the URL: R2 refuses a body of any other length.
+    final url = await _presign(id, 'PUT', size: length);
     final request = http.StreamedRequest('PUT', url)
       ..contentLength = length
       ..headers['Content-Type'] = 'application/octet-stream'
@@ -159,11 +161,12 @@ final class R2RemoteBlobStore implements RemoteBlobStore {
     return null;
   }
 
-  Future<Uri> _presign(BlobId id, String method) async {
+  Future<Uri> _presign(BlobId id, String method, {int? size}) async {
     final json = await _call({
       'workspace_id': _workspace,
       'blob_id': id.value,
       'method': method,
+      'size': ?size,
     });
     if (json case {'url': final String url}) {
       final uri = Uri.tryParse(url);
