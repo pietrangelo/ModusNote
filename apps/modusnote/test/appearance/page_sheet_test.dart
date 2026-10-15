@@ -106,6 +106,8 @@ void main() {
       await openEditor(tester, size: desktop);
       await tester.tap(find.byTooltip('Aspetto della pagina'));
       await tester.pumpAndSettle();
+      await tester.ensureVisible(find.byKey(const ValueKey('page-width-wide')));
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('page-width-wide')));
       await tester.pumpAndSettle();
 
@@ -119,6 +121,58 @@ void main() {
       await openEditor(tester, scoped: false);
       expect(find.byTooltip('Aspetto della pagina'), findsNothing);
       expect(drawnBodySize(tester), 16);
+    });
+  });
+
+  group('typeface', () {
+    TextStyle drawnStyle(WidgetTester tester, String key) =>
+        tester.widget<EditableText>(textInput(key)).style;
+
+    testWidgets('the note is drawn in the typeface chosen, once loaded', (
+      tester,
+    ) async {
+      await openEditor(tester);
+      expect(drawnStyle(tester, 'content').fontFamily, 'Inter');
+
+      await tester.tap(find.byTooltip('Aspetto della pagina'));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(
+        find.byKey(const ValueKey('page-font-literata')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('page-font-literata')));
+      await tester.runAsync(() => appearance.fonts.ensure(PageFont.literata));
+      await tester.pumpAndSettle();
+
+      expect(drawnStyle(tester, 'content').fontFamily, 'Literata');
+      expect(
+        drawnStyle(tester, 'content').fontFamilyFallback,
+        contains('Inter'),
+      );
+      expect(kept.last.font, PageFont.literata);
+    });
+
+    testWidgets('a Markdown heading keeps the chosen typeface', (tester) async {
+      await tester.runAsync(() => appearance.fonts.ensure(PageFont.literata));
+      appearance.page = const PageAppearance(font: PageFont.literata);
+      await openEditor(tester);
+      await tester.enterText(textInput('content'), '# Capitolo');
+      await tester.pumpAndSettle();
+
+      final field = tester.widget<EditableText>(textInput('content'));
+      final span = field.controller.buildTextSpan(
+        context: tester.element(textInput('content')),
+        style: field.style,
+        withComposing: false,
+      );
+      final families = <String?>{};
+      span.visitChildren((child) {
+        if (child is TextSpan && (child.text ?? '').contains('Capitolo')) {
+          families.add(child.style?.fontFamily);
+        }
+        return true;
+      });
+      expect(families, {'Literata'});
     });
   });
 

@@ -4,12 +4,22 @@ import 'dart:typed_data';
 import 'package:flutter/widgets.dart';
 
 import 'page_appearance.dart';
+import 'reading_fonts.dart';
 
 /// The appearance this device chose. It lives above the app's navigator,
 /// so that every route sees it; the open vault fills it from a sealed
 /// setting ([attach]) and keeps each change there.
 class AppearanceSettings extends ChangeNotifier {
-  AppearanceSettings();
+  AppearanceSettings({ReadingFonts? fonts}) : fonts = fonts ?? ReadingFonts() {
+    this.fonts.addListener(notifyListeners);
+  }
+
+  final ReadingFonts fonts;
+
+  /// The typeface the page is drawn in now: the chosen one once loaded,
+  /// the body font until then.
+  PageFont get shownFont =>
+      fonts.isReady(_page.font) ? _page.font : PageFont.inter;
 
   Future<void> Function(Uint8List bytes)? _persist;
 
@@ -19,6 +29,7 @@ class AppearanceSettings extends ChangeNotifier {
   set page(PageAppearance page) {
     if (page == _page) return;
     _page = page;
+    unawaited(fonts.ensure(page.font));
     notifyListeners();
     if (_persist case final persist?) unawaited(persist(page.toBytes()));
   }
@@ -32,7 +43,14 @@ class AppearanceSettings extends ChangeNotifier {
     _persist = persist;
     if (page == _page) return;
     _page = page;
+    unawaited(fonts.ensure(page.font));
     notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    fonts.removeListener(notifyListeners);
+    super.dispose();
   }
 
   /// The vault closed: nothing more is kept, and the page is back to the

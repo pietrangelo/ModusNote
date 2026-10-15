@@ -162,7 +162,12 @@ abstract final class MarkdownStyles {
     bool has(int flag) => marks & flag != 0;
     if (has(MdMark.heading1) || has(MdMark.heading2)) {
       style = style.copyWith(
-        fontFamily: ModusTheme.titleFont,
+        // The app's pairing puts headings in the title font; a typeface
+        // chosen for the page keeps its own.
+        fontFamily:
+            base.fontFamily == null || base.fontFamily == ModusTheme.bodyFont
+            ? ModusTheme.titleFont
+            : base.fontFamily,
         fontSize: has(MdMark.heading1) ? TypeScale.title2 : base.fontSize,
         fontWeight: FontWeight.w700,
         fontVariations: const [FontVariation.weight(700)],

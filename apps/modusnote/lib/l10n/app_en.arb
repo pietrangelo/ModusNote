@@ -2004,5 +2004,41 @@
   "smallerText": "Smaller text",
   "@smallerText": {
     "description": "Command palette: previous text size."
+  },
+  "pageFont": "Typeface",
+  "@pageFont": {
+    "description": "Page appearance sheet: the typeface of the note's text."
+  },
+  "pageFontInter": "Inter",
+  "@pageFontInter": {
+    "description": "Typeface name (proper name)."
+  },
+  "pageFontInterHint": "Neutral: the app's own",
+  "@pageFontInterHint": {
+    "description": "Typeface hint for Inter."
+  },
+  "pageFontLiterata": "Literata",
+  "@pageFontLiterata": {
+    "description": "Typeface name (proper name)."
+  },
+  "pageFontLiterataHint": "A book serif, for long reading",
+  "@pageFontLiterataHint": {
+    "description": "Typeface hint for Literata."
+  },
+  "pageFontAtkinson": "Atkinson Hyperlegible",
+  "@pageFontAtkinson": {
+    "description": "Typeface name (proper name)."
+  },
+  "pageFontAtkinsonHint": "Made to be as legible as possible",
+  "@pageFontAtkinsonHint": {
+    "description": "Typeface hint for Atkinson Hyperlegible Next."
+  },
+  "pageFontQuattro": "iA Writer Quattro",
+  "@pageFontQuattro": {
+    "description": "Typeface name (proper name)."
+  },
+  "pageFontQuattroHint": "Made for writing",
+  "@pageFontQuattroHint": {
+    "description": "Typeface hint for iA Writer Quattro."
   }
 }
