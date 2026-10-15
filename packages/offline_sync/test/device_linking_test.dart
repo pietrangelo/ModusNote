@@ -515,14 +515,17 @@ void main() {
       expect(invites.closed, [inviteCode.lookup]);
     });
 
-    test('the person gets the role chosen, and the account is let in', () async {
-      final bea = await joined();
+    test(
+      'the person gets the role chosen, and the account is let in',
+      () async {
+        final bea = await joined();
 
-      final member = ownerVault.engine.ledger.workspace.member(bea.member);
-      expect(member?.role, Role.editor);
-      expect(FakeMemberAccounts.accounts[friendAccount], isFalse);
-      expect(FakeMemberAccounts.members[bea.member], friendAccount);
-    });
+        final member = ownerVault.engine.ledger.workspace.member(bea.member);
+        expect(member?.role, Role.editor);
+        expect(FakeMemberAccounts.accounts[friendAccount], isFalse);
+        expect(FakeMemberAccounts.members[bea.member], friendAccount);
+      },
+    );
 
     test('an editor writes and the owner reads it', () async {
       final bea = await joined();
@@ -647,21 +650,24 @@ void main() {
         expect(server.membershipLog, hasLength(1));
       });
 
-      test('the server learns the lookup, never the rest of the code', () async {
-        final offering = await invite();
-        addTearDown(offering.cancel);
-        await accept().then((request) => addTearDown(request.cancel));
+      test(
+        'the server learns the lookup, never the rest of the code',
+        () async {
+          final offering = await invite();
+          addTearDown(offering.cancel);
+          await accept().then((request) => addTearDown(request.cancel));
 
-        final secretPart = String.fromCharCodes(
-          inviteCode.toBytes().sublist(InviteCode.lookupLength),
-        );
-        for (final wire in [
-          ...invites.offers.map((offer) => offer.toBytes()),
-          ...invites.posted.map((answer) => answer.toBytes()),
-        ]) {
-          expect(String.fromCharCodes(wire), isNot(contains(secretPart)));
-        }
-      });
+          final secretPart = String.fromCharCodes(
+            inviteCode.toBytes().sublist(InviteCode.lookupLength),
+          );
+          for (final wire in [
+            ...invites.offers.map((offer) => offer.toBytes()),
+            ...invites.posted.map((answer) => answer.toBytes()),
+          ]) {
+            expect(String.fromCharCodes(wire), isNot(contains(secretPart)));
+          }
+        },
+      );
 
       test('an expired invitation admits no one', () async {
         final offering = await invite();
