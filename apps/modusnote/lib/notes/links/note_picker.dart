@@ -5,6 +5,7 @@ import '../../l10n/generated/app_localizations.dart';
 import '../../theme/golden_ratio.dart';
 import '../note_appearance.dart';
 import '../note_title.dart';
+import '../../theme/modus_palette.dart';
 
 /// The note the person picked to link to, and what it is called.
 typedef PickedNote = ({EntryId id, String title});
@@ -119,7 +120,7 @@ class _NotePickerState extends State<_NotePicker> {
       key: ValueKey('pick-note-${note.id.value}'),
       leading: Icon(
         NoteAppearance.icon(schema?.icon),
-        color: NoteAppearance.tint(schema?.tint),
+        color: ModusPalette.of(context).tint(schema?.tint),
       ),
       title: Text(
         title.isEmpty ? l10n.untitled : title,

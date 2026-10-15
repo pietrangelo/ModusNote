@@ -5,7 +5,7 @@ import 'package:offline_sync_adapters/offline_sync_adapters.dart';
 
 import '../l10n/generated/app_localizations.dart';
 import '../theme/golden_ratio.dart';
-import '../theme/modus_colors.dart';
+import '../theme/modus_palette.dart';
 
 /// Signs in to the sync account with a code sent by email: the address
 /// first, then the code. The email goes to the sync server only; the vault's
@@ -199,7 +199,7 @@ class _SignInFormState extends State<SignInForm> {
   Widget _muted(BuildContext context, String text) => Text(
     text,
     style: Theme.of(context).textTheme.bodyMedium
-        ?.copyWith(color: ModusColors.dustSilver),
+        ?.copyWith(color: ModusPalette.of(context).muted),
   );
 
   List<Widget> _problemText(BuildContext context) {

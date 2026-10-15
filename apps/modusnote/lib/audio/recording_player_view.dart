@@ -6,10 +6,10 @@ import 'package:flutter/material.dart';
 
 import '../l10n/generated/app_localizations.dart';
 import '../theme/golden_ratio.dart';
-import '../theme/modus_colors.dart';
 import 'audio_diagnostics.dart';
 import 'note_playback.dart';
 import 'recording_sheet.dart' show formatLength;
+import '../theme/modus_palette.dart';
 
 /// Play, pause and scrub a note's recording. Nothing is decrypted until
 /// the first tap on play; the samples are freed when the field goes away.
@@ -140,7 +140,7 @@ class _RecordingPlayerViewState extends State<RecordingPlayerView> {
               playing ? Icons.pause : Icons.play_arrow,
               size: IconSizes.inline,
             ),
-            color: ModusColors.rhythmVioletText,
+            color: ModusPalette.of(context).violet,
             tooltip: playing ? l10n.pauseRecording : l10n.playRecording,
             onPressed: failure == null ? _toggle : null,
           ),
@@ -200,6 +200,8 @@ class _Scrubber extends StatelessWidget {
                   size: Size(constraints.maxWidth, Spacing.xl),
                   painter: WaveformPainter(
                     peaks: opened.waveform.peaks,
+                    played: ModusPalette.of(context).violet,
+                    ahead: ModusPalette.of(context).muted,
                     progress: progress,
                   ),
                 ),
@@ -212,7 +214,7 @@ class _Scrubber extends StatelessWidget {
           l10n.playbackPosition(formatLength(position), formatLength(length)),
           key: const ValueKey('playback-position'),
           style: Theme.of(context).textTheme.labelSmall
-              ?.copyWith(color: ModusColors.dustSilver),
+              ?.copyWith(color: ModusPalette.of(context).muted),
         ),
       ],
     );
@@ -222,9 +224,17 @@ class _Scrubber extends StatelessWidget {
 /// One bar per peak, centred; bars already played in the audio violet,
 /// the rest in muted silver. Bars take the golden share of their slot.
 class WaveformPainter extends CustomPainter {
-  const WaveformPainter({required this.peaks, required this.progress});
+  const WaveformPainter({
+    required this.peaks,
+    required this.progress,
+    required this.played,
+    required this.ahead,
+  });
 
   final List<double> peaks;
+
+  final Color played;
+  final Color ahead;
 
   /// From 0 to 1.
   final double progress;
@@ -234,11 +244,11 @@ class WaveformPainter extends CustomPainter {
     if (peaks.isEmpty) return;
     final slot = size.width / peaks.length;
     final played = Paint()
-      ..color = ModusColors.rhythmVioletText
+      ..color = this.played
       ..strokeWidth = slot * LayoutSplit.primary
       ..strokeCap = StrokeCap.round;
     final ahead = Paint()
-      ..color = ModusColors.dustSilver
+      ..color = this.ahead
       ..strokeWidth = played.strokeWidth
       ..strokeCap = StrokeCap.round;
     final middle = size.height / 2;
@@ -257,5 +267,8 @@ class WaveformPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(WaveformPainter old) =>
-      old.progress != progress || old.peaks != peaks;
+      old.progress != progress ||
+      old.peaks != peaks ||
+      old.played != played ||
+      old.ahead != ahead;
 }

@@ -11,8 +11,8 @@ import 'package:offline_sync_adapters/offline_sync_adapters.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../sync/sign_in_form.dart';
 import '../theme/golden_ratio.dart';
-import '../theme/modus_colors.dart';
 import 'passphrase_warning.dart';
+import '../theme/modus_palette.dart';
 
 /// First launch on a second device: signs in to the same account, takes
 /// the code another device shows and a passphrase for this one, then waits
@@ -187,7 +187,7 @@ class _JoinVaultScreenState extends State<JoinVaultScreen> {
                   Icon(
                     Icons.devices_outlined,
                     size: IconSizes.prominent,
-                    color: ModusColors.aureoGold,
+                    color: ModusPalette.of(context).primary,
                   ),
                   const SizedBox(height: Spacing.l),
                   if (!widget.account.signedIn)
@@ -221,7 +221,7 @@ class _JoinVaultScreenState extends State<JoinVaultScreen> {
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
     final muted = theme.textTheme.bodyMedium?.copyWith(
-      color: ModusColors.dustSilver,
+      color: ModusPalette.of(context).muted,
     );
     final problem = switch (_problem) {
       null => null,

@@ -4,6 +4,7 @@ import 'package:schema_dynamic_content/schema_dynamic_content.dart';
 import '../../l10n/generated/app_localizations.dart';
 import '../../theme/golden_ratio.dart';
 import '../note_appearance.dart';
+import '../../theme/modus_palette.dart';
 
 /// What the person picked: a category, or none ([id] null). A dismissed
 /// picker returns null instead of a choice.
@@ -77,7 +78,7 @@ Future<CategoryChoice?> showCategoryPicker(
                 row(
                   id: category.id,
                   icon: CategoryAppearance.icon(category.icon),
-                  color: CategoryAppearance.tint(category.tint),
+                  color: ModusPalette.of(context).tint(category.tint),
                   label: category.name.value,
                   depth: tree.depthOf(category.id),
                 ),

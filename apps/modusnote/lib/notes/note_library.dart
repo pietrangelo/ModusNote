@@ -19,6 +19,7 @@ import 'note_store.dart';
 import 'note_title.dart';
 import 'schema_text.dart';
 import 'trash_screen.dart';
+import '../theme/modus_palette.dart';
 
 /// Every note at a glance: search, categories, a chip per note type, a
 /// card per note, each opening on a page of its own. A window at least
@@ -378,7 +379,7 @@ class _NoteLibraryScreenState extends State<NoteLibraryScreen> {
       for (final schema in widget.schemas)
         PaletteCommand(
           icon: NoteAppearance.icon(schema.icon),
-          color: NoteAppearance.tint(schema.tint),
+          color: ModusPalette.of(context).tint(schema.tint),
           label: l10n.paletteNewNote(text.label(schema.label)),
           run: () => wide
               ? unawaited(_openBeside(_NewNote(schema)))
@@ -431,7 +432,7 @@ class _NoteLibraryScreenState extends State<NoteLibraryScreen> {
             final title = NoteTitle.of(entry, schema);
             return PaletteCommand(
               icon: NoteAppearance.icon(schema?.icon),
-              color: NoteAppearance.tint(schema?.tint),
+              color: ModusPalette.of(context).tint(schema?.tint),
               label: title.isEmpty ? l10n.untitled : title,
               detail: dates.formatMediumDate(entry.audit.updatedAt.toLocal()),
               run: () =>
@@ -804,7 +805,8 @@ class _NoteLibraryScreenState extends State<NoteLibraryScreen> {
                               avatar: Icon(
                                 NoteAppearance.icon(schema.icon),
                                 size: IconSizes.inline,
-                                color: NoteAppearance.tint(schema.tint),
+                                color: ModusPalette.of(context)
+                                    .tint(schema.tint),
                               ),
                               label: Text(text.label(schema.label)),
                               selected: _type?.id == schema.id,
@@ -924,7 +926,7 @@ class _CategoryBar extends StatelessWidget {
                   avatar: Icon(
                     CategoryAppearance.icon(category.icon),
                     size: IconSizes.inline,
-                    color: CategoryAppearance.tint(category.tint),
+                    color: ModusPalette.of(context).tint(category.tint),
                   ),
                   label: Text(category.name.value),
                   onPressed: () => onSelect(category.id),
@@ -1017,11 +1019,11 @@ class _NoteCard extends StatelessWidget {
             (value) => value == const BooleanValue(true),
           )
         : tasks.every((list) => list.allDone);
-    final tint = NoteAppearance.tint(schema?.tint);
+    final tint = ModusPalette.of(context).tint(schema?.tint);
     // A password about to expire says so in place of the date.
     final expiry = ExpiryStatus.of(entry, l10n, now: DateTime.now());
     return Card(
-      color: NoteAppearance.wash(schema?.tint),
+      color: ModusPalette.of(context).wash(schema?.tint),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
@@ -1232,7 +1234,7 @@ class _SideColumn extends StatelessWidget {
                   key: ValueKey('nav-${schema.id.name}'),
                   leading: Icon(
                     NoteAppearance.icon(schema.icon),
-                    color: NoteAppearance.tint(schema.tint),
+                    color: ModusPalette.of(context).tint(schema.tint),
                   ),
                   title: Text(text.label(schema.label)),
                   selected: !trash && type?.id == schema.id,
@@ -1249,7 +1251,7 @@ class _SideColumn extends StatelessWidget {
                     ),
                     leading: Icon(
                       CategoryAppearance.icon(node.icon),
-                      color: CategoryAppearance.tint(node.tint),
+                      color: ModusPalette.of(context).tint(node.tint),
                     ),
                     title: Text(
                       node.name.value,
@@ -1313,7 +1315,7 @@ class _NoteRow extends StatelessWidget {
       leading: picked == null
           ? Icon(
               NoteAppearance.icon(schema?.icon),
-              color: NoteAppearance.tint(schema?.tint),
+              color: ModusPalette.of(context).tint(schema?.tint),
             )
           : Checkbox(value: picked, onChanged: (_) => onPick()),
       title: Text(
