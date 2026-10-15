@@ -424,9 +424,7 @@ final class InviteAnswer {
       PublicIdentity.parse(
         Uint8List.sublistView(bytes, 0, PublicIdentity.length),
       ),
-      AccountId._fromBytes(
-        Uint8List.sublistView(bytes, PublicIdentity.length),
-      ),
+      AccountId._fromBytes(Uint8List.sublistView(bytes, PublicIdentity.length)),
     );
   }
 
