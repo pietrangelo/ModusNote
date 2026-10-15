@@ -31,6 +31,7 @@ import 'auto_lock.dart';
 import 'join_vault.dart';
 import 'passphrase_warning.dart';
 import 'vault_note_store.dart';
+import 'vault_shelf_gate.dart';
 
 /// Moves a UTF-8 passphrase into native memory and wipes the buffer.
 typedef PasswordFactory = PasswordSecret Function(Uint8List utf8Bytes);
@@ -53,6 +54,7 @@ class VaultGate extends StatefulWidget {
     this.syncFor,
     this.files,
     this.remindersFor,
+    this.switcher,
     super.key,
   });
 
@@ -112,6 +114,10 @@ class VaultGate extends StatefulWidget {
   /// null where the platform has no notifications the app can schedule
   /// (the web), where the credential cards say it instead.
   final ReminderScheduler Function(AppLocalizations l10n)? remindersFor;
+
+  /// The vault's name on the lock screen, to switch to another vault of
+  /// the device; see [VaultShelfGate].
+  final ShelfSwitcher? switcher;
 
   @override
   State<VaultGate> createState() => _VaultGateState();
@@ -736,6 +742,13 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    if (widget.switcher case final switcher?) ...[
+                      IgnorePointer(
+                        ignoring: _busy,
+                        child: switcher(created: !creating),
+                      ),
+                      const SizedBox(height: Spacing.l),
+                    ],
                     Icon(
                       Icons.lock_outline,
                       size: IconSizes.prominent,

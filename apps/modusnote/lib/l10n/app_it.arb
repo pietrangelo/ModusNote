@@ -436,5 +436,18 @@
   "reminderDayBefore": "{count, plural, =1{Una password scade domani.} other{{count} password scadono domani.}}",
   "reminderDayOf": "{count, plural, =1{Una password scade oggi.} other{{count} password scadono oggi.}}",
   "reminderChannel": "Scadenza delle password",
-  "reminderChannelDescription": "Promemoria una settimana prima, il giorno prima e il giorno in cui una password scade."
+  "reminderChannelDescription": "Promemoria una settimana prima, il giorno prima e il giorno in cui una password scade.",
+  "shelfDefaultName": "Il mio vault",
+  "shelfSwitch": "Vault: {name}. Cambia vault",
+  "shelfTitle": "Vault su questo dispositivo",
+  "shelfBody": "Ogni vault ha le sue note, la sua passphrase e i suoi membri. I nomi restano su questo dispositivo e non sono cifrati.",
+  "shelfRename": "Rinomina",
+  "shelfAdd": "Nuovo vault",
+  "shelfAddBody": "Poi lo crei con una nuova passphrase, o lo colleghi a un vault che qualcuno ha condiviso con te.",
+  "shelfFull": "Questo dispositivo ha già {count} vault.",
+  "shelfRemove": "Rimuovi questo vault vuoto",
+  "shelfName": "Nome",
+  "shelfNameInvalid": "Scrivi un nome di una riga, al massimo 40 caratteri.",
+  "shelfCreate": "Aggiungi",
+  "shelfSave": "Salva"
 }

@@ -19,4 +19,5 @@ export 'src/core/sync_exception.dart';
 export 'src/core/sync_row.dart';
 export 'src/core/vault_backup.dart';
 export 'src/core/vault_header.dart';
+export 'src/core/vault_shelf.dart';
 export 'src/core/version_vector.dart';
