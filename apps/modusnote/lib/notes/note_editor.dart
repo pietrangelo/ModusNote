@@ -10,14 +10,21 @@ import 'package:schema_dynamic_content/schema_dynamic_content.dart';
 import '../attachments/open_in_browser.dart';
 import '../audio/recording_player_view.dart';
 import '../audio/recording_sheet.dart';
+import '../appearance/appearance_scope.dart';
+import '../appearance/page_appearance.dart';
+import '../appearance/page_sheet.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../theme/golden_ratio.dart';
+import '../theme/modus_theme.dart';
+import '../theme/modus_themes.dart';
 import '../vault/auto_lock.dart';
 import 'attachments/attachments_input.dart';
 import 'books/book_outline.dart';
 import 'books/book_section.dart';
 import 'documents/page_index.dart';
 import 'documents/page_index_section.dart';
+import 'journal/journal_days.dart';
+import 'journal/on_this_day_section.dart';
 import 'dynamic_form_renderer.dart';
 import 'editor/markdown_commands.dart';
 import 'editor/markdown_controller.dart';
@@ -58,6 +65,7 @@ class NoteEditorScreen extends StatefulWidget {
     this.onClose,
     this.onFocusChanged,
     this.category,
+    this.day,
     this.clock = DateTime.now,
     this.openLink = openInBrowser,
     super.key,
@@ -79,6 +87,9 @@ class NoteEditorScreen extends StatefulWidget {
 
   /// Where a new note is filed; an existing one stays where it is.
   final CategoryId? category;
+
+  /// The day a new journal page is about; today when null.
+  final DateValue? day;
   final DateTime Function() clock;
 
   /// Opens a link the person confirmed; the browser outside tests.
@@ -111,7 +122,13 @@ class NoteEditorScreen extends StatefulWidget {
 class NoteEditorScreenState extends State<NoteEditorScreen>
     with WidgetsBindingObserver {
   late SchemaDefinition _schema = widget.initialSchema;
-  late FormDraft _draft = FormDraft(widget.entry?.attributes ?? const {}, {});
+
+  /// What a new note starts with: a journal page, its day. A new note
+  /// holding only that is not a note yet.
+  late Map<FieldKey, FieldValue> _prefill = widget.entry == null
+      ? _prefillFor(widget.initialSchema, const {})
+      : const {};
+  late FormDraft _draft = FormDraft(widget.entry?.attributes ?? _prefill, {});
   List<Violation> _violations = const [];
 
   /// The note as last saved; null for a new note not saved yet.
@@ -132,8 +149,12 @@ class NoteEditorScreenState extends State<NoteEditorScreen>
 
   final _markdown = ValueNotifier<MarkdownEditingController?>(null);
 
-  /// The words of a chapter's text, counted as it is typed.
+  /// The words of a chapter's or a journal page's text, counted as it is
+  /// typed.
   late final _words = ValueNotifier<int>(_countWords());
+
+  /// The day of a journal page, as it is picked.
+  late final _day = ValueNotifier<DateValue?>(_dayOf(_draft.values));
   Timer? _timer;
   var _dirty = false;
   var _state = SaveState.saved;
@@ -167,24 +188,43 @@ class NoteEditorScreenState extends State<NoteEditorScreen>
   void _switchTo(SchemaDefinition schema) {
     if (schema.id == _schema.id) return;
     setState(() {
-      _draft = FormDraft(
-        SchemaSwitch.carryOver(
-          from: _schema,
-          values: _draft.values,
-          to: schema,
-        ),
-        {},
+      final carried = SchemaSwitch.carryOver(
+        from: _schema,
+        values: _draft.values,
+        to: schema,
       );
+      _prefill = _prefillFor(schema, carried);
+      _draft = FormDraft({..._prefill, ...carried}, {});
       _schema = schema;
       _violations = const [];
     });
     _words.value = _countWords();
+    _day.value = _dayOf(_draft.values);
     _changed();
   }
 
+  /// A new journal page is about [NoteEditorScreen.day], or today, unless
+  /// [values] already say which day.
+  Map<FieldKey, FieldValue> _prefillFor(
+    SchemaDefinition schema,
+    Map<FieldKey, FieldValue> values,
+  ) =>
+      schema.id.name == Journal.schema &&
+          schema.fieldFor(Journal.date)?.type is DateFieldType &&
+          values[Journal.date] == null
+      ? {Journal.date: widget.day ?? JournalDays.of(widget.clock())}
+      : const {};
+
+  DateValue? _dayOf(Map<FieldKey, FieldValue> values) =>
+      switch (values[Journal.date]) {
+        final DateValue day when _isJournal => day,
+        _ => null,
+      };
+
   void _onDraft(FormDraft draft) {
     _draft = draft;
-    if (_isChapter) _words.value = _countWords();
+    if (_countedField != null) _words.value = _countWords();
+    if (_isJournal) _day.value = _dayOf(draft.values);
     // Typing on a soft keyboard is not a pointer event.
     AutoLockScope.maybeOf(context)?.touch();
     _changed();
@@ -225,7 +265,7 @@ class NoteEditorScreenState extends State<NoteEditorScreen>
     ];
     final saved = _saved;
     // An empty new note is not a note yet.
-    if (saved == null && values.isEmpty && unreadable.isEmpty) {
+    if (saved == null && mapEquals(values, _prefill) && unreadable.isEmpty) {
       _dirty = false;
       return _show(SaveState.saved);
     }
@@ -481,9 +521,22 @@ class NoteEditorScreenState extends State<NoteEditorScreen>
 
   bool get _isChapter => _schema.id.name == BookOutline.chapter;
 
-  int _countWords() => switch (_draft.values[FieldKey('body')]) {
-    TextValue(:final text) when _isChapter => WordCount.of(text),
-    _ => 0,
+  bool get _isJournal => _schema.id.name == Journal.schema;
+
+  /// The text whose words are counted as it is typed: a chapter's, a
+  /// journal page's.
+  FieldKey? get _countedField => _isChapter
+      ? FieldKey('body')
+      : _isJournal
+      ? Journal.page
+      : null;
+
+  int _countWords() => switch (_countedField) {
+    final field? => switch (_draft.values[field]) {
+      TextValue(:final text) => WordCount.of(text),
+      _ => 0,
+    },
+    null => 0,
   };
 
   /// Where this note is filed, or will be once first saved.
@@ -571,8 +624,39 @@ class NoteEditorScreenState extends State<NoteEditorScreen>
     );
   }
 
+  /// The page in the typeface this device chose: the note's title and text
+  /// alike, falling back to the body font (and then the music signs) for
+  /// what the typeface lacks. Inter keeps the app's own pairing.
+  static Widget _inFont(ThemeData theme, PageFont font, Widget page) =>
+      font == PageFont.inter
+      ? page
+      : Theme(
+          data: theme.copyWith(
+            textTheme: theme.textTheme.apply(
+              fontFamily: font.family,
+              fontFamilyFallback: const [
+                ModusTheme.bodyFont,
+                ModusTheme.symbolFont,
+              ],
+            ),
+          ),
+          child: page,
+        );
+
+  /// The page in the mood of the note's type, within the app's theme: a
+  /// new type, picked while writing, changes it smoothly.
   @override
   Widget build(BuildContext context) {
+    final appearance = AppearanceScope.maybeOf(context);
+    if (appearance == null) return _page(context);
+    return AnimatedTheme(
+      data: ModusTheme.of(appearance.pagePalette(_schema)),
+      duration: ModusThemes.transition,
+      child: Builder(builder: _page),
+    );
+  }
+
+  Widget _page(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final text = SchemaText(l10n);
     final theme = Theme.of(context);
@@ -584,6 +668,14 @@ class NoteEditorScreenState extends State<NoteEditorScreen>
     };
     final embedded = widget.onClose != null;
     final focused = _focused;
+    final appearance = AppearanceScope.maybeOf(context);
+    final page = appearance?.page ?? const PageAppearance();
+    final font = appearance?.shownFont ?? PageFont.inter;
+    // On a narrow window the page is the screen: only a wide one offers
+    // the other widths.
+    final width = MediaQuery.sizeOf(context).width >= PageAppearance.wideFrom
+        ? page.width
+        : PageWidth.narrow;
     return PopScope(
       // Beside the list there is nothing to go back to; in focus mode back
       // leaves focus mode first.
@@ -640,6 +732,13 @@ class NoteEditorScreenState extends State<NoteEditorScreen>
                     ),
                   ),
                 ),
+              if (appearance != null)
+                IconButton(
+                  key: const ValueKey('page-appearance'),
+                  onPressed: () => AppearanceSheet.show(context),
+                  tooltip: l10n.pageAppearance,
+                  icon: const Icon(Icons.format_size),
+                ),
               IconButton(
                 key: const ValueKey('focus-mode'),
                 onPressed: toggleFocus,
@@ -660,119 +759,179 @@ class NoteEditorScreenState extends State<NoteEditorScreen>
           body: Column(
             children: [
               Expanded(
-                child: Align(
-                  alignment: Alignment.topCenter,
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: Extents.xxl),
-                    child: ListView(
-                      padding: const EdgeInsets.fromLTRB(
-                        Spacing.l,
-                        Spacing.s,
-                        Spacing.l,
-                        Spacing.xxl,
-                      ),
-                      children: [
-                        DynamicFormRenderer(
-                          // A new type is a new page, filled with what was
-                          // carried over.
-                          key: ValueKey(_schema.id),
-                          schema: _schema,
-                          values: _draft.values,
-                          violations: _violations,
-                          autofocus: widget.entry == null,
-                          focused: focused,
-                          markdownTarget: _markdown,
-                          onChanged: _onDraft,
-                          onRecordAudio: widget.store.recorder == null
-                              ? null
-                              : _record,
-                          recordingLength: _lengthOf,
-                          recordingPlayer: _playerOf,
-                          attachments: AttachmentHooks(
-                            addImage: widget.store.images == null
-                                ? null
-                                : _addImage,
-                            openImage: _openImage,
-                            openLink: widget.openLink,
-                            imageSize: (blob) =>
-                                (_pictures[blob] ?? widget.store.imageOf(blob))
-                                    ?.metadata
-                                    .info,
+                child: MediaQuery(
+                  // The page's text size on top of the system's.
+                  data: MediaQuery.of(context).copyWith(
+                    textScaler: PageTextScaler(
+                      MediaQuery.textScalerOf(context),
+                      page.textFactor,
+                    ),
+                  ),
+                  child: _inFont(
+                    theme,
+                    font,
+                    Align(
+                      alignment: Alignment.topCenter,
+                      child: ConstrainedBox(
+                        key: const ValueKey('note-page'),
+                        constraints: BoxConstraints(maxWidth: width.maxWidth),
+                        child: ListView(
+                          padding: EdgeInsets.fromLTRB(
+                            width.margin,
+                            Spacing.s,
+                            width.margin,
+                            Spacing.xxl,
                           ),
-                        ),
-                        if (_isChapter)
-                          Align(
-                            alignment: AlignmentDirectional.centerEnd,
-                            child: ValueListenableBuilder(
-                              valueListenable: _words,
-                              builder: (context, words, _) => Text(
-                                l10n.wordCount(words),
-                                key: const ValueKey('chapter-words'),
-                                style: theme.textTheme.labelSmall,
+                          children: [
+                            if (_isJournal)
+                              ValueListenableBuilder(
+                                valueListenable: _day,
+                                builder: (context, day, _) => day == null
+                                    ? const SizedBox.shrink()
+                                    : Text(
+                                        JournalDays.long(context, day),
+                                        key: const ValueKey('journal-day'),
+                                        style: theme.textTheme.labelLarge
+                                            ?.copyWith(
+                                              color: ModusPalette.of(context)
+                                                  .tint(_schema.tint),
+                                            ),
+                                      ),
+                              ),
+                            DynamicFormRenderer(
+                              // A new type is a new page, filled with what was
+                              // carried over.
+                              key: ValueKey(_schema.id),
+                              schema: _schema,
+                              values: _draft.values,
+                              violations: _violations,
+                              autofocus: widget.entry == null,
+                              focused: focused,
+                              markdownTarget: _markdown,
+                              onChanged: _onDraft,
+                              onRecordAudio: widget.store.recorder == null
+                                  ? null
+                                  : _record,
+                              recordingLength: _lengthOf,
+                              recordingPlayer: _playerOf,
+                              attachments: AttachmentHooks(
+                                addImage: widget.store.images == null
+                                    ? null
+                                    : _addImage,
+                                openImage: _openImage,
+                                openLink: widget.openLink,
+                                imageSize: (blob) =>
+                                    (_pictures[blob] ??
+                                            widget.store.imageOf(blob))
+                                        ?.metadata
+                                        .info,
                               ),
                             ),
-                          ),
-                        if (_schema.id.name == BookOutline.book && !focused)
-                          ListenableBuilder(
-                            listenable: widget.store,
-                            builder: (context, _) {
-                              final category = _category;
-                              return BookSection(
-                                outline: BookOutline.of(
-                                  category: category,
-                                  store: widget.store,
-                                  schemaOf: _schemaOf,
+                            if (_countedField != null)
+                              Align(
+                                alignment: AlignmentDirectional.centerEnd,
+                                child: ValueListenableBuilder(
+                                  valueListenable: _words,
+                                  builder: (context, words, _) => Text(
+                                    l10n.wordCount(words),
+                                    key: ValueKey(
+                                      _isChapter
+                                          ? 'chapter-words'
+                                          : 'journal-words',
+                                    ),
+                                    style: theme.textTheme.labelSmall,
+                                  ),
                                 ),
-                                goal: switch (_draft.values[FieldKey(
-                                  'word_goal',
-                                )]) {
-                                  NumberValue(:final number) => number.toInt(),
-                                  _ => null,
+                              ),
+                            if (_schema.id.name == BookOutline.book && !focused)
+                              ListenableBuilder(
+                                listenable: widget.store,
+                                builder: (context, _) {
+                                  final category = _category;
+                                  return BookSection(
+                                    outline: BookOutline.of(
+                                      category: category,
+                                      store: widget.store,
+                                      schemaOf: _schemaOf,
+                                    ),
+                                    goal: switch (_draft.values[FieldKey(
+                                      'word_goal',
+                                    )]) {
+                                      NumberValue(:final number) =>
+                                        number.toInt(),
+                                      _ => null,
+                                    },
+                                    schemas: widget.schemas,
+                                    onOpen: _openLinked,
+                                    onAdd: (schema) =>
+                                        _openOver(schema, category: category),
+                                  );
                                 },
-                                schemas: widget.schemas,
-                                onOpen: _openLinked,
-                                onAdd: (schema) =>
-                                    _openOver(schema, category: category),
-                              );
-                            },
-                          ),
-                        if (_schema.id.name == PageIndex.document && !focused)
-                          ListenableBuilder(
-                            listenable: widget.store,
-                            builder: (context, _) {
-                              final category = _category;
-                              return PageIndexSection(
-                                sections: PageIndex.of(
-                                  category: category,
-                                  store: widget.store,
+                              ),
+                            if (_schema.id.name == PageIndex.document &&
+                                !focused)
+                              ListenableBuilder(
+                                listenable: widget.store,
+                                builder: (context, _) {
+                                  final category = _category;
+                                  return PageIndexSection(
+                                    sections: PageIndex.of(
+                                      category: category,
+                                      store: widget.store,
+                                      schemaOf: _schemaOf,
+                                    ),
+                                    current: _id,
+                                    schemaOf: _schemaOf,
+                                    onOpen: _openLinked,
+                                    onAdd: () =>
+                                        _openOver(_schema, category: category),
+                                  );
+                                },
+                              ),
+                            if (_isJournal && !focused)
+                              ListenableBuilder(
+                                listenable: Listenable.merge([
+                                  widget.store,
+                                  _day,
+                                ]),
+                                builder: (context, _) => switch (_day.value) {
+                                  final day? => OnThisDaySection(
+                                    day: day,
+                                    pages: Journal.onThisDay(
+                                      widget.store.entries.where(
+                                        (entry) => entry.id != _id,
+                                      ),
+                                      day,
+                                    ),
+                                    schemaOf: _schemaOf,
+                                    onOpen: _openLinked,
+                                  ),
+                                  null => const SizedBox.shrink(),
+                                },
+                              ),
+                            if (!focused)
+                              ListenableBuilder(
+                                listenable: widget.store,
+                                builder: (context, _) => NoteLinksSection(
+                                  links: NoteLinks.targets(
+                                    _draft.values.values,
+                                  ),
+                                  backlinks: [
+                                    for (final entry in widget.store.entries)
+                                      if (entry.id != _id &&
+                                          NoteLinks.targets(
+                                            entry.attributes.values,
+                                          ).contains(_id))
+                                        entry,
+                                  ],
+                                  find: _find,
                                   schemaOf: _schemaOf,
+                                  onOpen: _openLinked,
                                 ),
-                                current: _id,
-                                schemaOf: _schemaOf,
-                                onOpen: _openLinked,
-                                onAdd: () =>
-                                    _openOver(_schema, category: category),
-                              );
-                            },
-                          ),
-                        if (!focused)
-                          ListenableBuilder(
-                            listenable: widget.store,
-                            builder: (context, _) => NoteLinksSection(
-                              links: NoteLinks.targets(_draft.values.values),
-                              backlinks: [
-                                for (final entry in widget.store.entries)
-                                  if (entry.id != _id &&
-                                      NoteLinks.targets(entry.attributes.values)
-                                          .contains(_id))
-                                    entry,
-                              ],
-                              find: _find,
-                              schemaOf: _schemaOf,
-                              onOpen: _openLinked,
-                            ),
-                          ),
-                      ],
+                              ),
+                          ],
+                        ),
+                      ),
                     ),
                   ),
                 ),

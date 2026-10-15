@@ -15,6 +15,8 @@ final class LocalReminderScheduler implements ReminderScheduler {
   LocalReminderScheduler({
     required this.channel,
     required this.description,
+    required this.journalChannel,
+    required this.journalDescription,
     this.scope = 0,
   }) : assert(scope >= 0 && scope < 1 << 7);
 
@@ -46,6 +48,10 @@ final class LocalReminderScheduler implements ReminderScheduler {
   /// person's language.
   final String channel;
   final String description;
+
+  /// The journal's channel, likewise.
+  final String journalChannel;
+  final String journalDescription;
 
   final _plugin = FlutterLocalNotificationsPlugin();
   Future<void>? _ready;
@@ -113,13 +119,22 @@ final class LocalReminderScheduler implements ReminderScheduler {
         body: reminder.body,
         scheduledDate: tz.TZDateTime.from(reminder.at, tz.UTC),
         notificationDetails: NotificationDetails(
-          android: AndroidNotificationDetails(
-            'password_expiry',
-            channel,
-            channelDescription: description,
-            icon: 'ic_notification',
-            category: AndroidNotificationCategory.reminder,
-          ),
+          android: switch (reminder.topic) {
+            ReminderTopic.passwords => AndroidNotificationDetails(
+              'password_expiry',
+              channel,
+              channelDescription: description,
+              icon: 'ic_notification',
+              category: AndroidNotificationCategory.reminder,
+            ),
+            ReminderTopic.journal => AndroidNotificationDetails(
+              'journal',
+              journalChannel,
+              channelDescription: journalDescription,
+              icon: 'ic_notification',
+              category: AndroidNotificationCategory.reminder,
+            ),
+          },
           iOS: const DarwinNotificationDetails(),
         ),
         // No exact-alarm permission: a few minutes late is fine.

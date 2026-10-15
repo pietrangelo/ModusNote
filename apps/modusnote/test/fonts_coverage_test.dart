@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:modusnote/appearance/page_appearance.dart';
 import 'package:modusnote/theme/modus_theme.dart';
 
 /// The code points a TrueType font maps, from its cmap table (formats 4
@@ -89,6 +90,32 @@ void main() {
       });
     }
     expect(missing, isEmpty);
+  });
+
+  test('each typeface of the page draws what notes are written with', () {
+    // Italian and English text, the other Latin letters most often typed,
+    // typographic quotes and dashes, and the Markdown markers.
+    const writing =
+        'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+        'àèéìòùÀÈÉÌÒÙçÇñÑäöüÄÖÜß«»‘’“”–—…·€#*_[]()!?.,;:';
+    for (final font in PageFont.values.skip(1)) {
+      for (final asset in font.assets) {
+        final points = codePointsOf(asset);
+        final missing = writing.runes.where((c) => !points.contains(c));
+        expect(
+          String.fromCharCodes(missing),
+          isEmpty,
+          reason: '$asset lacks these',
+        );
+      }
+      // Each is shipped with its licence, next to it.
+      final dir = File(font.assets.first).parent;
+      expect(
+        dir.listSync().where((f) => f.path.contains(RegExp('OFL'))),
+        isNotEmpty,
+        reason: '$font',
+      );
+    }
   });
 
   test('the symbol font is declared in the pubspec with its licence', () {

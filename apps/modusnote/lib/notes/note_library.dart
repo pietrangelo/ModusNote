@@ -1,3 +1,6 @@
+import 'journal/journal_calendar.dart';
+import 'journal/journal_days.dart';
+
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
@@ -6,6 +9,8 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:schema_dynamic_content/schema_dynamic_content.dart';
 
+import '../appearance/appearance_scope.dart';
+import '../appearance/page_sheet.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../theme/golden_ratio.dart';
 import '../vault/auto_lock.dart';
@@ -20,6 +25,7 @@ import 'note_title.dart';
 import 'schema_text.dart';
 import 'trash_screen.dart';
 import '../theme/modus_palette.dart';
+import '../theme/modus_themes.dart';
 
 /// Every note at a glance: search, categories, a chip per note type, a
 /// card per note, each opening on a page of its own. A window at least
@@ -36,6 +42,8 @@ class NoteLibraryScreen extends StatefulWidget {
     this.onLock,
     this.onPasskey,
     this.onBackup,
+    this.journalSettings,
+    this.clock = DateTime.now,
     super.key,
   });
 
@@ -55,6 +63,13 @@ class NoteLibraryScreen extends StatefulWidget {
   /// Opens the backup and export sheet; null where files cannot be
   /// saved and picked.
   final VoidCallback? onBackup;
+
+  /// Opens the journal's settings (the daily reminder); null where there
+  /// are none to change.
+  final VoidCallback? journalSettings;
+
+  /// Which day is today, for the journal.
+  final DateTime Function() clock;
 
   /// The narrowest window that shows the three columns.
   static const wideFrom = Extents.xxxl;
@@ -113,18 +128,76 @@ class _NoteLibraryScreenState extends State<NoteLibraryScreen> {
 
   /// The notes the filters let through: type, category and its
   /// subcategories, search.
+  /// The journal's pages go by their day, not by their last change.
   List<DynamicEntry> _shown() {
     final store = widget.store;
     final selected = _selected;
     final within = selected == null ? null : store.categories.subtree(selected);
-    return [
+    final shown = [
       for (final entry in store.entries)
         if ((_type == null || entry.schemaId == _type!.id) &&
             (within == null || within.contains(store.categoryOf(entry.id))) &&
             _search.matches(entry))
           entry,
     ];
+    return _journalShown ? Journal.byDay(shown) : shown;
   }
+
+  /// The journal's type, if the app offers it.
+  SchemaDefinition? get _journal {
+    for (final schema in widget.schemas) {
+      if (schema.id.name == Journal.schema) return schema;
+    }
+    return null;
+  }
+
+  /// Whether the list shows the journal: its calendar comes with it.
+  bool get _journalShown => _type != null && _type!.id.name == Journal.schema;
+
+  DateValue get _today => JournalDays.of(widget.clock());
+
+  /// Opens the page of [day] (the one changed last, if two devices each
+  /// started one), or starts it.
+  void _openDay(DateValue day) {
+    final journal = _journal;
+    if (journal == null) return;
+    final page = Journal.pagesOn(widget.store.entries, day).firstOrNull;
+    if (_isWide) {
+      unawaited(_openBeside(page?.id ?? _NewNote(journal, day)));
+    } else if (page != null) {
+      _open(entry: page);
+    } else {
+      _open(schema: journal, day: day);
+    }
+  }
+
+  Widget _calendar({required bool compact}) => ListenableBuilder(
+    listenable: widget.store,
+    builder: (context, _) {
+      final l10n = AppLocalizations.of(context);
+      return JournalCalendar(
+        entries: widget.store.entries,
+        today: _today,
+        compact: compact,
+        onDay: _openDay,
+        actions: [
+          IconButton(
+            key: const ValueKey('journal-today'),
+            onPressed: () => _openDay(_today),
+            tooltip: l10n.journalToday,
+            icon: const Icon(Icons.today_outlined),
+          ),
+          if (widget.journalSettings case final settings?)
+            IconButton(
+              key: const ValueKey('journal-settings'),
+              onPressed: settings,
+              tooltip: l10n.journalSettings,
+              icon: const Icon(Icons.notifications_none),
+            ),
+        ],
+      );
+    },
+  );
 
   /// Shows [opened] beside the list, once the open note is saved; a note
   /// that cannot be saved, kept by the user, stays.
@@ -265,7 +338,7 @@ class _NoteLibraryScreenState extends State<NoteLibraryScreen> {
     return null;
   }
 
-  void _open({DynamicEntry? entry, SchemaDefinition? schema}) {
+  void _open({DynamicEntry? entry, SchemaDefinition? schema, DateValue? day}) {
     schema = entry == null
         ? schema ?? _type ?? widget.schemas.last
         : _schemaOf(entry);
@@ -277,6 +350,8 @@ class _NoteLibraryScreenState extends State<NoteLibraryScreen> {
         initialSchema: schema,
         entry: entry,
         category: _selected,
+        day: day,
+        clock: widget.clock,
       ),
     );
   }
@@ -385,6 +460,23 @@ class _NoteLibraryScreenState extends State<NoteLibraryScreen> {
               ? unawaited(_openBeside(_NewNote(schema)))
               : _open(schema: schema),
         ),
+      if (_journal case final journal?) ...[
+        PaletteCommand(
+          icon: NoteAppearance.icon(journal.icon),
+          color: ModusPalette.of(context).tint(journal.tint),
+          label: l10n.journalToday,
+          run: () => _openDay(_today),
+        ),
+        if (Journal.onThisDay(widget.store.entries, _today).firstOrNull
+            case final page?)
+          PaletteCommand(
+            icon: Icons.history,
+            color: ModusPalette.of(context).tint(journal.tint),
+            label: l10n.onThisDay,
+            run: () =>
+                wide ? unawaited(_openBeside(page.id)) : _open(entry: page),
+          ),
+      ],
       PaletteCommand(
         icon: Icons.folder_outlined,
         label: l10n.categories,
@@ -409,6 +501,41 @@ class _NoteLibraryScreenState extends State<NoteLibraryScreen> {
             run: editor.toggleFocus,
           ),
       ],
+      if (AppearanceScope.maybeOf(context) case final appearance?) ...[
+        for (final theme in AppTheme.values)
+          if (theme != appearance.theme)
+            PaletteCommand(
+              icon: Icons.palette_outlined,
+              label: l10n.paletteTheme(switch (theme) {
+                AppTheme.modus => l10n.themeModus,
+                AppTheme.restful => l10n.themeRestful,
+                AppTheme.paper => l10n.themePaper,
+              }),
+              run: () => appearance.theme = theme,
+            ),
+        PaletteCommand(
+          icon: Icons.text_increase,
+          label: l10n.largerText,
+          run: () => appearance.page = appearance.page.larger(),
+        ),
+        PaletteCommand(
+          icon: Icons.text_decrease,
+          label: l10n.smallerText,
+          run: () => appearance.page = appearance.page.smaller(),
+        ),
+        if (wide) ...[
+          PaletteCommand(
+            icon: Icons.open_in_full,
+            label: l10n.widerPage,
+            run: () => appearance.page = appearance.page.wider(),
+          ),
+          PaletteCommand(
+            icon: Icons.close_fullscreen,
+            label: l10n.narrowerPage,
+            run: () => appearance.page = appearance.page.narrower(),
+          ),
+        ],
+      ],
       PaletteCommand(
         icon: Icons.delete_outline,
         label: l10n.trash,
@@ -429,7 +556,11 @@ class _NoteLibraryScreenState extends State<NoteLibraryScreen> {
         if (search.matches(entry))
           () {
             final schema = _schemaOf(entry);
-            final title = NoteTitle.of(entry, schema);
+            final title = NoteTitle.of(
+              entry,
+              schema,
+              day: JournalDays.longIn(context),
+            );
             return PaletteCommand(
               icon: NoteAppearance.icon(schema?.icon),
               color: ModusPalette.of(context).tint(schema?.tint),
@@ -455,6 +586,12 @@ class _NoteLibraryScreenState extends State<NoteLibraryScreen> {
         onPressed: _openTrash,
         tooltip: l10n.trash,
         icon: const Icon(Icons.delete_outline),
+      ),
+    if (AppearanceScope.maybeOf(context) != null)
+      IconButton(
+        onPressed: () => AppearanceSheet.show(context),
+        tooltip: l10n.appearance,
+        icon: const Icon(Icons.palette_outlined),
       ),
     if (widget.onBackup case final onBackup?)
       IconButton(
@@ -648,6 +785,16 @@ class _NoteLibraryScreenState extends State<NoteLibraryScreen> {
           ],
         ),
       ),
+      if (_journalShown)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(
+            Spacing.m,
+            Spacing.s,
+            Spacing.m,
+            0,
+          ),
+          child: _calendar(compact: false),
+        ),
       const SizedBox(height: Spacing.s),
       Expanded(
         child: ListenableBuilder(
@@ -737,6 +884,8 @@ class _NoteLibraryScreenState extends State<NoteLibraryScreen> {
         initialSchema: schema,
         entry: entry,
         category: _selected,
+        day: opened is _NewNote ? opened.day : null,
+        clock: widget.clock,
         onFocusChanged: (focused) => setState(() => _focused = focused),
         onClose: () => setState(() {
           _opened = null;
@@ -815,6 +964,10 @@ class _NoteLibraryScreenState extends State<NoteLibraryScreen> {
                         ],
                       ),
                     ),
+                    if (_journalShown) ...[
+                      const SizedBox(height: Spacing.m),
+                      _calendar(compact: true),
+                    ],
                   ],
                 ),
               ),
@@ -1013,7 +1166,7 @@ class _NoteCard extends StatelessWidget {
     final theme = Theme.of(context);
     final l10n = AppLocalizations.of(context);
     final tasks = entry.attributes.values.whereType<ChecklistValue>().toList();
-    final title = NoteTitle.of(entry, schema);
+    final title = NoteTitle.of(entry, schema, day: JournalDays.longIn(context));
     final done = tasks.isEmpty
         ? entry.attributes.values.any(
             (value) => value == const BooleanValue(true),
@@ -1132,10 +1285,13 @@ class _WholeLines extends StatelessWidget {
 
 /// A new note not saved yet, open beside the list.
 final class _NewNote {
-  _NewNote([this.schema]);
+  _NewNote([this.schema, this.day]);
 
   /// The type it starts as; null for the one the filters suggest.
   final SchemaDefinition? schema;
+
+  /// The day of a new journal page.
+  final DateValue? day;
 }
 
 /// The first column: every note, each type, the categories as a tree, the
@@ -1309,7 +1465,7 @@ class _NoteRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final title = NoteTitle.of(entry, schema);
+    final title = NoteTitle.of(entry, schema, day: JournalDays.longIn(context));
     final picked = this.picked;
     return ListTile(
       leading: picked == null

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:modusnote/appearance/appearance_scope.dart';
+import 'package:modusnote/appearance/page_appearance.dart';
 import 'package:modusnote/notes/command_palette.dart';
 import 'package:modusnote/notes/note_editor.dart';
 import 'package:modusnote/notes/note_library.dart';
@@ -47,10 +49,15 @@ void main() {
     );
   });
 
-  Future<void> openLibrary(WidgetTester tester, {required bool wide}) async {
+  Future<void> openLibrary(
+    WidgetTester tester, {
+    required bool wide,
+    AppearanceSettings? appearance,
+  }) async {
     await pumpApp(
       tester,
       NoteLibraryScreen(schemas: SeedSchemas.all, store: store),
+      appearance: appearance,
     );
     if (wide) {
       tester.view
@@ -102,6 +109,45 @@ void main() {
     expect(palette, findsNothing);
     expect(fieldFinder('content'), findsOneWidget);
     expect(find.text('Idea per un riff'), findsWidgets);
+  });
+
+  group('page appearance', () {
+    late AppearanceSettings appearance;
+    setUp(() => appearance = AppearanceSettings());
+
+    Future<void> run(WidgetTester tester, String command) async {
+      await ctrlP(tester);
+      await query(tester, command);
+      await press(tester, LogicalKeyboardKey.enter);
+    }
+
+    testWidgets('the text grows and shrinks a step at a time', (tester) async {
+      await openLibrary(tester, wide: false, appearance: appearance);
+      await run(tester, 'testo più grande');
+      expect(appearance.page.textSize, 20);
+      await run(tester, 'testo più piccolo');
+      await run(tester, 'testo più piccolo');
+      expect(appearance.page.textSize, 13);
+    });
+
+    testWidgets('the page widens and narrows on a wide window', (tester) async {
+      await openLibrary(tester, wide: true, appearance: appearance);
+      await run(tester, 'allarga');
+      expect(appearance.page.width, PageWidth.wide);
+      await run(tester, 'restringi');
+      await run(tester, 'restringi');
+      expect(appearance.page.width, PageWidth.narrow);
+    });
+
+    testWidgets('a narrow window offers no width', (tester) async {
+      await openLibrary(tester, wide: false, appearance: appearance);
+      await ctrlP(tester);
+      await query(tester, 'pagina');
+      expect(
+        find.descendant(of: palette, matching: find.text('Allarga la pagina')),
+        findsNothing,
+      );
+    });
   });
 
   testWidgets('the arrows move the choice', (tester) async {

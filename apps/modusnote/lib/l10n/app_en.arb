@@ -1947,5 +1947,286 @@
   "shelfSave": "Save",
   "@shelfSave": {
     "description": "Rename vault dialog: confirms."
+  },
+  "pageAppearance": "Page appearance",
+  "@pageAppearance": {
+    "description": "Editor: button and sheet that set the page's width and text size on this device."
+  },
+  "pageTextSize": "Text size",
+  "@pageTextSize": {
+    "description": "Page appearance sheet: the size of the note's text."
+  },
+  "pageTextSizeValue": "{size} pt",
+  "@pageTextSizeValue": {
+    "description": "Page appearance sheet: one text size, in points.",
+    "placeholders": {
+      "size": {
+        "type": "int"
+      }
+    }
+  },
+  "pageWidth": "Page width",
+  "@pageWidth": {
+    "description": "Page appearance sheet: how wide the text may grow on a wide window."
+  },
+  "pageWidthNarrow": "Narrow",
+  "@pageWidthNarrow": {
+    "description": "Page width: 610 dp."
+  },
+  "pageWidthMedium": "Medium",
+  "@pageWidthMedium": {
+    "description": "Page width: 987 dp."
+  },
+  "pageWidthWide": "Wide",
+  "@pageWidthWide": {
+    "description": "Page width: 1597 dp."
+  },
+  "pageWidthFull": "Full",
+  "@pageWidthFull": {
+    "description": "Page width: the whole window."
+  },
+  "pageAppearanceDevice": "Only on this device: notes do not change.",
+  "@pageAppearanceDevice": {
+    "description": "Page appearance sheet: the choice is a preference of the device, not synced."
+  },
+  "widerPage": "Widen the page",
+  "@widerPage": {
+    "description": "Command palette: next page width."
+  },
+  "narrowerPage": "Narrow the page",
+  "@narrowerPage": {
+    "description": "Command palette: previous page width."
+  },
+  "largerText": "Larger text",
+  "@largerText": {
+    "description": "Command palette: next text size."
+  },
+  "smallerText": "Smaller text",
+  "@smallerText": {
+    "description": "Command palette: previous text size."
+  },
+  "pageFont": "Typeface",
+  "@pageFont": {
+    "description": "Page appearance sheet: the typeface of the note's text."
+  },
+  "pageFontInter": "Inter",
+  "@pageFontInter": {
+    "description": "Typeface name (proper name)."
+  },
+  "pageFontInterHint": "Neutral: the app's own",
+  "@pageFontInterHint": {
+    "description": "Typeface hint for Inter."
+  },
+  "pageFontLiterata": "Literata",
+  "@pageFontLiterata": {
+    "description": "Typeface name (proper name)."
+  },
+  "pageFontLiterataHint": "A book serif, for long reading",
+  "@pageFontLiterataHint": {
+    "description": "Typeface hint for Literata."
+  },
+  "pageFontAtkinson": "Atkinson Hyperlegible",
+  "@pageFontAtkinson": {
+    "description": "Typeface name (proper name)."
+  },
+  "pageFontAtkinsonHint": "Made to be as legible as possible",
+  "@pageFontAtkinsonHint": {
+    "description": "Typeface hint for Atkinson Hyperlegible Next."
+  },
+  "pageFontQuattro": "iA Writer Quattro",
+  "@pageFontQuattro": {
+    "description": "Typeface name (proper name)."
+  },
+  "pageFontQuattroHint": "Made for writing",
+  "@pageFontQuattroHint": {
+    "description": "Typeface hint for iA Writer Quattro."
+  },
+  "appearance": "Appearance",
+  "@appearance": {
+    "description": "Library button and sheet: theme of the app, and how the page of a note looks on this device."
+  },
+  "appTheme": "Theme",
+  "@appTheme": {
+    "description": "Appearance sheet: the colours of the whole app."
+  },
+  "themeModus": "Modus",
+  "@themeModus": {
+    "description": "Theme name: the brand, dark."
+  },
+  "themeModusHint": "The app's own, dark",
+  "@themeModusHint": {
+    "description": "Theme hint."
+  },
+  "themeRestful": "Restful",
+  "@themeRestful": {
+    "description": "Theme name: dark, soft contrast."
+  },
+  "themeRestfulHint": "Dark and soft, for long sessions",
+  "@themeRestfulHint": {
+    "description": "Theme hint."
+  },
+  "themePaper": "Paper",
+  "@themePaper": {
+    "description": "Theme name: light, warm paper."
+  },
+  "themePaperHint": "Light and warm, for daylight",
+  "@themePaperHint": {
+    "description": "Theme hint."
+  },
+  "pageMoods": "Match the note type",
+  "@pageMoods": {
+    "description": "Appearance sheet switch: the page of a note takes the mood of its type."
+  },
+  "pageMoodsHint": "Books and dreams invite imagination; quick notes and documents, concentration",
+  "@pageMoodsHint": {
+    "description": "Appearance sheet: what matching the note type does."
+  },
+  "paletteTheme": "Theme: {name}",
+  "@paletteTheme": {
+    "description": "Command palette: switch the app's theme.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "schemaJournalLabel": "Daily journal",
+  "@schemaJournalLabel": {
+    "description": "Localization of the seed schema key schema.journal.label."
+  },
+  "schemaJournalFieldTitle": "Title",
+  "@schemaJournalFieldTitle": {
+    "description": "Localization of the seed schema key schema.journal.field.title."
+  },
+  "schemaJournalFieldDate": "Day",
+  "@schemaJournalFieldDate": {
+    "description": "Localization of the seed schema key schema.journal.field.date."
+  },
+  "schemaJournalFieldPage": "Page",
+  "@schemaJournalFieldPage": {
+    "description": "Localization of the seed schema key schema.journal.field.page."
+  },
+  "schemaJournalFieldMood": "Mood",
+  "@schemaJournalFieldMood": {
+    "description": "Localization of the seed schema key schema.journal.field.mood."
+  },
+  "schemaJournalFieldMoodGreat": "Great",
+  "@schemaJournalFieldMoodGreat": {
+    "description": "Localization of the seed schema key schema.journal.field.mood.great."
+  },
+  "schemaJournalFieldMoodGood": "Good",
+  "@schemaJournalFieldMoodGood": {
+    "description": "Localization of the seed schema key schema.journal.field.mood.good."
+  },
+  "schemaJournalFieldMoodNeutral": "Neutral",
+  "@schemaJournalFieldMoodNeutral": {
+    "description": "Localization of the seed schema key schema.journal.field.mood.neutral."
+  },
+  "schemaJournalFieldMoodLow": "Low",
+  "@schemaJournalFieldMoodLow": {
+    "description": "Localization of the seed schema key schema.journal.field.mood.low."
+  },
+  "schemaJournalFieldMoodHard": "Hard",
+  "@schemaJournalFieldMoodHard": {
+    "description": "Localization of the seed schema key schema.journal.field.mood.hard."
+  },
+  "schemaJournalFieldRecording": "Recording",
+  "@schemaJournalFieldRecording": {
+    "description": "Localization of the seed schema key schema.journal.field.recording."
+  },
+  "schemaJournalFieldAttachments": "Attachments",
+  "@schemaJournalFieldAttachments": {
+    "description": "Localization of the seed schema key schema.journal.field.attachments."
+  },
+  "schemaJournalFieldTags": "Tags",
+  "@schemaJournalFieldTags": {
+    "description": "Localization of the seed schema key schema.journal.field.tags."
+  },
+  "journalToday": "Today's journal",
+  "@journalToday": {
+    "description": "Opens today's journal page, or starts one."
+  },
+  "onThisDay": "On this day",
+  "@onThisDay": {
+    "description": "Section under a journal page, and palette command: pages of the same day in earlier years."
+  },
+  "yearsAgo": "{years, plural, =1{A year ago} other{{years} years ago}}",
+  "@yearsAgo": {
+    "description": "How long ago an earlier journal page was written.",
+    "placeholders": {
+      "years": {
+        "type": "int"
+      }
+    }
+  },
+  "journalCalendar": "Journal calendar",
+  "@journalCalendar": {
+    "description": "Accessibility label of the month of journal pages."
+  },
+  "previousMonth": "Previous month",
+  "@previousMonth": {
+    "description": "Calendar button: the month before."
+  },
+  "nextMonth": "Next month",
+  "@nextMonth": {
+    "description": "Calendar button: the month after."
+  },
+  "calendarToday": "Today",
+  "@calendarToday": {
+    "description": "Calendar button: back to the current month."
+  },
+  "notWrittenToday": "You haven't written today yet",
+  "@notWrittenToday": {
+    "description": "Under the journal calendar while today has no page."
+  },
+  "journalDayWritten": "{day}, written",
+  "@journalDayWritten": {
+    "description": "Accessibility label of a calendar day with a journal page.",
+    "placeholders": {
+      "day": {
+        "type": "String"
+      }
+    }
+  },
+  "journalReminder": "Daily reminder",
+  "@journalReminder": {
+    "description": "Switch: a notification each day to write in the journal."
+  },
+  "journalReminderHint": "At {time}, only on days without a page",
+  "@journalReminderHint": {
+    "description": "Under the daily reminder switch.",
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "journalReminderTime": "Reminder time",
+  "@journalReminderTime": {
+    "description": "Button that picks the time of the daily reminder."
+  },
+  "journalReminderTitle": "Journal",
+  "@journalReminderTitle": {
+    "description": "Title of the daily journal notification."
+  },
+  "journalReminderBody": "Time to write in your journal.",
+  "@journalReminderBody": {
+    "description": "Body of the daily journal notification: never the content of a note."
+  },
+  "journalReminderChannel": "Journal",
+  "@journalReminderChannel": {
+    "description": "Android notification channel of the daily journal reminder."
+  },
+  "journalSettings": "Journal settings",
+  "@journalSettings": {
+    "description": "Button that opens the journal's settings."
+  },
+  "iconCalendar": "Calendar",
+  "@iconCalendar": {
+    "description": "Name of the calendar icon a category may take."
+  },
+  "journalReminderChannelDescription": "A reminder each day to write in the journal.",
+  "@journalReminderChannelDescription": {
+    "description": "Description of the Android notification channel of the daily journal reminder."
   }
 }

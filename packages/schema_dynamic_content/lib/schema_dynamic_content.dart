@@ -14,6 +14,7 @@ export 'src/core/field_type.dart';
 export 'src/core/field_value.dart';
 export 'src/core/identifiers.dart';
 export 'src/core/inline_images.dart';
+export 'src/core/journal.dart';
 export 'src/core/label.dart';
 export 'src/core/note_links.dart';
 export 'src/core/password_expiry.dart';
