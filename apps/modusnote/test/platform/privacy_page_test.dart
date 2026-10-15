@@ -12,7 +12,23 @@ void main() {
     expect(html, isNot(contains('<script')));
     expect(html, isNot(contains('<style')));
     expect(html, isNot(contains(' style=')));
-    expect(RegExp(r'''(src|href)="(https?:)?//''').hasMatch(html), isFalse);
+    // Links may point elsewhere (the Garante); nothing is loaded from there.
+    expect(RegExp(r'''src="(https?:)?//''').hasMatch(html), isFalse);
+    expect(RegExp(r'''<link[^>]*href="(https?:)?//''').hasMatch(html), isFalse);
+  });
+
+  test('names the controller and what article 13 GDPR asks for', () {
+    expect(html, isNot(contains('[TITOLARE]')));
+    for (final heading in [
+      'Titolare del trattamento',
+      'Conservazione',
+      'trasferimenti fuori dall',
+      'I tuoi diritti',
+    ]) {
+      expect(html, contains(heading));
+    }
+    expect(html, contains('art. 6, par. 1, lett. b'));
+    expect(html, contains('Garante per la protezione dei dati personali'));
   });
 
   test('explains account deletion where the store listing links', () {
