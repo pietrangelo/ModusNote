@@ -46,6 +46,15 @@ final class LedgerRollbackException extends SyncException {
   String get message => 'server is withholding or forking the membership log';
 }
 
+/// An owner removed this device from the workspace: it no longer syncs nor
+/// writes, and what is written from now on is sealed under a key it lacks.
+final class RemovedFromWorkspaceException extends SyncException {
+  const RemovedFromWorkspaceException();
+
+  @override
+  String get message => 'this device was removed from the workspace';
+}
+
 /// The sync server could not be reached; queued work stays queued.
 final class ServerUnavailableException extends SyncException {
   const ServerUnavailableException();
