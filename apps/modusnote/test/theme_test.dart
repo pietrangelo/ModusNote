@@ -46,7 +46,7 @@ void main() {
     });
 
     test('content extents continue the same scale', () {
-      expect(Extents.all, [89, 144, 233, 377, 610, 987]);
+      expect(Extents.all, [89, 144, 233, 377, 610, 987, 1597]);
       for (final value in Extents.all) {
         expect(onPhiScale(value, 8), isTrue, reason: '$value');
       }

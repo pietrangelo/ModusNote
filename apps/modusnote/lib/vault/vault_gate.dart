@@ -16,6 +16,8 @@ import '../backup/file_exchange.dart';
 import '../backup/markdown_export.dart';
 import '../audio/note_playback.dart';
 import '../audio/note_recorder.dart';
+import '../appearance/appearance_scope.dart';
+import '../appearance/page_appearance.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../notes/note_library.dart';
 import '../notes/schema_text.dart';
@@ -162,6 +164,10 @@ const _sessionSetting = 'sync.session';
 /// Present once the vault's account was deleted (see SyncController.retired).
 const _retiredSetting = 'sync.retired';
 
+/// How this device shows the page of a note (width, text size): sealed
+/// like everything else in the vault, though it says nothing of the notes.
+const _pageSetting = 'ui.page';
+
 enum _Problem {
   tooShort,
   mismatch,
@@ -207,6 +213,7 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _stopWatching();
+    _appearance?.detach(reset: false);
     if (_stage case _Open(
       :final vault,
       :final autoLock,
@@ -285,6 +292,7 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
         store.onRelease = blobs.release;
       }
       final sync = await _connect(vault, store, blobs);
+      final page = await _storedPage(vault);
       if (!mounted) {
         sync?.dispose();
         widget.account?.detach();
@@ -303,6 +311,7 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
           texts: ReminderTexts(l10n),
         ),
       };
+      _attachAppearance(vault, page);
       setState(() => _stage = _Open(vault, store, autoLock, sync, reminders));
       sync?.start();
       reminders?.start();
@@ -495,6 +504,39 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
 
   /// A damaged mark still counts: syncing a retired vault again would push
   /// to a workspace the server no longer has.
+  Future<PageAppearance> _storedPage(UnlockedVault vault) async {
+    try {
+      return PageAppearance.fromBytes(
+        await widget.keeper.loadSetting(vault, _pageSetting),
+      );
+    } on MalformedSyncDataException {
+      return const PageAppearance();
+    }
+  }
+
+  /// The app's appearance, while this vault fills it.
+  AppearanceSettings? _appearance;
+
+  void _attachAppearance(UnlockedVault vault, PageAppearance page) {
+    final keeper = widget.keeper;
+    _appearance = AppearanceScope.maybeOf(context)
+      ?..attach(
+        page,
+        persist: (bytes) async {
+          try {
+            await keeper.saveSetting(vault, _pageSetting, bytes);
+          } on VaultLockedException {
+            // Locked meanwhile: the change stays on the screen only.
+          }
+        },
+      );
+  }
+
+  void _detachAppearance() {
+    _appearance?.detach();
+    _appearance = null;
+  }
+
   Future<bool> _isRetired(UnlockedVault vault) async {
     try {
       return await widget.keeper.loadSetting(vault, _retiredSetting) != null;
@@ -516,6 +558,7 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
       :final reminders,
     )) {
       _stopWatching();
+      _detachAppearance();
       // The reminders already set stay with the system.
       reminders?.dispose();
       // An undo offered on the way out would write with released keys.

@@ -1947,5 +1947,62 @@
   "shelfSave": "Save",
   "@shelfSave": {
     "description": "Rename vault dialog: confirms."
+  },
+  "pageAppearance": "Page appearance",
+  "@pageAppearance": {
+    "description": "Editor: button and sheet that set the page's width and text size on this device."
+  },
+  "pageTextSize": "Text size",
+  "@pageTextSize": {
+    "description": "Page appearance sheet: the size of the note's text."
+  },
+  "pageTextSizeValue": "{size} pt",
+  "@pageTextSizeValue": {
+    "description": "Page appearance sheet: one text size, in points.",
+    "placeholders": {
+      "size": {
+        "type": "int"
+      }
+    }
+  },
+  "pageWidth": "Page width",
+  "@pageWidth": {
+    "description": "Page appearance sheet: how wide the text may grow on a wide window."
+  },
+  "pageWidthNarrow": "Narrow",
+  "@pageWidthNarrow": {
+    "description": "Page width: 610 dp."
+  },
+  "pageWidthMedium": "Medium",
+  "@pageWidthMedium": {
+    "description": "Page width: 987 dp."
+  },
+  "pageWidthWide": "Wide",
+  "@pageWidthWide": {
+    "description": "Page width: 1597 dp."
+  },
+  "pageWidthFull": "Full",
+  "@pageWidthFull": {
+    "description": "Page width: the whole window."
+  },
+  "pageAppearanceDevice": "Only on this device: notes do not change.",
+  "@pageAppearanceDevice": {
+    "description": "Page appearance sheet: the choice is a preference of the device, not synced."
+  },
+  "widerPage": "Widen the page",
+  "@widerPage": {
+    "description": "Command palette: next page width."
+  },
+  "narrowerPage": "Narrow the page",
+  "@narrowerPage": {
+    "description": "Command palette: previous page width."
+  },
+  "largerText": "Larger text",
+  "@largerText": {
+    "description": "Command palette: next text size."
+  },
+  "smallerText": "Smaller text",
+  "@smallerText": {
+    "description": "Command palette: previous text size."
   }
 }

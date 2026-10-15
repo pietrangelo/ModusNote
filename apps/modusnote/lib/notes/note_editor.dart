@@ -10,6 +10,9 @@ import 'package:schema_dynamic_content/schema_dynamic_content.dart';
 import '../attachments/open_in_browser.dart';
 import '../audio/recording_player_view.dart';
 import '../audio/recording_sheet.dart';
+import '../appearance/appearance_scope.dart';
+import '../appearance/page_appearance.dart';
+import '../appearance/page_sheet.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../theme/golden_ratio.dart';
 import '../vault/auto_lock.dart';
@@ -584,6 +587,13 @@ class NoteEditorScreenState extends State<NoteEditorScreen>
     };
     final embedded = widget.onClose != null;
     final focused = _focused;
+    final appearance = AppearanceScope.maybeOf(context);
+    final page = appearance?.page ?? const PageAppearance();
+    // On a narrow window the page is the screen: only a wide one offers
+    // the other widths.
+    final width = MediaQuery.sizeOf(context).width >= PageAppearance.wideFrom
+        ? page.width
+        : PageWidth.narrow;
     return PopScope(
       // Beside the list there is nothing to go back to; in focus mode back
       // leaves focus mode first.
@@ -640,6 +650,13 @@ class NoteEditorScreenState extends State<NoteEditorScreen>
                     ),
                   ),
                 ),
+              if (appearance != null)
+                IconButton(
+                  key: const ValueKey('page-appearance'),
+                  onPressed: () => PageAppearanceSheet.show(context),
+                  tooltip: l10n.pageAppearance,
+                  icon: const Icon(Icons.format_size),
+                ),
               IconButton(
                 key: const ValueKey('focus-mode'),
                 onPressed: toggleFocus,
@@ -660,119 +677,132 @@ class NoteEditorScreenState extends State<NoteEditorScreen>
           body: Column(
             children: [
               Expanded(
-                child: Align(
-                  alignment: Alignment.topCenter,
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: Extents.xxl),
-                    child: ListView(
-                      padding: const EdgeInsets.fromLTRB(
-                        Spacing.l,
-                        Spacing.s,
-                        Spacing.l,
-                        Spacing.xxl,
-                      ),
-                      children: [
-                        DynamicFormRenderer(
-                          // A new type is a new page, filled with what was
-                          // carried over.
-                          key: ValueKey(_schema.id),
-                          schema: _schema,
-                          values: _draft.values,
-                          violations: _violations,
-                          autofocus: widget.entry == null,
-                          focused: focused,
-                          markdownTarget: _markdown,
-                          onChanged: _onDraft,
-                          onRecordAudio: widget.store.recorder == null
-                              ? null
-                              : _record,
-                          recordingLength: _lengthOf,
-                          recordingPlayer: _playerOf,
-                          attachments: AttachmentHooks(
-                            addImage: widget.store.images == null
-                                ? null
-                                : _addImage,
-                            openImage: _openImage,
-                            openLink: widget.openLink,
-                            imageSize: (blob) =>
-                                (_pictures[blob] ?? widget.store.imageOf(blob))
-                                    ?.metadata
-                                    .info,
-                          ),
+                child: MediaQuery(
+                  // The page's text size on top of the system's.
+                  data: MediaQuery.of(context).copyWith(
+                    textScaler: PageTextScaler(
+                      MediaQuery.textScalerOf(context),
+                      page.textFactor,
+                    ),
+                  ),
+                  child: Align(
+                    alignment: Alignment.topCenter,
+                    child: ConstrainedBox(
+                      key: const ValueKey('note-page'),
+                      constraints: BoxConstraints(maxWidth: width.maxWidth),
+                      child: ListView(
+                        padding: EdgeInsets.fromLTRB(
+                          width.margin,
+                          Spacing.s,
+                          width.margin,
+                          Spacing.xxl,
                         ),
-                        if (_isChapter)
-                          Align(
-                            alignment: AlignmentDirectional.centerEnd,
-                            child: ValueListenableBuilder(
-                              valueListenable: _words,
-                              builder: (context, words, _) => Text(
-                                l10n.wordCount(words),
-                                key: const ValueKey('chapter-words'),
-                                style: theme.textTheme.labelSmall,
+                        children: [
+                          DynamicFormRenderer(
+                            // A new type is a new page, filled with what was
+                            // carried over.
+                            key: ValueKey(_schema.id),
+                            schema: _schema,
+                            values: _draft.values,
+                            violations: _violations,
+                            autofocus: widget.entry == null,
+                            focused: focused,
+                            markdownTarget: _markdown,
+                            onChanged: _onDraft,
+                            onRecordAudio: widget.store.recorder == null
+                                ? null
+                                : _record,
+                            recordingLength: _lengthOf,
+                            recordingPlayer: _playerOf,
+                            attachments: AttachmentHooks(
+                              addImage: widget.store.images == null
+                                  ? null
+                                  : _addImage,
+                              openImage: _openImage,
+                              openLink: widget.openLink,
+                              imageSize: (blob) =>
+                                  (_pictures[blob] ??
+                                          widget.store.imageOf(blob))
+                                      ?.metadata
+                                      .info,
+                            ),
+                          ),
+                          if (_isChapter)
+                            Align(
+                              alignment: AlignmentDirectional.centerEnd,
+                              child: ValueListenableBuilder(
+                                valueListenable: _words,
+                                builder: (context, words, _) => Text(
+                                  l10n.wordCount(words),
+                                  key: const ValueKey('chapter-words'),
+                                  style: theme.textTheme.labelSmall,
+                                ),
                               ),
                             ),
-                          ),
-                        if (_schema.id.name == BookOutline.book && !focused)
-                          ListenableBuilder(
-                            listenable: widget.store,
-                            builder: (context, _) {
-                              final category = _category;
-                              return BookSection(
-                                outline: BookOutline.of(
-                                  category: category,
-                                  store: widget.store,
+                          if (_schema.id.name == BookOutline.book && !focused)
+                            ListenableBuilder(
+                              listenable: widget.store,
+                              builder: (context, _) {
+                                final category = _category;
+                                return BookSection(
+                                  outline: BookOutline.of(
+                                    category: category,
+                                    store: widget.store,
+                                    schemaOf: _schemaOf,
+                                  ),
+                                  goal: switch (_draft.values[FieldKey(
+                                    'word_goal',
+                                  )]) {
+                                    NumberValue(:final number) =>
+                                      number.toInt(),
+                                    _ => null,
+                                  },
+                                  schemas: widget.schemas,
+                                  onOpen: _openLinked,
+                                  onAdd: (schema) =>
+                                      _openOver(schema, category: category),
+                                );
+                              },
+                            ),
+                          if (_schema.id.name == PageIndex.document && !focused)
+                            ListenableBuilder(
+                              listenable: widget.store,
+                              builder: (context, _) {
+                                final category = _category;
+                                return PageIndexSection(
+                                  sections: PageIndex.of(
+                                    category: category,
+                                    store: widget.store,
+                                    schemaOf: _schemaOf,
+                                  ),
+                                  current: _id,
                                   schemaOf: _schemaOf,
-                                ),
-                                goal: switch (_draft.values[FieldKey(
-                                  'word_goal',
-                                )]) {
-                                  NumberValue(:final number) => number.toInt(),
-                                  _ => null,
-                                },
-                                schemas: widget.schemas,
-                                onOpen: _openLinked,
-                                onAdd: (schema) =>
-                                    _openOver(schema, category: category),
-                              );
-                            },
-                          ),
-                        if (_schema.id.name == PageIndex.document && !focused)
-                          ListenableBuilder(
-                            listenable: widget.store,
-                            builder: (context, _) {
-                              final category = _category;
-                              return PageIndexSection(
-                                sections: PageIndex.of(
-                                  category: category,
-                                  store: widget.store,
-                                  schemaOf: _schemaOf,
-                                ),
-                                current: _id,
+                                  onOpen: _openLinked,
+                                  onAdd: () =>
+                                      _openOver(_schema, category: category),
+                                );
+                              },
+                            ),
+                          if (!focused)
+                            ListenableBuilder(
+                              listenable: widget.store,
+                              builder: (context, _) => NoteLinksSection(
+                                links: NoteLinks.targets(_draft.values.values),
+                                backlinks: [
+                                  for (final entry in widget.store.entries)
+                                    if (entry.id != _id &&
+                                        NoteLinks.targets(
+                                          entry.attributes.values,
+                                        ).contains(_id))
+                                      entry,
+                                ],
+                                find: _find,
                                 schemaOf: _schemaOf,
                                 onOpen: _openLinked,
-                                onAdd: () =>
-                                    _openOver(_schema, category: category),
-                              );
-                            },
-                          ),
-                        if (!focused)
-                          ListenableBuilder(
-                            listenable: widget.store,
-                            builder: (context, _) => NoteLinksSection(
-                              links: NoteLinks.targets(_draft.values.values),
-                              backlinks: [
-                                for (final entry in widget.store.entries)
-                                  if (entry.id != _id &&
-                                      NoteLinks.targets(entry.attributes.values)
-                                          .contains(_id))
-                                    entry,
-                              ],
-                              find: _find,
-                              schemaOf: _schemaOf,
-                              onOpen: _openLinked,
+                              ),
                             ),
-                          ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
                 ),

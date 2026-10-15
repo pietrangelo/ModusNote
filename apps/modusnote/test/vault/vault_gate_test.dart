@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:identity_cryptography/identity_cryptography.dart';
 import 'package:identity_cryptography_adapters/identity_cryptography_adapters.dart';
+import 'package:modusnote/appearance/appearance_scope.dart';
+import 'package:modusnote/appearance/page_appearance.dart';
 import 'package:modusnote/notes/note_editor.dart';
 import 'package:modusnote/notes/note_library.dart';
 import 'package:modusnote/vault/auto_lock.dart';
@@ -175,6 +177,35 @@ void main() {
     // The keys are gone: an undo now would write with a released key.
     expect(find.text('Annulla'), findsNothing);
     expect(find.text('Sblocca le tue note'), findsOneWidget);
+  });
+
+  testWidgets('the page appearance is sealed in the vault and comes back', (
+    tester,
+  ) async {
+    final appearance = AppearanceSettings();
+    await pumpApp(tester, gateOn(database), appearance: appearance);
+    await create(tester, 'frase lunga', 'frase lunga');
+    await tester.tap(find.text('Nuova nota'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Aspetto della pagina'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('page-text-size-26')));
+    await tester.pumpAndSettle();
+    await tester.tapAt(const Offset(180, 100));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(BackButton));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('Blocca'));
+    await tester.pumpAndSettle();
+    // Locked: nothing of the vault's choices is left on the app.
+    expect(appearance.page, const PageAppearance());
+
+    // A restart of the app, then the vault opens again.
+    final restarted = AppearanceSettings();
+    await pumpApp(tester, gateOn(database), appearance: restarted);
+    await unlock(tester, 'frase lunga');
+    expect(restarted.page.textSize, 26);
   });
 
   group('auto-lock', () {

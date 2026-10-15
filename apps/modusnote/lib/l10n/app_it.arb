@@ -449,5 +449,18 @@
   "shelfName": "Nome",
   "shelfNameInvalid": "Scrivi un nome di una riga, al massimo 40 caratteri.",
   "shelfCreate": "Aggiungi",
-  "shelfSave": "Salva"
+  "shelfSave": "Salva",
+  "pageAppearance": "Aspetto della pagina",
+  "pageTextSize": "Dimensione del testo",
+  "pageTextSizeValue": "{size} pt",
+  "pageWidth": "Larghezza della pagina",
+  "pageWidthNarrow": "Stretta",
+  "pageWidthMedium": "Media",
+  "pageWidthWide": "Ampia",
+  "pageWidthFull": "Piena",
+  "pageAppearanceDevice": "Solo su questo dispositivo: le note non cambiano.",
+  "widerPage": "Allarga la pagina",
+  "narrowerPage": "Restringi la pagina",
+  "largerText": "Testo più grande",
+  "smallerText": "Testo più piccolo"
 }
