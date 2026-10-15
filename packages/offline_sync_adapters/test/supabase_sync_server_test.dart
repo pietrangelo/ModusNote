@@ -129,6 +129,66 @@ void main() {
     );
   });
 
+  group('heads', () {
+    test('asks sync_heads once for the three streams', () async {
+      respond = (_) =>
+          http.Response('[{"rows":42,"key_bundles":3,"membership":2}]', 200);
+
+      final heads = await server().heads(workspace);
+
+      expect(heads, SyncHeads(rows: 42, keyBundles: 3, membership: 2));
+      final request = requests.single;
+      expect(request.method, 'POST');
+      expect(request.url.path, '/rest/v1/rpc/sync_heads');
+      expect(request.headers['Authorization'], 'Bearer session-token');
+      expect(jsonDecode(request.body), {'workspace': workspace.hex});
+    });
+
+    test(
+      'a deployment without sync_heads means "ask for everything"',
+      () async {
+        respond = (_) => http.Response('{"code":"PGRST202"}', 404);
+
+        expect(await server().heads(workspace), isNull);
+      },
+    );
+
+    test('any other refusal still surfaces', () async {
+      respond = (_) => http.Response('', 401);
+
+      await expectLater(
+        server().heads(workspace),
+        throwsA(
+          isA<SyncServerRejectedException>().having(
+            (error) => error.status,
+            'status',
+            401,
+          ),
+        ),
+      );
+    });
+
+    test('adversary: malformed heads are refused', () async {
+      for (final body in [
+        '[]',
+        '[{"rows":1,"key_bundles":0,"membership":0},'
+            '{"rows":2,"key_bundles":0,"membership":0}]',
+        '[{"rows":-1,"key_bundles":0,"membership":0}]',
+        '[{"rows":"1","key_bundles":0,"membership":0}]',
+        '[{"rows":1.5,"key_bundles":0,"membership":0}]',
+        '[{"rows":1,"key_bundles":0}]',
+        '{"rows":1,"key_bundles":0,"membership":0}',
+      ]) {
+        respond = (_) => http.Response(body, 200);
+        await expectLater(
+          server().heads(workspace),
+          throwsA(isA<MalformedSyncDataException>()),
+          reason: body,
+        );
+      }
+    });
+  });
+
   group('createWorkspace', () {
     test('a workspace this account already registered is success', () async {
       respond = (_) => http.Response('{"code":"23505"}', 409);

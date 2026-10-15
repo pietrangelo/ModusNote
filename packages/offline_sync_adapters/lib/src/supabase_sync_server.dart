@@ -97,6 +97,40 @@ final class SupabaseSyncServer implements SyncServer, DeviceLinkChannel {
 
   /// Contiguous from [from]: a gap means the server dropped a record, which
   /// the ledger would refuse anyway, so it is refused here first.
+  /// One call to `sync_heads` (migration `20261015000000_sync_heads.sql`).
+  /// A deployment without it answers 404, which means "ask for everything",
+  /// so the app and the migration can ship in either order.
+  @override
+  Future<SyncHeads?> heads(WorkspaceId workspace) async {
+    final http.Response response;
+    try {
+      response = await _send(
+        http.Request('POST', _rest.resolve('rpc/sync_heads'))
+          ..headers['Content-Type'] = 'application/json'
+          ..body = jsonEncode({'workspace': workspace.hex}),
+      );
+    } on SyncServerRejectedException catch (error) {
+      if (error.status == 404) return null;
+      rethrow;
+    }
+    final rows = _rows(response);
+    if (rows.length != 1) {
+      throw const MalformedSyncDataException('heads is not one row');
+    }
+    final [rowsHead, bundlesHead, membershipHead] = [
+      for (final column in ['rows', 'key_bundles', 'membership'])
+        switch (rows.single[column]) {
+          final int value => value,
+          _ => throw const MalformedSyncDataException('malformed head'),
+        },
+    ];
+    return SyncHeads(
+      rows: rowsHead,
+      keyBundles: bundlesHead,
+      membership: membershipHead,
+    );
+  }
+
   @override
   Future<List<MembershipRecord>> membership(
     WorkspaceId workspace, {
@@ -283,6 +317,10 @@ final class SupabaseSyncServer implements SyncServer, DeviceLinkChannel {
     final response = await _send(
       http.Request('GET', _rest.resolve(table).replace(queryParameters: query)),
     );
+    return _rows(response);
+  }
+
+  static List<Map<String, Object?>> _rows(http.Response response) {
     final Object? decoded;
     try {
       decoded = jsonDecode(response.body);

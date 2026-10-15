@@ -29,6 +29,16 @@ final class FakeSyncServer implements SyncServer {
   /// `push <rows>`.
   final calls = <String>[];
 
+  /// The reads clients made, in order: `heads`, `membership`, `bundles`,
+  /// `rows`.
+  final reads = <String>[];
+
+  /// Answers [heads] like a deployment from before it existed.
+  var headless = false;
+
+  /// Answers [heads] with zeros, as a server hiding that anything changed.
+  var lieLow = false;
+
   /// Fails the next call to [appendMembership] as if the network dropped.
   var dropNextAppend = false;
 
@@ -90,6 +100,7 @@ final class FakeSyncServer implements SyncServer {
     required int after,
   }) async {
     _check();
+    reads.add('rows');
     await onPull?.call();
     return [
       for (var i = after; i < rows.length; i++)
@@ -103,9 +114,8 @@ final class FakeSyncServer implements SyncServer {
     required int from,
   }) async {
     _check();
-    final visible = withholdMembershipAfter == null
-        ? membershipLog
-        : membershipLog.take(withholdMembershipAfter!).toList();
+    reads.add('membership');
+    final visible = _visibleMembership;
     return from >= visible.length ? const [] : visible.sublist(from);
   }
 
@@ -115,7 +125,26 @@ final class FakeSyncServer implements SyncServer {
     required int after,
   }) async {
     _check();
+    reads.add('bundles');
     return [for (var i = after; i < bundles.length; i++) (i + 1, bundles[i])];
+  }
+
+  List<MembershipRecord> get _visibleMembership =>
+      withholdMembershipAfter == null
+      ? membershipLog
+      : membershipLog.take(withholdMembershipAfter!).toList();
+
+  @override
+  Future<SyncHeads?> heads(WorkspaceId workspace) async {
+    _check();
+    reads.add('heads');
+    if (headless) return null;
+    if (lieLow) return SyncHeads(rows: 0, keyBundles: 0, membership: 0);
+    return SyncHeads(
+      rows: rows.length,
+      keyBundles: bundles.length,
+      membership: _visibleMembership.length,
+    );
   }
 
   @override
