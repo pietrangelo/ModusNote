@@ -47,3 +47,34 @@ final class PulledRow {
   final int cursor;
   final SealedRow row;
 }
+
+/// What the server holds of a workspace, in three numbers: the newest row
+/// and key bundle positions, and how many membership records it has. A
+/// device compares them with its cursors and asks only for the streams it
+/// is behind on.
+@immutable
+final class SyncHeads {
+  SyncHeads({
+    required this.rows,
+    required this.keyBundles,
+    required this.membership,
+  }) {
+    if (rows < 0 || keyBundles < 0 || membership < 0) {
+      throw const MalformedSyncDataException('negative head');
+    }
+  }
+
+  final int rows;
+  final int keyBundles;
+  final int membership;
+
+  @override
+  bool operator ==(Object other) =>
+      other is SyncHeads &&
+      other.rows == rows &&
+      other.keyBundles == keyBundles &&
+      other.membership == membership;
+
+  @override
+  int get hashCode => Object.hash(rows, keyBundles, membership);
+}

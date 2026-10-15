@@ -195,6 +195,35 @@ void main() {
       ]);
     });
 
+    test('heads name the newest position of each stream', () async {
+      final workspace = await foundWorkspace();
+      final server = serverFor(alice);
+      expect(
+        await server.heads(workspace),
+        SyncHeads(rows: 0, keyBundles: 0, membership: 0),
+      );
+
+      for (final record in membershipOf(workspace)) {
+        await server.appendMembership(record);
+      }
+      await server.appendKeyBundle(bundleOf(workspace));
+      await server.push(workspace, [sealedRow(1), sealedRow(2)]);
+
+      expect(
+        await server.heads(workspace),
+        SyncHeads(
+          rows: 2,
+          keyBundles: 1,
+          membership: membershipOf(workspace).length,
+        ),
+      );
+      expect(
+        await serverFor(bob).heads(workspace),
+        SyncHeads(rows: 0, keyBundles: 0, membership: 0),
+        reason: 'another account learns nothing',
+      );
+    });
+
     test('a pushed row drops the rows of its record it supersedes', () async {
       final workspace = await foundWorkspace();
       final server = serverFor(alice);

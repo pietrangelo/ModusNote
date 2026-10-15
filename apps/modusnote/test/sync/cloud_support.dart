@@ -117,6 +117,16 @@ final class MemorySyncServer implements SyncServer, DeviceLinkChannel {
   }
 
   @override
+  Future<SyncHeads?> heads(WorkspaceId workspace) async {
+    await _check();
+    return SyncHeads(
+      rows: rows.length,
+      keyBundles: bundles.length,
+      membership: membershipLog.length,
+    );
+  }
+
+  @override
   Future<List<PulledRow>> pull(
     WorkspaceId workspace, {
     required int after,

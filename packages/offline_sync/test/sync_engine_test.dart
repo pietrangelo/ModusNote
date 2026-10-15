@@ -280,6 +280,82 @@ void main() {
     });
   });
 
+  group('heads', () {
+    test('a sync with nothing new asks the server one question', () async {
+      await alice.engine.write(note, RevisionContents(text('v1')));
+      await alice.engine.sync();
+      await alice.engine.sync();
+      server.reads.clear();
+
+      final report = await alice.engine.sync();
+
+      expect(server.reads, ['heads']);
+      expect(report.pulled, 0);
+      expect(report.offline, isFalse);
+    });
+
+    test('only the streams that moved are read', () async {
+      await alice.engine.sync();
+      await bob.engine.sync();
+      await alice.engine.write(note, RevisionContents(text('nuova')));
+      await alice.engine.sync();
+      server.reads.clear();
+
+      final report = await bob.engine.sync();
+
+      expect(server.reads, ['heads', 'rows']);
+      expect(report.pulled, 1);
+      expect(await bob.read(note), 'nuova');
+    });
+
+    test('a new key bundle or membership record is still picked up', () async {
+      await bob.engine.sync();
+      final carol = identities.generateIdentity();
+      addTearDown(carol.dispose);
+      publish(
+        administration.invite(
+          alice.engine.ledger,
+          alice.keyring,
+          owner: alice.identity,
+          invitee: carol.publicIdentity,
+          role: Role.editor,
+        ),
+      );
+      server.reads.clear();
+
+      await bob.engine.sync();
+
+      expect(server.reads, ['heads', 'membership', 'bundles']);
+      expect(bob.engine.ledger.records, hasLength(server.membershipLog.length));
+    });
+
+    test('a server without heads gets every question, as before', () async {
+      await alice.engine.write(note, RevisionContents(text('v1')));
+      await alice.engine.sync();
+      server
+        ..headless = true
+        ..reads.clear();
+
+      await bob.engine.sync();
+
+      expect(server.reads, ['heads', 'membership', 'bundles', 'rows']);
+      expect(await bob.read(note), 'v1');
+    });
+
+    test('adversary: heads that lie low only delay what the server could '
+        'already withhold', () async {
+      await alice.engine.write(note, RevisionContents(text('v1')));
+      await alice.engine.sync();
+      server.lieLow = true;
+
+      expect((await bob.engine.sync()).pulled, 0);
+
+      server.lieLow = false;
+      expect((await bob.engine.sync()).pulled, 1);
+      expect(await bob.read(note), 'v1');
+    });
+  });
+
   group('compaction', () {
     /// A device admitted after everything else happened: it sees only what
     /// the server still holds.
