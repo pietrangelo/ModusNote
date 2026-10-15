@@ -22,6 +22,7 @@ import '../notes/schema_text.dart';
 import '../reminders/password_reminders.dart';
 import '../sync/blob_sync.dart';
 import '../sync/cloud_sheet.dart';
+import '../sync/invite_sheet.dart';
 import '../sync/link_device_sheet.dart';
 import '../sync/sync_controller.dart';
 import '../theme/golden_ratio.dart';
@@ -348,6 +349,25 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
     return widget.keeper.join(code: secret, passphrase: password);
   }
 
+  /// As [_join], for an invitation from another person's vault: the
+  /// signed-in account is the one the invitation lets in.
+  Future<LinkRequest> _accept(InviteCode code, Uint8List secretBytes) async {
+    final password = widget.passwordFrom(secretBytes);
+    final PasswordSecret secret;
+    try {
+      secret = widget.passwordFrom(code.toBytes());
+    } catch (_) {
+      password.dispose();
+      rethrow;
+    }
+    return widget.keeper.acceptInvite(
+      code: secret,
+      lookup: code.lookup,
+      account: AccountId.parse(widget.account!.userId!),
+      passphrase: password,
+    );
+  }
+
   Future<void> _joined(UnlockedVault vault) {
     final session = _joinSession;
     _joinSession = null;
@@ -371,6 +391,23 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
         offer: (code) =>
             widget.keeper.offerLink(vault, widget.passwordFrom(code.toBytes())),
         onLinked: sync?.syncNow,
+      );
+    }
+  }
+
+  /// Shows a code for another person, with the role they get, and admits
+  /// their device.
+  Future<void> _invite() async {
+    if (_stage case _Open(:final vault, :final sync)) {
+      await InviteSheet.show(
+        context,
+        offer: (code, role) => widget.keeper.offerInvite(
+          vault,
+          widget.passwordFrom(code.toBytes()),
+          lookup: code.lookup,
+          role: role,
+        ),
+        onInvited: sync?.syncNow,
       );
     }
   }
@@ -645,6 +682,7 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
             : CloudButton(
                 sync: sync,
                 onLinkDevice: widget.keeper.offersLinking ? _linkDevice : null,
+                onInvite: widget.keeper.offersInvites ? _invite : null,
               ),
         onLock: _lock,
         onBackup: widget.files == null ? null : _backup,
@@ -654,6 +692,7 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
     _Joining() => JoinVaultScreen(
       account: widget.account!,
       join: _join,
+      accept: _accept,
       onJoined: _joined,
       onBack: _stopJoining,
     ),

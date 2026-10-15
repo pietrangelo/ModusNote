@@ -21,6 +21,11 @@ const goodLink =
     'https://project.supabase.co/auth/v1/verify?token=$goodLinkHash'
     '&type=magiclink&redirect_to=http://localhost:3000';
 
+/// The account id the fake gives [email]: a UUID, as Supabase's are.
+String accountIdOf(String email) =>
+    '00000000-0000-4000-8000-'
+    '${(email.hashCode & 0xffffffffffff).toRadixString(16).padLeft(12, '0')}';
+
 /// Supabase Auth over a fake HTTP client: any address gets a code, only
 /// [goodCode] signs in.
 final class FakeAuthServer {
@@ -46,7 +51,10 @@ final class FakeAuthServer {
             'refresh_token': 'refresh-token-2b8e',
             'expires_in': 3600,
             // A link carries no email: the server knows whose it is.
-            'user': {'id': 'user-1', 'email': body['email'] ?? linkEmail},
+            'user': {
+              'id': accountIdOf('${body['email'] ?? linkEmail}'),
+              'email': body['email'] ?? linkEmail,
+            },
           }),
           200,
         ),
@@ -70,8 +78,9 @@ final class FakeAuthServer {
 /// The zero-knowledge server in memory, shared by every device of a test.
 /// Each call first asks for the account's token, as PostgREST would, so a
 /// signed-out device sees it as unreachable. Like Supabase, it also relays
-/// device links (one account in these tests).
-final class MemorySyncServer implements SyncServer, DeviceLinkChannel {
+/// device links and invites, and keeps which account each member uses.
+final class MemorySyncServer
+    implements SyncServer, DeviceLinkChannel, InviteChannel, MemberAccounts {
   MemorySyncServer(this.token);
 
   final Future<String> Function() token;
@@ -86,6 +95,11 @@ final class MemorySyncServer implements SyncServer, DeviceLinkChannel {
   final bundles = <KeyBundle>[];
   final offers = <LinkOffer>[];
   final answered = <LinkAnswer>[];
+  final invites = <InviteOffer>[];
+  final inviteAnswered = <InviteAnswer>[];
+
+  /// The accounts let in, and whether each manages.
+  final accounts = <AccountId?, bool>{};
 
   Future<void> _check() async {
     if (!online) throw const ServerUnavailableException();
@@ -193,5 +207,52 @@ final class MemorySyncServer implements SyncServer, DeviceLinkChannel {
     await _check();
     offers.removeWhere((offer) => offer.id == link);
     answered.removeWhere((answer) => answer.id == link);
+  }
+
+  @override
+  Future<void> postInvite(InviteOffer offer) async {
+    await _check();
+    invites.add(offer);
+  }
+
+  @override
+  Future<InviteOffer?> invite(String lookup) async {
+    await _check();
+    return invites.where((offer) => offer.lookup == lookup).lastOrNull;
+  }
+
+  @override
+  Future<void> postInviteAnswer(InviteAnswer answer) async {
+    await _check();
+    inviteAnswered.add(answer);
+  }
+
+  @override
+  Future<List<InviteAnswer>> inviteAnswers(String lookup) async {
+    await _check();
+    return [...inviteAnswered.where((answer) => answer.lookup == lookup)];
+  }
+
+  @override
+  Future<void> closeInvite(String lookup) async {
+    await _check();
+    invites.removeWhere((offer) => offer.lookup == lookup);
+    inviteAnswered.removeWhere((answer) => answer.lookup == lookup);
+  }
+
+  @override
+  Future<void> admitMember(
+    WorkspaceId workspace,
+    MemberId member, {
+    AccountId? account,
+    bool manages = false,
+  }) async {
+    await _check();
+    accounts[account] = (accounts[account] ?? false) || manages;
+  }
+
+  @override
+  Future<void> removeMember(WorkspaceId workspace, MemberId member) async {
+    await _check();
   }
 }
