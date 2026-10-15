@@ -2224,5 +2224,9 @@
   "iconCalendar": "Calendar",
   "@iconCalendar": {
     "description": "Name of the calendar icon a category may take."
+  },
+  "journalReminderChannelDescription": "A reminder each day to write in the journal.",
+  "@journalReminderChannelDescription": {
+    "description": "Description of the Android notification channel of the daily journal reminder."
   }
 }

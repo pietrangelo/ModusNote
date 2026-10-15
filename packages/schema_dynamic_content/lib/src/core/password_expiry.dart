@@ -3,6 +3,7 @@ import 'package:meta/meta.dart';
 import 'dynamic_entry.dart';
 import 'field_value.dart';
 import 'identifiers.dart';
+import 'journal.dart';
 
 /// When the app reminds that a password expires.
 enum ExpiryReminderKind { weekBefore, dayBefore, dayOf }
@@ -74,8 +75,9 @@ abstract final class PasswordExpiry {
   };
 
   /// The most slots [plan] returns: iOS keeps 64 pending notifications per
-  /// app, and later ones come back at the next plan.
-  static const maxSlots = 60;
+  /// app, the journal's daily reminder takes up to 7 ([Journal]), and
+  /// later ones come back at the next plan.
+  static const maxSlots = 64 - Journal.reminderDays;
 
   /// The expiry of [entry]'s password; null for other types and for a
   /// credential without one.

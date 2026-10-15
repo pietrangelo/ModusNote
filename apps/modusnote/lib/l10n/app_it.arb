@@ -512,5 +512,6 @@
   "journalReminderBody": "È il momento di scrivere nel diario.",
   "journalReminderChannel": "Diario",
   "journalSettings": "Impostazioni del diario",
-  "iconCalendar": "Calendario"
+  "iconCalendar": "Calendario",
+  "journalReminderChannelDescription": "Un promemoria al giorno per scrivere nel diario."
 }
