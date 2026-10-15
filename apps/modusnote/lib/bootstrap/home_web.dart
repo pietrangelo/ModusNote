@@ -18,6 +18,8 @@ import '../audio/note_recorder.dart';
 import '../audio/web_audio_player.dart';
 import '../sync/sync_config.dart';
 import '../vault/vault_gate.dart';
+import '../appearance/theme_memory.dart';
+import 'home.dart' show AppHome;
 import '../vault/vault_shelf_gate.dart';
 import 'browser_file_exchange.dart';
 import 'browser_image_chooser.dart';
@@ -32,7 +34,7 @@ import 'vault_wiring.dart';
 /// WebCodecs where the browser has it (WAV elsewhere) and played through Web
 /// Audio. Where the browser has WebAuthn, a passkey with the PRF extension
 /// can replace typing the passphrase.
-Future<Widget> buildHome() async {
+Future<AppHome> buildHome() async {
   final sodium = await SodiumSumoInit.init();
   final sqlite = await WasmSqlite3.loadFromUrl(Uri.parse('sqlite3.wasm'));
   final storage = await IndexedDbFileSystem.open(dbName: _storageName);
@@ -47,8 +49,9 @@ Future<Widget> buildHome() async {
       ? WebAuthnPasskeyPrf(sodium)
       : null;
   final cloud = cloudWiring(SyncConfig.fromEnvironment());
-  return VaultShelfGate(
-    store: SqliteShelfStore(sqlite.open('/$shelfDatabaseName')),
+  final shelf = sqlite.open('/$shelfDatabaseName');
+  final home = VaultShelfGate(
+    store: SqliteShelfStore(shelf),
     open: (entry) async {
       final names = vaultStorageNames(entry.id);
       final path = '/${names.database}';
@@ -94,6 +97,7 @@ Future<Widget> buildHome() async {
       );
     },
   );
+  return (home: home, themes: SqliteThemeMemory(shelf));
 }
 
 VaultGate _gate({

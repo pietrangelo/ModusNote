@@ -16,6 +16,7 @@ import '../appearance/page_sheet.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../theme/golden_ratio.dart';
 import '../theme/modus_theme.dart';
+import '../theme/modus_themes.dart';
 import '../vault/auto_lock.dart';
 import 'attachments/attachments_input.dart';
 import 'books/book_outline.dart';
@@ -594,8 +595,20 @@ class NoteEditorScreenState extends State<NoteEditorScreen>
           child: page,
         );
 
+  /// The page in the mood of the note's type, within the app's theme: a
+  /// new type, picked while writing, changes it smoothly.
   @override
   Widget build(BuildContext context) {
+    final appearance = AppearanceScope.maybeOf(context);
+    if (appearance == null) return _page(context);
+    return AnimatedTheme(
+      data: ModusTheme.of(appearance.pagePalette(_schema)),
+      duration: ModusThemes.transition,
+      child: Builder(builder: _page),
+    );
+  }
+
+  Widget _page(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final text = SchemaText(l10n);
     final theme = Theme.of(context);
@@ -674,7 +687,7 @@ class NoteEditorScreenState extends State<NoteEditorScreen>
               if (appearance != null)
                 IconButton(
                   key: const ValueKey('page-appearance'),
-                  onPressed: () => PageAppearanceSheet.show(context),
+                  onPressed: () => AppearanceSheet.show(context),
                   tooltip: l10n.pageAppearance,
                   icon: const Icon(Icons.format_size),
                 ),

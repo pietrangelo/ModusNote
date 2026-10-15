@@ -2,19 +2,45 @@ import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter/widgets.dart';
+import 'package:schema_dynamic_content/schema_dynamic_content.dart';
+
+import '../theme/modus_palette.dart';
+import '../theme/modus_themes.dart';
 
 import 'page_appearance.dart';
 import 'reading_fonts.dart';
+import 'theme_memory.dart';
 
 /// The appearance this device chose. It lives above the app's navigator,
 /// so that every route sees it; the open vault fills it from a sealed
 /// setting ([attach]) and keeps each change there.
 class AppearanceSettings extends ChangeNotifier {
-  AppearanceSettings({ReadingFonts? fonts}) : fonts = fonts ?? ReadingFonts() {
+  AppearanceSettings({ReadingFonts? fonts, ThemeMemory? themeMemory})
+    : fonts = fonts ?? ReadingFonts(),
+      _themeMemory = themeMemory,
+      _theme = themeMemory?.load() ?? AppTheme.modus {
     this.fonts.addListener(notifyListeners);
   }
 
   final ReadingFonts fonts;
+  final ThemeMemory? _themeMemory;
+
+  /// The theme of the whole app, unlock screen included: kept by the
+  /// device in clear, whichever vault is open.
+  AppTheme get theme => _theme;
+  AppTheme _theme;
+
+  set theme(AppTheme theme) {
+    if (theme == _theme) return;
+    _theme = theme;
+    notifyListeners();
+    if (_themeMemory case final memory?) unawaited(memory.save(theme));
+  }
+
+  /// The palette of the page of a note of [schema]: the app's theme, in
+  /// the type's mood unless the page is set not to follow it.
+  ModusPalette pagePalette(SchemaDefinition? schema) =>
+      ModusThemes.palette(_theme, _page.moods ? NoteMood.of(schema) : null);
 
   /// The typeface the page is drawn in now: the chosen one once loaded,
   /// the body font until then.

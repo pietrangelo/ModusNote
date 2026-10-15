@@ -16,6 +16,7 @@ final class ModusPalette extends ThemeExtension<ModusPalette> {
     required this.text,
     required this.muted,
     required this.primary,
+    required this.gold,
     required this.onAccent,
     required this.violetFill,
     required this.onVioletFill,
@@ -33,6 +34,7 @@ final class ModusPalette extends ThemeExtension<ModusPalette> {
     text: ModusColors.pureMist,
     muted: ModusColors.dustSilver,
     primary: ModusColors.aureoGold,
+    gold: ModusColors.aureoGold,
     onAccent: ModusColors.deepVoid,
     violetFill: ModusColors.rhythmViolet,
     onVioletFill: ModusColors.pureMist,
@@ -56,10 +58,14 @@ final class ModusPalette extends ThemeExtension<ModusPalette> {
   /// Timestamps, subtitles, Markdown markers: secondary lines.
   final Color muted;
 
-  /// Main actions, saved notes, focus (gold in the brand).
+  /// Main actions, saved notes, focus (gold in the brand; the page of a
+  /// note may take its mood's accent).
   final Color primary;
 
-  /// Text and icons on [primary], [success] and [rose].
+  /// The gold of note types, whatever [primary] is.
+  final Color gold;
+
+  /// Text and icons on [primary], [gold], [success] and [rose].
   final Color onAccent;
 
   /// Violet as a fill only: below AA as text.
@@ -90,7 +96,7 @@ final class ModusPalette extends ThemeExtension<ModusPalette> {
   /// and [surface]. A type without one (or with a name from a newer app)
   /// is muted silver.
   Color tint(NoteTint? tint) => switch (tint) {
-    NoteTint.gold => primary,
+    NoteTint.gold => gold,
     NoteTint.violet => violet,
     NoteTint.cyan => success,
     NoteTint.rose => rose,
@@ -104,7 +110,37 @@ final class ModusPalette extends ThemeExtension<ModusPalette> {
   );
 
   @override
-  ModusPalette copyWith() => this;
+  ModusPalette copyWith({
+    Brightness? brightness,
+    Color? background,
+    Color? surface,
+    Color? text,
+    Color? muted,
+    Color? primary,
+    Color? gold,
+    Color? onAccent,
+    Color? violetFill,
+    Color? onVioletFill,
+    Color? violet,
+    Color? success,
+    Color? rose,
+    Color? error,
+  }) => ModusPalette(
+    brightness: brightness ?? this.brightness,
+    background: background ?? this.background,
+    surface: surface ?? this.surface,
+    text: text ?? this.text,
+    muted: muted ?? this.muted,
+    primary: primary ?? this.primary,
+    gold: gold ?? this.gold,
+    onAccent: onAccent ?? this.onAccent,
+    violetFill: violetFill ?? this.violetFill,
+    onVioletFill: onVioletFill ?? this.onVioletFill,
+    violet: violet ?? this.violet,
+    success: success ?? this.success,
+    rose: rose ?? this.rose,
+    error: error ?? this.error,
+  );
 
   @override
   ModusPalette lerp(ModusPalette? other, double t) {
@@ -117,6 +153,7 @@ final class ModusPalette extends ThemeExtension<ModusPalette> {
       text: mix(text, other.text),
       muted: mix(muted, other.muted),
       primary: mix(primary, other.primary),
+      gold: mix(gold, other.gold),
       onAccent: mix(onAccent, other.onAccent),
       violetFill: mix(violetFill, other.violetFill),
       onVioletFill: mix(onVioletFill, other.onVioletFill),

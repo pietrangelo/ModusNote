@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:schema_dynamic_content/schema_dynamic_content.dart';
 
 import '../appearance/appearance_scope.dart';
+import '../appearance/page_sheet.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../theme/golden_ratio.dart';
 import '../vault/auto_lock.dart';
@@ -21,6 +22,7 @@ import 'note_title.dart';
 import 'schema_text.dart';
 import 'trash_screen.dart';
 import '../theme/modus_palette.dart';
+import '../theme/modus_themes.dart';
 
 /// Every note at a glance: search, categories, a chip per note type, a
 /// card per note, each opening on a page of its own. A window at least
@@ -411,6 +413,17 @@ class _NoteLibraryScreenState extends State<NoteLibraryScreen> {
           ),
       ],
       if (AppearanceScope.maybeOf(context) case final appearance?) ...[
+        for (final theme in AppTheme.values)
+          if (theme != appearance.theme)
+            PaletteCommand(
+              icon: Icons.palette_outlined,
+              label: l10n.paletteTheme(switch (theme) {
+                AppTheme.modus => l10n.themeModus,
+                AppTheme.restful => l10n.themeRestful,
+                AppTheme.paper => l10n.themePaper,
+              }),
+              run: () => appearance.theme = theme,
+            ),
         PaletteCommand(
           icon: Icons.text_increase,
           label: l10n.largerText,
@@ -480,6 +493,12 @@ class _NoteLibraryScreenState extends State<NoteLibraryScreen> {
         onPressed: _openTrash,
         tooltip: l10n.trash,
         icon: const Icon(Icons.delete_outline),
+      ),
+    if (AppearanceScope.maybeOf(context) != null)
+      IconButton(
+        onPressed: () => AppearanceSheet.show(context),
+        tooltip: l10n.appearance,
+        icon: const Icon(Icons.palette_outlined),
       ),
     if (widget.onBackup case final onBackup?)
       IconButton(

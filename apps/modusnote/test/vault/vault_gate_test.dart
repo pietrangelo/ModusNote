@@ -189,6 +189,8 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('Aspetto della pagina'));
     await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const ValueKey('page-text-size-26')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('page-text-size-26')));
     await tester.pumpAndSettle();
     await tester.tapAt(const Offset(180, 100));

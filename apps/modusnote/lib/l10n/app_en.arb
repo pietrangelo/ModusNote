@@ -2040,5 +2040,54 @@
   "pageFontQuattroHint": "Made for writing",
   "@pageFontQuattroHint": {
     "description": "Typeface hint for iA Writer Quattro."
+  },
+  "appearance": "Appearance",
+  "@appearance": {
+    "description": "Library button and sheet: theme of the app, and how the page of a note looks on this device."
+  },
+  "appTheme": "Theme",
+  "@appTheme": {
+    "description": "Appearance sheet: the colours of the whole app."
+  },
+  "themeModus": "Modus",
+  "@themeModus": {
+    "description": "Theme name: the brand, dark."
+  },
+  "themeModusHint": "The app's own, dark",
+  "@themeModusHint": {
+    "description": "Theme hint."
+  },
+  "themeRestful": "Restful",
+  "@themeRestful": {
+    "description": "Theme name: dark, soft contrast."
+  },
+  "themeRestfulHint": "Dark and soft, for long sessions",
+  "@themeRestfulHint": {
+    "description": "Theme hint."
+  },
+  "themePaper": "Paper",
+  "@themePaper": {
+    "description": "Theme name: light, warm paper."
+  },
+  "themePaperHint": "Light and warm, for daylight",
+  "@themePaperHint": {
+    "description": "Theme hint."
+  },
+  "pageMoods": "Match the note type",
+  "@pageMoods": {
+    "description": "Appearance sheet switch: the page of a note takes the mood of its type."
+  },
+  "pageMoodsHint": "Books and dreams invite imagination; quick notes and documents, concentration",
+  "@pageMoodsHint": {
+    "description": "Appearance sheet: what matching the note type does."
+  },
+  "paletteTheme": "Theme: {name}",
+  "@paletteTheme": {
+    "description": "Command palette: switch the app's theme.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
   }
 }

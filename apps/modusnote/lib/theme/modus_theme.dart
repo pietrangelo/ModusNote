@@ -17,8 +17,14 @@ abstract final class ModusTheme {
 
   static ThemeData dark() => of(ModusPalette.modus);
 
-  /// The Material theme of [palette], which it also carries for widgets.
-  static ThemeData of(ModusPalette palette) {
+  /// The Material theme of [palette], which it also carries for widgets;
+  /// built once per palette.
+  static ThemeData of(ModusPalette palette) =>
+      _built[palette] ??= _build(palette);
+
+  static final _built = Expando<ThemeData>();
+
+  static ThemeData _build(ModusPalette palette) {
     final scheme = ColorScheme(
       brightness: palette.brightness,
       primary: palette.primary,

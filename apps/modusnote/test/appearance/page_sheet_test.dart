@@ -87,6 +87,10 @@ void main() {
       await tester.tap(find.byTooltip('Aspetto della pagina'));
       await tester.pumpAndSettle();
       expect(find.text('Dimensione del testo'), findsOneWidget);
+      await tester.ensureVisible(
+        find.byKey(const ValueKey('page-text-size-20')),
+      );
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('page-text-size-20')));
       await tester.pumpAndSettle();
 
