@@ -72,6 +72,47 @@ abstract interface class DeviceLinkChannel {
   Future<void> close(LinkId link);
 }
 
+/// Port: where an owner and another person's device meet to join (Supabase
+/// in production). Like [DeviceLinkChannel], but across accounts: the offer
+/// is found by its lookup, and its answers are read by the account that
+/// posted it. Every method throws [ServerUnavailableException] when the
+/// server cannot be reached.
+abstract interface class InviteChannel {
+  Future<void> postInvite(InviteOffer offer);
+
+  /// The newest offer posted under [lookup] in the last few minutes.
+  Future<InviteOffer?> invite(String lookup);
+
+  Future<void> postInviteAnswer(InviteAnswer answer);
+
+  /// The answers to this account's offer under [lookup], oldest first.
+  Future<List<InviteAnswer>> inviteAnswers(String lookup);
+
+  /// Removes the offer under [lookup] and its answers.
+  Future<void> closeInvite(String lookup);
+}
+
+/// Port: which server account each member signs in with, so that removing
+/// a member also shuts its account out once no other member uses it. Every
+/// method throws [ServerUnavailableException] when the server cannot be
+/// reached.
+abstract interface class MemberAccounts {
+  /// Lets [account] (this device's own when null) into [workspace] and
+  /// records that [member] signs in with it; [manages] lets it admit and
+  /// remove others. Safe to repeat.
+  Future<void> admitMember(
+    WorkspaceId workspace,
+    MemberId member, {
+    AccountId? account,
+    bool manages = false,
+  });
+
+  /// Forgets [member]'s account and removes it from [workspace] once no
+  /// other member uses it; this device's own account always stays. Safe to
+  /// repeat.
+  Future<void> removeMember(WorkspaceId workspace, MemberId member);
+}
+
 enum SyncStream {
   rows,
   keyBundles,

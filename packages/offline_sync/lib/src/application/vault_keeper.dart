@@ -77,6 +77,8 @@ final class VaultKeeper {
     required this._kdf,
     this._passkeys,
     this._links,
+    this._invites,
+    this._accounts,
   }) : _encapsulation = encapsulation,
        _administration = WorkspaceAdministration(
          identities: _identities,
@@ -99,6 +101,13 @@ final class VaultKeeper {
 
   /// Where devices of one account meet to link; null without a server.
   final DeviceLinkChannel? _links;
+
+  /// Where an owner and another person's device meet; null without a
+  /// server.
+  final InviteChannel? _invites;
+
+  /// Which account each member signs in with; null without a server.
+  final MemberAccounts? _accounts;
   final WorkspaceAdministration _administration;
   final Clock _clock;
   final Random _random;
@@ -111,6 +120,9 @@ final class VaultKeeper {
 
   /// Whether this build can link devices into one workspace.
   bool get offersLinking => _links != null;
+
+  /// Whether this build can invite other people's accounts.
+  bool get offersInvites => _invites != null && _accounts != null;
 
   /// Whether a passkey is enrolled and this platform can use it.
   Future<bool> get hasPasskey async =>
@@ -545,6 +557,7 @@ final class VaultKeeper {
       ledger: ledger,
       keyring: keyring,
       journal: _vaults,
+      accounts: _accounts,
     ),
   );
 
@@ -678,6 +691,145 @@ final class VaultKeeper {
       code.dispose();
       passphrase.dispose();
       linkKey?.dispose();
+      master?.dispose();
+      identity?.dispose();
+    }
+  }
+
+  InviteChannel get _inviteChannel =>
+      _invites ?? (throw UnsupportedError('no server to invite through'));
+
+  /// Starts inviting another person into the open [vault]'s workspace, the
+  /// way [offerLink] links a device of the same account: [code] (a fresh
+  /// [InviteCode], given to that person) is stretched with Argon2id and
+  /// seals the workspace's [Invitation], posted under the code's lookup.
+  /// The returned [InviteOffering] admits, with [role], the device that
+  /// answers with the same code, and lets its account into the workspace.
+  ///
+  /// [code] is consumed.
+  Future<InviteOffering> offerInvite(
+    UnlockedVault vault,
+    PasswordSecret code, {
+    required String lookup,
+    required Role role,
+  }) async {
+    final invites = _inviteChannel;
+    final salt = _keys.newSalt();
+    final SymmetricKey key;
+    try {
+      if (vault.isLocked) throw const VaultLockedException();
+      key = await _keys.deriveKey(password: code, salt: salt, parameters: _kdf);
+    } finally {
+      code.dispose();
+    }
+    try {
+      if (vault.isLocked) throw const VaultLockedException();
+      final ledger = vault.engine.ledger;
+      final invitation = Invitation(
+        workspace: ledger.workspace.id,
+        founder: ledger.records.first.author,
+      );
+      await invites.postInvite(
+        InviteOffer(
+          lookup: lookup,
+          salt: salt,
+          sealedInvitation: _envelopes.seal(
+            invitation.toBytes(),
+            key: key,
+            associatedData: InviteOffer.associatedData(lookup),
+          ),
+        ),
+      );
+    } catch (_) {
+      key.dispose();
+      rethrow;
+    }
+    return InviteOffering._(
+      keeper: this,
+      vault: vault,
+      lookup: lookup,
+      role: role,
+      key: key,
+      expiresAt: _clock.now().add(linkLifetime),
+    );
+  }
+
+  /// Accepts another person's invitation on a device with no vault yet,
+  /// signed in with [account]: opens the offer found under [lookup] with
+  /// [code], posts this device's new identity and [account] back under the
+  /// same key, and stretches [passphrase] into the MasterKey of the vault to
+  /// be. The returned [LinkRequest] creates the vault once the owner has
+  /// admitted this device.
+  ///
+  /// Throws [VaultAlreadyExistsException], [LinkCodeRejectedException] or
+  /// [ServerUnavailableException]. [code] and [passphrase] are consumed.
+  Future<LinkRequest> acceptInvite({
+    required PasswordSecret code,
+    required String lookup,
+    required AccountId account,
+    required PasswordSecret passphrase,
+  }) async {
+    SymmetricKey? inviteKey;
+    SymmetricKey? master;
+    IdentityKeyPair? identity;
+    try {
+      final invites = _inviteChannel;
+      if (await exists) throw const VaultAlreadyExistsException();
+      final offer =
+          await invites.invite(lookup) ??
+          (throw const LinkCodeRejectedException());
+      if (offer.lookup != lookup) throw const LinkCodeRejectedException();
+      inviteKey = await _keys.deriveKey(
+        password: code,
+        salt: offer.salt,
+        parameters: _kdf,
+      );
+      final Invitation invitation;
+      try {
+        invitation = Invitation.parse(
+          _envelopes.open(
+            offer.sealedInvitation,
+            key: inviteKey,
+            associatedData: InviteOffer.associatedData(lookup),
+          ),
+        );
+      } on AuthenticationTagMismatchException {
+        throw const LinkCodeRejectedException();
+      } on CollaborationException {
+        throw const LinkCodeRejectedException();
+      }
+      final salt = _keys.newSalt();
+      master = await _keys.deriveKey(
+        password: passphrase,
+        salt: salt,
+        parameters: _kdf,
+      );
+      identity = _identities.generateIdentity();
+      await invites.postInviteAnswer(
+        InviteAnswer(
+          lookup: lookup,
+          sealedJoiner: _envelopes.seal(
+            InviteAnswer.joiner(identity.publicIdentity, account),
+            key: inviteKey,
+            associatedData: InviteAnswer.associatedData(lookup),
+          ),
+        ),
+      );
+      final request = LinkRequest._(
+        keeper: this,
+        invitation: invitation,
+        salt: salt,
+        master: master,
+        identity: identity,
+        expiresAt: _clock.now().add(linkLifetime),
+      );
+      master = null;
+      identity = null;
+      return request;
+    } finally {
+      code.dispose();
+      passphrase.dispose();
+      inviteKey?.dispose();
       master?.dispose();
       identity?.dispose();
     }
@@ -883,4 +1035,76 @@ final class LinkRequest {
     _master.dispose();
     _identity.dispose();
   }
+}
+
+/// An invitation offered from an open vault, waiting for the invited
+/// person's device to answer. It holds the code's key until it admits a
+/// device, expires or is cancelled.
+final class InviteOffering {
+  InviteOffering._({
+    required this._keeper,
+    required this._vault,
+    required this.lookup,
+    required this.role,
+    required this._key,
+    required this.expiresAt,
+  });
+
+  final VaultKeeper _keeper;
+  final UnlockedVault _vault;
+  final String lookup;
+  final Role role;
+  final SymmetricKey _key;
+  final DateTime expiresAt;
+
+  bool get isClosed => _key.isDisposed;
+
+  /// Like [LinkOffering.poll]: admits, with [role], the device of the first
+  /// answer that opens with the code, and lets the account it names into
+  /// the workspace; null while no one has answered.
+  Future<MemberId?> poll() async {
+    if (isClosed) throw const LinkExpiredException();
+    if (_vault.isLocked) {
+      cancel();
+      throw const VaultLockedException();
+    }
+    if (!_keeper._clock.now().isBefore(expiresAt)) {
+      cancel();
+      throw const LinkExpiredException();
+    }
+    final invites = _keeper._inviteChannel;
+    for (final answer in await invites.inviteAnswers(lookup)) {
+      if (answer.lookup != lookup) continue;
+      if (isClosed) throw const LinkExpiredException();
+      final PublicIdentity device;
+      final AccountId account;
+      try {
+        (device, account) = InviteAnswer.readJoiner(
+          _keeper._envelopes.open(
+            answer.sealedJoiner,
+            key: _key,
+            associatedData: InviteAnswer.associatedData(lookup),
+          ),
+        );
+      } on CryptographyException {
+        continue;
+      } on SyncException {
+        continue;
+      }
+      final member = MemberId.of(device);
+      if (member == _vault.member) continue;
+      if (_vault.isLocked) throw const VaultLockedException();
+      await _vault.engine.admit(device, role: role, account: account);
+      cancel();
+      try {
+        await invites.closeInvite(lookup);
+      } on ServerUnavailableException {
+        // The rows expire on the server anyway.
+      }
+      return member;
+    }
+    return null;
+  }
+
+  void cancel() => _key.dispose();
 }
