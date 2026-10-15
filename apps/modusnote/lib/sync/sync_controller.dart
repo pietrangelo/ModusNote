@@ -30,6 +30,9 @@ enum SyncProblem {
   /// The workspace reached its storage quota on the server (HTTP 413):
   /// edits that grow it stay queued until notes are deleted.
   full,
+
+  /// Another device removed this one from the vault: it no longer syncs.
+  removed,
 }
 
 /// Keeps an open vault in step with the server: right after unlock and
@@ -123,6 +126,38 @@ final class SyncController extends ChangeNotifier {
     _set(SyncState.signedOut);
   }
 
+  /// Who belongs to the vault, in the order they joined.
+  List<WorkspaceMember> get members =>
+      _engine.ledger.workspace.members.values.toList();
+
+  /// This device, among [members].
+  MemberId get me => _engine.me;
+
+  /// Whether this device may remove others: an owner still in the vault.
+  bool get managesMembers =>
+      _engine.ledger.workspace.member(_engine.me)?.role.managesMembers ?? false;
+
+  /// Removes [member] and rotates the vault's key; see [SyncEngine.revoke].
+  /// No sync runs meanwhile. Throws what the engine throws; when the
+  /// removal was recorded but could not be sent, the next sync sends it.
+  Future<void> revoke(MemberId member) async {
+    for (var running = _running; running != null; running = _running) {
+      await running;
+    }
+    final done = Completer<void>();
+    _running = done.future;
+    try {
+      await _engine.revoke(member);
+    } finally {
+      _running = null;
+      done.complete();
+      if (!_disposed) {
+        notifyListeners();
+        unawaited(syncNow());
+      }
+    }
+  }
+
   Future<void> syncNow() {
     if (_disposed) return Future.value();
     if (_running case final running?) {
@@ -178,6 +213,8 @@ final class SyncController extends ChangeNotifier {
       _fail(SyncProblem.untrusted);
     } on MalformedSyncDataException {
       _fail(SyncProblem.untrusted);
+    } on RemovedFromWorkspaceException {
+      _fail(SyncProblem.removed);
     } on Object {
       // The vault locked under a running sync and its keys are gone.
       if (_disposed) return;

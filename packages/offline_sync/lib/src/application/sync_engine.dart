@@ -94,6 +94,12 @@ final class SyncEngine {
   /// The epoch new content is sealed under.
   KeyEpoch get currentEpoch => _ledger.workspace.epoch;
 
+  /// This device's own member id.
+  MemberId get me => _myId;
+
+  /// An owner removed this device: it no longer syncs nor writes.
+  bool get removed => !_ledger.workspace.isMember(_myId);
+
   /// The GroupKey of [epoch], as the parent of BlobKeys. It stays owned by
   /// this engine's keyring: callers use it and never dispose it. Throws
   /// [MissingGroupKeyException] for an epoch this device holds no key for.
@@ -175,13 +181,19 @@ final class SyncEngine {
   /// Throws [LedgerRollbackException] when the server hides or forks the
   /// membership log, and [TamperedWorkspaceDataException] when it serves a
   /// log that fails verification; nothing past that point is applied.
+  ///
+  /// Throws [RemovedFromWorkspaceException] once this device learns that an
+  /// owner removed it.
   Future<SyncReport> sync() async {
+    if (removed) throw const RemovedFromWorkspaceException();
     try {
       await _publishMembership();
+      await _publishPendingBundle();
       final pushed = await _push();
       final heads = await _server.heads(_workspace);
       if (heads == null || heads.membership > _ledger.records.length) {
         await _catchUpMembership();
+        if (removed) throw const RemovedFromWorkspaceException();
       }
       if (heads == null ||
           heads.keyBundles > await _store.loadCursor(SyncStream.keyBundles)) {
@@ -228,6 +240,89 @@ final class SyncEngine {
     }
     await _server.appendKeyBundle(bundle);
   }
+
+  /// Removes [member], another device or person, and rotates the GroupKey:
+  /// what anyone writes from now on is sealed under a key granted only to
+  /// those who remain. [member] keeps what it already holds.
+  ///
+  /// Needs the server, to see the latest membership first; offline it
+  /// throws [ServerUnavailableException] with nothing changed. Once the
+  /// signed record exists here, a failure to publish it or its keys is
+  /// finished by the next [sync], even after the vault was locked.
+  Future<void> revoke(MemberId member) async {
+    if (removed) throw const RemovedFromWorkspaceException();
+    await _publishMembership();
+    await _publishPendingBundle();
+    await _catchUpMembership();
+    final update = _administration.revoke(
+      _ledger,
+      _keyring,
+      owner: _me,
+      member: member,
+    );
+    final bundle = update.bundle!;
+    // Kept before anything leaves: the new key exists nowhere else yet, and
+    // the vault must reopen holding it.
+    await _journal?.appendMembership([update.record]);
+    await _journal?.appendKeyBundles([bundle]);
+    await _savePendingBundle(bundle);
+    _ledger = update.ledger;
+    await _publishMembership();
+    await _publishPendingBundle();
+  }
+
+  /// A rotation's bundle waits here until the server holds it: until then
+  /// the other members cannot write under the new epoch.
+  static const _pendingBundle = 'sync.pending-bundle';
+
+  Future<void> _savePendingBundle(KeyBundle? bundle) async {
+    final journal = _journal;
+    if (journal == null) {
+      _unsavedBundle = bundle;
+      return;
+    }
+    await journal.saveSetting(
+      _pendingBundle,
+      bundle == null
+          ? null
+          : _envelopes.seal(
+              bundle.toBytes(),
+              key: _localKey,
+              associatedData: _pendingSlot,
+            ),
+    );
+  }
+
+  /// Where there is no journal (tests), the pending bundle lives here.
+  KeyBundle? _unsavedBundle;
+
+  Future<KeyBundle?> _loadPendingBundle() async {
+    final journal = _journal;
+    if (journal == null) return _unsavedBundle;
+    final sealed = await journal.loadSetting(_pendingBundle);
+    if (sealed == null) return null;
+    try {
+      return KeyBundle.parse(
+        _envelopes.open(sealed, key: _localKey, associatedData: _pendingSlot),
+      );
+    } on CryptographyException {
+      return null;
+    } on CollaborationException {
+      return null;
+    }
+  }
+
+  Future<void> _publishPendingBundle() async {
+    final bundle = await _loadPendingBundle();
+    if (bundle == null) return;
+    // Sent again if the first answer was lost: a repeated grant changes
+    // nothing for those who receive it.
+    await _server.appendKeyBundle(bundle);
+    await _savePendingBundle(null);
+  }
+
+  AssociatedData get _pendingSlot =>
+      AssociatedData.forContext('modusnote.pending-bundle.v1', _workspace.hex);
 
   Future<int> _push() async {
     final rows = (await _store.loadOutbox()).pending;

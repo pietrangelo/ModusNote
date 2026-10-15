@@ -562,6 +562,87 @@
   "@cloudStateUntrusted": {
     "description": "Sync sheet: the server hid or forged data."
   },
+  "cloudStateRemoved": "Another device removed this one from the vault. The notes here stay readable, but they no longer sync and cannot be changed.",
+  "@cloudStateRemoved": {
+    "description": "Sync sheet: an owner revoked this device."
+  },
+  "membersAction": "Vault members",
+  "@membersAction": {
+    "description": "Sync sheet: button that opens the list of members."
+  },
+  "membersTitle": "Members",
+  "@membersTitle": {
+    "description": "Members sheet: title."
+  },
+  "membersBody": "Every linked device is a member with a key of its own. A removed device keeps the notes it already has, but gets no new notes or changes, and what it writes is ignored.",
+  "@membersBody": {
+    "description": "Members sheet: what a member is and what removing one does."
+  },
+  "membersThisDevice": "This device",
+  "@membersThisDevice": {
+    "description": "Members sheet: the row of the device in use."
+  },
+  "membersDevice": "Device",
+  "@membersDevice": {
+    "description": "Members sheet: the row of another device."
+  },
+  "membersRoleOwner": "Owner",
+  "@membersRoleOwner": {
+    "description": "Members sheet: role that manages members and writes."
+  },
+  "membersRoleEditor": "Can edit",
+  "@membersRoleEditor": {
+    "description": "Members sheet: role that writes notes."
+  },
+  "membersRoleViewer": "Can read",
+  "@membersRoleViewer": {
+    "description": "Members sheet: role that only reads."
+  },
+  "membersRemove": "Remove",
+  "@membersRemove": {
+    "description": "Members sheet: tooltip of the button that removes a device; also the confirm button."
+  },
+  "membersRemoveTitle": "Remove this device?",
+  "@membersRemoveTitle": {
+    "description": "Members sheet: confirmation title."
+  },
+  "membersRemovePending": "Device removed. The other devices will learn it at the next sync.",
+  "@membersRemovePending": {
+    "description": "Members sheet: the removal is recorded here but could not reach the server yet."
+  },
+  "membersRemoveOffline": "Removing a device needs the server. Connect and try again.",
+  "@membersRemoveOffline": {
+    "description": "Members sheet: removal needs to be online."
+  },
+  "membersRemoveFailed": "The device could not be removed.",
+  "@membersRemoveFailed": {
+    "description": "Members sheet: the removal failed for another reason."
+  },
+  "membersRemoved": "Device removed.",
+  "@membersRemoved": {
+    "description": "Members sheet: snackbar after removal."
+  },
+  "membersRemoveBody": "The device with fingerprint {fingerprint} will get no new notes or changes, and what it writes will be ignored. The notes it already has stay on it. This cannot be undone.",
+  "@membersRemoveBody": {
+    "description": "Members sheet: confirmation text.",
+    "placeholders": {
+      "fingerprint": {
+        "type": "String"
+      }
+    }
+  },
+  "membersFingerprint": "{role} · fingerprint {fingerprint}",
+  "@membersFingerprint": {
+    "description": "Members sheet: a member's role and the start of its public key, to tell devices apart.",
+    "placeholders": {
+      "role": {
+        "type": "String"
+      },
+      "fingerprint": {
+        "type": "String"
+      }
+    }
+  },
   "cloudSignInBody": "Sign in with your email to keep your notes on the server too. It only ever receives encrypted data, and your passphrase never leaves this device.",
   "@cloudSignInBody": {
     "description": "Sync sheet: why and how to sign in."
