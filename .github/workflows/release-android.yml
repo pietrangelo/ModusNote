@@ -9,7 +9,8 @@ name: Android release
 #   ANDROID_UPLOAD_KEYSTORE_BASE64  the upload keystore (.jks), in base64
 #   ANDROID_UPLOAD_STORE_PASSWORD   its password
 #   ANDROID_UPLOAD_KEY_ALIAS        the key's alias
-#   ANDROID_UPLOAD_KEY_PASSWORD     the key's password
+#   ANDROID_UPLOAD_KEY_PASSWORD     the key's password (for a PKCS12 keystore,
+#                                   keytool's default, the store password)
 #
 # versionCode is this workflow's run number + 1, so every bundle built here
 # is newer than the last; versionName comes from pubspec.yaml. The sync
@@ -49,9 +50,6 @@ jobs:
           flutter-version: 3.47.7
           cache: true
 
-      - name: Resolve workspace
-        run: flutter pub get
-
       - name: Upload key
         working-directory: apps/modusnote/android
         env:
@@ -67,12 +65,23 @@ jobs:
           umask 077
           keystore="$RUNNER_TEMP/upload.jks"
           printf '%s' "$KEYSTORE" | base64 --decode > "$keystore"
+          # Open the key now, as Gradle will, instead of failing after the
+          # build. keytool ignores a separate key password for PKCS12
+          # keystores (its default), so there the store password opens it.
+          opens=$(java ../tool/CheckUploadKey.java "$keystore")
+          if [ "$opens" = store ]; then
+            echo '::warning::ANDROID_UPLOAD_KEY_PASSWORD does not open the key; the store password does, so it is used. Set the secret to the store password.'
+            KEY_PASSWORD=$STORE_PASSWORD
+          fi
           {
             echo "storeFile=$keystore"
             echo "storePassword=$STORE_PASSWORD"
             echo "keyAlias=$KEY_ALIAS"
             echo "keyPassword=$KEY_PASSWORD"
           } > key.properties
+
+      - name: Resolve workspace
+        run: flutter pub get
 
       - name: Build the App Bundle
         working-directory: apps/modusnote

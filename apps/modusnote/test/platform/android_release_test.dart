@@ -52,6 +52,15 @@ void main() {
     );
   });
 
+  test('the upload key is opened before the build, not after it', () {
+    final workflow = File('../../.github/workflows/release-android.yml')
+        .readAsStringSync();
+    final check = workflow.indexOf('java ../tool/CheckUploadKey.java');
+    expect(check, isNot(-1));
+    expect(check, lessThan(workflow.indexOf('flutter build appbundle')));
+    expect(File('tool/CheckUploadKey.java').existsSync(), isTrue);
+  });
+
   test('adversary: no key material is ever committed', () {
     final ignored = File('android/.gitignore').readAsStringSync();
     expect(ignored, contains('key.properties'));
