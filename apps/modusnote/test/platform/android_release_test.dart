@@ -53,8 +53,8 @@ void main() {
   });
 
   test('the upload key is opened before the build, not after it', () {
-    final workflow =
-        File('../../.github/workflows/release-android.yml').readAsStringSync();
+    final workflow = File('../../.github/workflows/release-android.yml')
+        .readAsStringSync();
     final check = workflow.indexOf('java ../tool/CheckUploadKey.java');
     expect(check, isNot(-1));
     expect(check, lessThan(workflow.indexOf('flutter build appbundle')));
