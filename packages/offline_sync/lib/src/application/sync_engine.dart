@@ -28,7 +28,8 @@ final class SyncReport {
   final bool offline;
   final int pushed;
 
-  /// Rows authenticated and merged (including ones that changed nothing).
+  /// Rows authenticated and merged that changed the local copy (a device's
+  /// own row coming back changes nothing, so it does not count).
   final int pulled;
 
   /// Concurrent edits resolved by last-writer-wins.
@@ -512,6 +513,7 @@ final class SyncEngine {
             rejected++;
           case _Merged.undecryptable:
             undecryptable++;
+          case _Merged.unchanged:
         }
         cursor = position;
       }
@@ -570,6 +572,8 @@ final class SyncEngine {
           latest: latest,
         ),
       );
+    } else {
+      return _Merged.unchanged;
     }
     return resolution.concurrent ? _Merged.conflict : _Merged.applied;
   }
@@ -617,4 +621,4 @@ final class SyncEngine {
       AssociatedData.forContext('modusnote.local.v1', '${_workspace.hex}:$id');
 }
 
-enum _Merged { applied, conflict, rejected, undecryptable }
+enum _Merged { applied, unchanged, conflict, rejected, undecryptable }

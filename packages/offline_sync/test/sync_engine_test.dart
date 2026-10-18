@@ -294,6 +294,16 @@ void main() {
       expect(report.offline, isFalse);
     });
 
+    test('a device\'s own row coming back is not counted as pulled', () async {
+      await alice.engine.write(note, RevisionContents(text('v1')));
+
+      final first = await alice.engine.sync();
+      final second = await alice.engine.sync();
+
+      expect(first.pushed, 1);
+      expect(first.pulled + second.pulled, 0);
+    });
+
     test('only the streams that moved are read', () async {
       await alice.engine.sync();
       await bob.engine.sync();
