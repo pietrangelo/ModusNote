@@ -473,6 +473,9 @@ final class SyncEngine {
       _workspace,
       after: cursor,
     )) {
+      // A bundle can arrive before the record it names: wait for that
+      // record instead of skipping a key this device may need.
+      if (bundle.atSequence >= _ledger.records.length) break;
       try {
         _administration.accept(
           bundle,
@@ -593,6 +596,9 @@ final class SyncEngine {
       try {
         _authenticator.authenticate(incoming, row: context, ledger: _ledger);
       } on LedgerBehindException {
+        if (_authenticator.rejectsUnknownHead(incoming, _ledger)) {
+          throw const RejectedRevisionException('unknown log position');
+        }
         throw const LedgerRollbackException();
       }
     }
