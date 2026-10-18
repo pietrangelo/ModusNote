@@ -11,8 +11,8 @@ cd "$(dirname "$0")/.."
 dart run sodium:update_web --sumo --no-edit-index --target-directory web
 
 # SQLite for package:sqlite3/wasm.dart: must match the sqlite3 package version.
-SQLITE3_VERSION=3.7.0
-SQLITE3_WASM_SHA256=fbcd2e8214f9231ea961e1b7706a22dd1194cfbfe6f26f13841b5aa7a0be1a1f
+SQLITE3_VERSION=3.7.1
+SQLITE3_WASM_SHA256=87c1869b533ea4b6daa1f4dc6aa7e9cf3dae6e6ea53f8ed57080c08eb5f64303
 curl -sSfL -o web/sqlite3.wasm.part \
   "https://github.com/simolus3/sqlite3.dart/releases/download/sqlite3-${SQLITE3_VERSION}/sqlite3.wasm"
 echo "${SQLITE3_WASM_SHA256}  web/sqlite3.wasm.part" | sha256sum -c -

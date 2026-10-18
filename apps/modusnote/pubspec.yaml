@@ -14,7 +14,7 @@ dependencies:
   collaboration_access_control: any
   flutter:
     sdk: flutter
-  flutter_soloud: 5.1.2
+  flutter_soloud: 5.2.1
   flutter_localizations:
     sdk: flutter
   file: ^7.0.1
