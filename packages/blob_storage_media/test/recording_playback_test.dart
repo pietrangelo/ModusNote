@@ -40,6 +40,7 @@ void main() {
       store: store,
       encryptor: newEncryptor(),
       subkeys: newSubkeys(),
+      hasher: newHasher(),
     );
     contentKey = newEncryptor().generateKey();
     addTearDown(contentKey.dispose);

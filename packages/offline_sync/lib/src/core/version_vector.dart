@@ -47,9 +47,17 @@ final class VersionVector {
 
   static final empty = VersionVector._(const {});
 
+  /// The highest counter a pulled revision may carry: room for 2^31 more
+  /// edits before the uint32 on the wire.
+  static const maxCounter = 0x7fffffff;
+
   final Map<MemberId, int> _counters;
 
   int counterOf(MemberId member) => _counters[member] ?? 0;
+
+  Iterable<MemberId> get members => _counters.keys;
+
+  int get highest => _counters.values.fold(0, _max);
 
   VersionVector increment(MemberId member) =>
       VersionVector._({..._counters, member: counterOf(member) + 1});

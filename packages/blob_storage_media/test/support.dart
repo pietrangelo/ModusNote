@@ -15,6 +15,8 @@ EnvelopeEncryptor newEncryptor() => SodiumEnvelopeEncryptor(sodium);
 
 SubkeyDerivationService newSubkeys() => SodiumSubkeyDerivationService(sodium);
 
+ContentHasher newHasher() => SodiumContentHasher(sodium);
+
 /// Deterministic, recognisable plaintext: byte i is `i * 31 + 7`, so a
 /// leak of any run of it into storage is easy to search for.
 Uint8List audio(int length) =>
@@ -49,6 +51,9 @@ final class InMemoryBlobStore implements CiphertextBlobStore {
   /// Every byte any writer was ever handed, committed or not.
   final everWritten = BytesBuilder(copy: true);
 
+  /// How many bytes [read] hands back at a time.
+  int readPiece = 5000;
+
   @override
   Future<CiphertextBlobWriter> create(BlobId id) async {
     if (committed.containsKey(id) || pending.containsKey(id)) {
@@ -62,8 +67,10 @@ final class InMemoryBlobStore implements CiphertextBlobStore {
   Stream<Uint8List> read(BlobId id) async* {
     final bytes = committed[id];
     if (bytes == null) throw BlobNotFoundException(id);
-    for (var offset = 0; offset < bytes.length; offset += 5000) {
-      final end = offset + 5000 < bytes.length ? offset + 5000 : bytes.length;
+    for (var offset = 0; offset < bytes.length; offset += readPiece) {
+      final end = offset + readPiece < bytes.length
+          ? offset + readPiece
+          : bytes.length;
       yield Uint8List.sublistView(bytes, offset, end);
     }
   }

@@ -157,6 +157,7 @@ void main() {
         store: FileSystemCiphertextBlobStore(root),
         encryptor: SodiumEnvelopeEncryptor(sodium),
         subkeys: SodiumSubkeyDerivationService(sodium),
+        hasher: SodiumContentHasher(sodium),
       );
       contentKey = SodiumEnvelopeEncryptor(sodium).generateKey();
     });

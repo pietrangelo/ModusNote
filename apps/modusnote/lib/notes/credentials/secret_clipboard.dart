@@ -11,15 +11,27 @@ import 'package:flutter/services.dart';
 /// write while the page is in the background, in which case the password
 /// stays until the next copy. Other apps can read the clipboard while it
 /// holds the password: copying is the person's choice, revealing is not
-/// needed for it.
+/// needed for it. On Android and iOS the copy is marked sensitive (hidden
+/// in the clipboard preview and keyboard histories), and on iOS it stays on
+/// this device and expires by itself after [keep].
 abstract final class SecretClipboard {
   static const keep = Duration(seconds: 30);
+
+  static const _native = MethodChannel('run.serv.modus/clipboard');
 
   static Timer? _timer;
   static String? _copied;
 
   static Future<void> copy(String secret) async {
-    await Clipboard.setData(ClipboardData(text: secret));
+    try {
+      if (kIsWeb) throw MissingPluginException();
+      await _native.invokeMethod<void>('copySecret', {
+        'text': secret,
+        'seconds': keep.inSeconds,
+      });
+    } on MissingPluginException {
+      await Clipboard.setData(ClipboardData(text: secret));
+    }
     _copied = secret;
     _timer?.cancel();
     _timer = Timer(keep, _clear);

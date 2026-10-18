@@ -11,20 +11,25 @@ final later = DateTime.utc(2026, 10, 11, 13);
 final schema = SeedSchemas.songSketchV1;
 final guideTrack = FieldKey('guide_track');
 
-KeyedRecording take(String id, {int epoch = 0, int seconds = 3}) =>
-    KeyedRecording(
-      epoch: KeyEpoch(epoch),
-      metadata: BlobMetadata(
-        blob: SealedBlob(
-          id: BlobId(id),
-          keyId: SubkeyId.fromBytes(List.filled(SubkeyId.length, 5)),
-          plaintextLength: 70000,
-        ),
-        format: AudioFormat.opusOgg,
-        duration: Duration(seconds: seconds),
-        recordedAt: at,
-      ),
-    );
+KeyedRecording take(
+  String id, {
+  int epoch = 0,
+  int seconds = 3,
+  ContentDigest? digest,
+}) => KeyedRecording(
+  epoch: KeyEpoch(epoch),
+  metadata: BlobMetadata(
+    blob: SealedBlob(
+      id: BlobId(id),
+      keyId: SubkeyId.fromBytes(List.filled(SubkeyId.length, 5)),
+      plaintextLength: 70000,
+      digest: digest,
+    ),
+    format: AudioFormat.opusOgg,
+    duration: Duration(seconds: seconds),
+    recordedAt: at,
+  ),
+);
 
 T valid<T>(Validated<T> result) => switch (result) {
   Valid(:final value) => value,
@@ -155,6 +160,61 @@ void main() {
     expect(back.entry.attributes, note.entry.attributes);
     expect(back.entry.audit, note.entry.audit);
     expect(back.recordings, note.recordings);
+  });
+
+  group('digest', () {
+    final digest = ContentDigest.fromBytes(List.filled(32, 0xab));
+    RecordedNote recorded(KeyedRecording recording) => valid(
+      RecordedNote.of(song())
+          .attach(recording, field: guideTrack, schema: schema, at: later),
+    );
+
+    test('a recording with a digest round-trips as version 5', () {
+      final note = recorded(take('take_1', digest: digest));
+
+      final wire = RecordedNoteCodec.encode(note);
+      final back = valid(RecordedNoteCodec.decode(wire, schemas: resolve));
+
+      expect(wire[0], 5);
+      expect(back.recordings, note.recordings);
+      expect(back.recordings.values.single.blob.digest, digest);
+    });
+
+    test('without digests a note keeps its older version', () {
+      expect(RecordedNoteCodec.encode(recorded(take('take_1')))[0], 1);
+    });
+
+    test(
+      'adversary: every truncation, odd flag and digest-less 5 is refused',
+      () {
+        final wire = RecordedNoteCodec.encode(
+          recorded(take('take_1', digest: digest)),
+        );
+        for (var length = 0; length < wire.length; length++) {
+          expect(
+            () => RecordedNoteCodec.decode(
+              Uint8List.sublistView(wire, 0, length),
+              schemas: resolve,
+            ),
+            throwsA(isA<MalformedBlobException>()),
+            reason: '$length bytes',
+          );
+        }
+        // ... flags | has (1) | digest (32)
+        final has = wire.length - 33;
+        for (final forged in [
+          Uint8List.fromList(wire)..[has] = 2,
+          Uint8List.fromList(wire)..[has - 1] = 0,
+          // version 5 with every digest absent: should have been version 1.
+          Uint8List.fromList([...wire.sublist(0, has), 0]),
+        ]) {
+          expect(
+            () => RecordedNoteCodec.decode(forged, schemas: resolve),
+            throwsA(isA<MalformedBlobException>()),
+          );
+        }
+      },
+    );
   });
 
   group('trash', () {

@@ -246,6 +246,7 @@ final class MemorySyncServer
     MemberId member, {
     AccountId? account,
     bool manages = false,
+    bool writes = true,
   }) async {
     await _check();
     accounts[account] = (accounts[account] ?? false) || manages;
