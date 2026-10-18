@@ -233,12 +233,16 @@ final class RecordedNote {
 ///   always set), the trash time if bit 0, then the category id (u8
 ///   length, ASCII);
 /// * in version 4, the same flags with bit 2 (pictures) always set and
-///   bit 1 as needed, then after the category `count(u16) | pictures`.
+///   bit 1 as needed, then after the category `count(u16) | pictures`;
+/// * in version 5, the same flags with bit 3 (digests) always set and
+///   bit 2 as needed, then after the pictures, for each recording and then
+///   each picture, `has(u8) | digest(32)` when `has` is 1.
 ///
 /// Each note is written in the oldest version that holds it: one outside
 /// the trash and any category is version 1, byte for byte what apps
 /// without a trash read, a trashed one outside any category version 2,
-/// and only a note with pictures version 4.
+/// only a note with pictures version 4 and only one naming a blob digest
+/// version 5.
 /// Older apps see a note in a later version as unreadable, so it leaves
 /// their library until they are updated. Decoding treats its input as
 /// hostile and throws only [MalformedBlobException].
@@ -247,9 +251,11 @@ abstract final class RecordedNoteCodec {
   static const _trashedVersion = 2;
   static const _filedVersion = 3;
   static const _picturedVersion = 4;
+  static const _digestedVersion = 5;
   static const _trashedFlag = 1;
   static const _filedFlag = 2;
   static const _picturesFlag = 4;
+  static const _digestsFlag = 8;
   static const _maxRecordings = 64;
   static const _maxImages = AttachmentsFieldType.maxAllowedItems;
 
@@ -258,8 +264,17 @@ abstract final class RecordedNoteCodec {
     final trashedAt = note.trashedAt;
     final category = note.category;
     final images = note.images.values;
-    if (trashedAt == null && category == null && images.isEmpty) return bytes;
-    final version = images.isNotEmpty
+    final digests = [
+      for (final take in note.recordings.values) take.metadata.blob.digest,
+      for (final image in images) image.metadata.blob.digest,
+    ];
+    final digested = digests.any((digest) => digest != null);
+    if (trashedAt == null && category == null && images.isEmpty && !digested) {
+      return bytes;
+    }
+    final version = digested
+        ? _digestedVersion
+        : images.isNotEmpty
         ? _picturedVersion
         : category != null
         ? _filedVersion
@@ -271,7 +286,8 @@ abstract final class RecordedNoteCodec {
       out.addByte(
         (trashedAt == null ? 0 : _trashedFlag) |
             (category == null ? 0 : _filedFlag) |
-            (images.isEmpty ? 0 : _picturesFlag),
+            (images.isEmpty ? 0 : _picturesFlag) |
+            (digested ? _digestsFlag : 0),
       );
     }
     if (trashedAt != null) {
@@ -284,6 +300,17 @@ abstract final class RecordedNoteCodec {
         ..add(id);
     }
     if (images.isNotEmpty) _writeImages(out, images);
+    if (digested) {
+      for (final digest in digests) {
+        if (digest == null) {
+          out.addByte(0);
+        } else {
+          out
+            ..addByte(1)
+            ..add(digest.bytes);
+        }
+      }
+    }
     return out.takeBytes();
   }
 
@@ -351,7 +378,7 @@ abstract final class RecordedNoteCodec {
     try {
       final reader = _Reader(bytes);
       final version = reader.uint(1);
-      if (version < _version || version > _picturedVersion) {
+      if (version < _version || version > _digestedVersion) {
         throw const MalformedBlobException('unknown note version');
       }
       final entryBytes = reader.blob();
@@ -376,11 +403,15 @@ abstract final class RecordedNoteCodec {
       final required = switch (version) {
         _filedVersion => _filedFlag,
         _picturedVersion => _picturesFlag,
+        _digestedVersion => _digestsFlag,
         _ => 0,
       };
-      final allowed = version == _picturedVersion
-          ? _trashedFlag | _filedFlag | _picturesFlag
-          : _trashedFlag | _filedFlag;
+      final allowed = switch (version) {
+        _digestedVersion =>
+          _trashedFlag | _filedFlag | _picturesFlag | _digestsFlag,
+        _picturedVersion => _trashedFlag | _filedFlag | _picturesFlag,
+        _ => _trashedFlag | _filedFlag,
+      };
       if (flags & required != required || flags & ~allowed != 0) {
         throw const MalformedBlobException('unknown note flags');
       }
@@ -402,6 +433,24 @@ abstract final class RecordedNoteCodec {
           }
           images[image.id] = image;
         }
+      }
+      if (flags & _digestsFlag != 0) {
+        var any = false;
+        ContentDigest? next() {
+          final has = reader.uint(1);
+          if (has > 1) throw const MalformedBlobException('malformed digest');
+          if (has == 0) return null;
+          any = true;
+          return ContentDigest.fromBytes(reader.bytes(ContentDigest.length));
+        }
+
+        for (final MapEntry(:key, value: take) in recordings.entries) {
+          recordings[key] = _recordingWith(take, next());
+        }
+        for (final MapEntry(:key, value: image) in images.entries) {
+          images[key] = _imageWith(image, next());
+        }
+        if (!any) throw const MalformedBlobException('digests without one');
       }
       reader.finish();
       return switch (EntryCodec.decode(entryBytes, schemas: schemas)) {
@@ -458,6 +507,37 @@ abstract final class RecordedNoteCodec {
       category: category,
     );
   }
+
+  static SealedBlob _blobWith(SealedBlob blob, ContentDigest? digest) =>
+      SealedBlob(
+        id: blob.id,
+        keyId: blob.keyId,
+        plaintextLength: blob.plaintextLength,
+        digest: digest,
+      );
+
+  static KeyedRecording _recordingWith(
+    KeyedRecording take,
+    ContentDigest? digest,
+  ) => KeyedRecording(
+    epoch: take.epoch,
+    metadata: BlobMetadata(
+      blob: _blobWith(take.metadata.blob, digest),
+      format: take.metadata.format,
+      duration: take.metadata.duration,
+      recordedAt: take.metadata.recordedAt,
+    ),
+  );
+
+  static KeyedImage _imageWith(KeyedImage image, ContentDigest? digest) =>
+      KeyedImage(
+        epoch: image.epoch,
+        metadata: ImageMetadata(
+          blob: _blobWith(image.metadata.blob, digest),
+          info: image.metadata.info,
+          addedAt: image.metadata.addedAt,
+        ),
+      );
 
   static KeyedImage _readImage(_Reader reader) {
     final id = BlobId(utf8.decode(reader.blob()));
