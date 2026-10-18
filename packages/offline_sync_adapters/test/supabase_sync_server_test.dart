@@ -482,8 +482,14 @@ void main() {
         manages: true,
       );
       await server().admitMember(workspace, member);
+      await server().admitMember(
+        workspace,
+        member,
+        account: account,
+        writes: false,
+      );
 
-      final [other, own] = requests;
+      final [other, own, reader] = requests;
       expect(other.url.path, '/rest/v1/rpc/admit_member');
       expect(jsonDecode(other.body), {
         'workspace': workspace.hex,
@@ -496,6 +502,13 @@ void main() {
         'member': member.hex,
         'account': null,
         'manage': false,
+      });
+      expect(jsonDecode(reader.body), {
+        'workspace': workspace.hex,
+        'member': member.hex,
+        'account': account.uuid,
+        'manage': false,
+        'write': false,
       });
     });
 

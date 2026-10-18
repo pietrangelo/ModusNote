@@ -124,7 +124,7 @@ select pg_temp.check(
 commit;
 
 begin;
-select pg_temp.act_as(:bob);
+select pg_temp.act_as(:alice);
 do $$
 begin
   insert into public.membership_records (workspace_id, sequence, record)
@@ -134,6 +134,35 @@ exception
   when unique_violation then raise notice 'ok - a membership record cannot be replaced';
 end;
 $$;
+do $$
+begin
+  insert into public.membership_records (workspace_id, sequence, record)
+  values ('00112233445566778899aabbccddeeff', 5, '\x02');
+  raise exception 'FAILED: a gap in the membership log was accepted';
+exception
+  when check_violation then raise notice 'ok - the membership log takes no gaps';
+end;
+$$;
+commit;
+
+begin;
+select pg_temp.act_as(:bob);
+select pg_temp.refused($q$
+  insert into public.membership_records (workspace_id, sequence, record)
+  values ('00112233445566778899aabbccddeeff', 1, '\x02')
+$q$);
+select pg_temp.refused($q$
+  insert into public.membership_records (workspace_id, sequence, record)
+  values ('00112233445566778899aabbccddeeff', 4294967295, '\x02')
+$q$);
+select pg_temp.refused($q$
+  insert into public.key_bundles (workspace_id, bundle)
+  values ('00112233445566778899aabbccddeeff', '\x02')
+$q$);
+select pg_temp.check(
+  (select count(*) from public.membership_records) = 1,
+  'adversary: a non-managing account takes no place in the membership log and grants no keys'
+);
 commit;
 
 begin;
@@ -850,4 +879,69 @@ set local role anon;
 select pg_temp.refused($q$ select public.invite_offer('ABCDEF') $q$);
 select pg_temp.refused($q$ select public.admit_member('a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0', repeat('6', 64)) $q$);
 select pg_temp.check(true, 'the anonymous role finds no offers and admits no one');
+commit;
+
+-- Readers: an account admitted only to read appends nothing that acts on
+-- the server before a client could discard it.
+\set quinn_phone '''5555555555555555555555555555555555555555555555555555555555555555'''
+
+begin;
+update public.quotas set value = 1000000 where name in ('account_bytes', 'accounts_per_workspace');
+insert into auth.users (id) values (:quinn) on conflict do nothing;
+select pg_temp.act_as(:olga);
+insert into public.sync_rows (workspace_id, record_id, epoch, ciphertext)
+values (:team, repeat('7', 32), 0, decode(repeat('ab', 41), 'hex'));
+select public.admit_member(:team, :quinn_phone, :quinn::uuid, false, false);
+select pg_temp.check(
+  (select not can_write and not can_manage from public.workspace_accounts
+   where workspace_id = :team and user_id = :quinn::uuid),
+  'an account admitted to read neither writes nor manages'
+);
+commit;
+
+begin;
+select pg_temp.act_as(:quinn);
+select pg_temp.check(
+  public.is_workspace_account(:team) and not public.writes_workspace(:team)
+    and (select count(*) from public.sync_rows where workspace_id = :team) = 1,
+  'a reading account reads the workspace'
+);
+select pg_temp.refused(format($q$
+  insert into public.sync_rows (workspace_id, record_id, epoch, ciphertext, supersedes)
+  values (%L, repeat('7', 32), 0, decode(repeat('00', 41), 'hex'), 9223372036854775807)
+$q$, :team));
+select pg_temp.refused(format($q$ select public.reserve_blob_upload(%L, 'blob', 10) $q$, :team));
+select pg_temp.refused(format($q$
+  insert into public.membership_records (workspace_id, sequence, record) values (%L, 0, '\x01')
+$q$, :team));
+commit;
+
+begin;
+select pg_temp.check(
+  (select count(*) from public.sync_rows where workspace_id = :team) = 1,
+  'adversary: a reading account compacts away no revision, uploads and logs nothing'
+);
+commit;
+
+begin;
+select pg_temp.act_as(:olga);
+select public.admit_member(:team, repeat('6', 64), :quinn::uuid, false, true);
+commit;
+
+begin;
+select pg_temp.act_as(:quinn);
+select pg_temp.check(
+  public.writes_workspace(:team) and public.reserve_blob_upload(:team, 'blob', 10),
+  'admitting a writing device of the same account lets it write'
+);
+commit;
+
+begin;
+select pg_temp.act_as(:olga);
+select public.admit_member(:team, repeat('8', 64), :mallory::uuid, true, false);
+select pg_temp.check(
+  (select can_write and can_manage from public.workspace_accounts
+   where workspace_id = :team and user_id = :mallory::uuid),
+  'a managing account always writes'
+);
 commit;

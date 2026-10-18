@@ -239,6 +239,7 @@ final class SyncEngine {
       id,
       account: account,
       manages: role.managesMembers,
+      writes: role.writesContent,
     );
     final KeyBundle bundle;
     if (_ledger.workspace.isMember(id)) {
