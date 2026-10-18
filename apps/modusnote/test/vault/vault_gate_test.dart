@@ -107,6 +107,8 @@ void main() {
 
     expect(warning, findsOneWidget);
     expect(find.text('Se perdi la passphrase, perdi le note'), findsOneWidget);
+    expect(find.byKey(const ValueKey('legal-terms')), findsOneWidget);
+    expect(find.byKey(const ValueKey('legal-privacy')), findsOneWidget);
     await tester.enterText(passphraseField, 'frase lunga');
     await tester.enterText(confirmField, 'frase lunga');
     expect(tester.widget<FilledButton>(createButton).onPressed, isNull);
