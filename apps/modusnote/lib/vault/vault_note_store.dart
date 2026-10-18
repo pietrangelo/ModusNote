@@ -81,8 +81,22 @@ final class VaultNoteStore extends ChangeNotifier implements NoteStore {
   /// when it is next saved.
   int get unreadable => _unreadable;
 
+  // Read many times per frame (once per link in the open note): kept until
+  // the notes change.
+  List<DynamicEntry>? _entries;
+  Map<BlobId, KeyedImage>? _images;
+
+  void _notesChanged() {
+    _entries = null;
+    _images = null;
+  }
+
   @override
-  List<DynamicEntry> get entries => NoteOrder.library(_notes.values);
+  List<DynamicEntry> get entries =>
+      _entries ??= List.unmodifiable(NoteOrder.library(_notes.values));
+
+  @override
+  DynamicEntry? entryOf(EntryId id) => NoteOrder.entryOf(_notes[id]);
 
   @override
   List<RecordedNote> get trash => NoteOrder.trash(_notes.values);
@@ -103,10 +117,15 @@ final class VaultNoteStore extends ChangeNotifier implements NoteStore {
 
   @override
   KeyedImage? imageOf(BlobId id) {
-    for (final note in _notes.values) {
-      if (note.images[id] case final image?) return image;
+    if (_images == null) {
+      final images = _images = {};
+      for (final note in _notes.values) {
+        for (final MapEntry(:key, :value) in note.images.entries) {
+          images.putIfAbsent(key, () => value);
+        }
+      }
     }
-    return null;
+    return _images![id];
   }
 
   @override
@@ -178,6 +197,7 @@ final class VaultNoteStore extends ChangeNotifier implements NoteStore {
     // devices sealed, and no stale copy of the note can bring it back.
     await _engine.write(_recordOf(id), const RevisionDeleted());
     _notes.remove(id);
+    _notesChanged();
     notifyListeners();
     onWrite?.call();
     final orphaned = _orphaned([note]);
@@ -242,6 +262,7 @@ final class VaultNoteStore extends ChangeNotifier implements NoteStore {
       RevisionContents(RecordedNoteCodec.encode(note)),
     );
     _notes[note.entry.id] = note;
+    _notesChanged();
     notifyListeners();
     onWrite?.call();
   }
@@ -322,6 +343,7 @@ final class VaultNoteStore extends ChangeNotifier implements NoteStore {
         _notes[note.entry.id] = note;
       }
     }
+    _notesChanged();
   }
 
   RecordedNote? _decode(List<int> bytes) {

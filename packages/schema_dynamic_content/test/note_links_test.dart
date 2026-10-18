@@ -1,6 +1,8 @@
 import 'package:glados/glados.dart';
 import 'package:schema_dynamic_content/schema_dynamic_content.dart';
 
+import 'fixtures.dart';
+
 void main() {
   final a = EntryId('0123456789abcdef0123456789abcdef');
   final b = EntryId('fedcba9876543210fedcba9876543210');
@@ -44,5 +46,20 @@ void main() {
     label,
   ) {
     expect(NoteLinks.targets([TextValue(NoteLinks.markdown(label, b))]), [b]);
+  });
+
+  test('of reads an entry once and an edited entry again', () {
+    DynamicEntry note(String content) => valueOf(
+      DynamicEntry.create(
+        schema: SeedSchemas.quickNoteV1,
+        id: EntryId('n1'),
+        attributes: {key('content'): TextValue(content)},
+        at: at,
+      ),
+    );
+    final first = note(NoteLinks.markdown('A', a));
+    expect(NoteLinks.of(first), [a]);
+    expect(identical(NoteLinks.of(first), NoteLinks.of(first)), isTrue);
+    expect(NoteLinks.of(note(NoteLinks.markdown('B', b))), [b]);
   });
 }

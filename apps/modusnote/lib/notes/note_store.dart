@@ -12,6 +12,9 @@ abstract interface class NoteStore implements Listenable {
   /// Notes outside the trash, most recently changed first.
   List<DynamicEntry> get entries;
 
+  /// The note [id] among [entries]: null for one in the trash or gone.
+  DynamicEntry? entryOf(EntryId id);
+
   /// Notes in the trash, most recently trashed first. They keep their
   /// recordings until they are deleted for good.
   List<RecordedNote> get trash;
@@ -90,6 +93,9 @@ final class InMemoryNoteStore extends ChangeNotifier implements NoteStore {
 
   @override
   List<DynamicEntry> get entries => NoteOrder.library(_notes.values);
+
+  @override
+  DynamicEntry? entryOf(EntryId id) => NoteOrder.entryOf(_notes[id]);
 
   @override
   List<RecordedNote> get trash => NoteOrder.trash(_notes.values);
@@ -222,6 +228,10 @@ abstract final class NoteOrder {
     for (final note in notes)
       if (!note.isTrashed) note.entry,
   ]..sort((a, b) => b.audit.updatedAt.compareTo(a.audit.updatedAt));
+
+  /// The entry of [note] when it is in the library.
+  static DynamicEntry? entryOf(RecordedNote? note) =>
+      note == null || note.isTrashed ? null : note.entry;
 
   /// Notes in the trash, most recently trashed first.
   static List<RecordedNote> trash(Iterable<RecordedNote> notes) => [

@@ -174,6 +174,24 @@ void main() {
     expect(find.byType(ImageViewer), findsOneWidget);
   });
 
+  testWidgets('typing above a picture keeps it, without drawing it again', (
+    tester,
+  ) async {
+    await openEditor(tester);
+    await tester.enterText(textInput('body'), 'Il palco');
+    await insertPicture(tester);
+    final controller = controllerOf(tester);
+    final drawn = tester.element(find.byType(InlinePicture));
+
+    controller.value = TextEditingValue(
+      text: 'Prima. ${controller.text}',
+      selection: const TextSelection.collapsed(offset: 7),
+    );
+    await settleFiles(tester);
+
+    expect(tester.element(find.byType(InlinePicture)), same(drawn));
+  });
+
   testWidgets('the cursor in its Markdown shows the source to edit the '
       'caption', (tester) async {
     await openEditor(tester);

@@ -84,7 +84,7 @@ void main() {
     expect(find.text('Capitolo'), findsWidgets);
     await tester.enterText(textInput('title'), 'Il ritorno');
     await tester.enterText(textInput('body'), 'Tornò. Era *tardi*.');
-    await tester.pump();
+    await tester.pump(NoteEditorScreen.wordCountDelay);
     expect(find.text('3 parole'), findsOneWidget);
     await tester.tap(find.byType(BackButton));
     await tester.pumpAndSettle();

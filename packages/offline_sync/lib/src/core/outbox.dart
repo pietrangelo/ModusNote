@@ -13,6 +13,12 @@ final class Outbox {
 
   static final empty = Outbox._(const []);
 
+  /// The rows in write order, each record keeping only its last row, in the
+  /// place of its first.
+  factory Outbox.of(Iterable<SealedRow> written) => Outbox._([
+    ...{for (final row in written) row.record: row}.values,
+  ]);
+
   final List<SealedRow> pending;
 
   /// Only the latest revision of a record needs pushing: it carries the

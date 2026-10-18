@@ -90,7 +90,7 @@ void main() {
         textInput('page'),
         'Una giornata **lunga** al mare',
       );
-      await tester.pump();
+      await tester.pump(NoteEditorScreen.wordCountDelay);
       expect(
         tester
             .widget<Text>(
@@ -355,7 +355,7 @@ void main() {
       await library(tester, [
         page(DateValue(2024, 10, 15), title: 'Due anni fa'),
       ]);
-      await run(tester, 'un anno fa oggi');
+      await run(tester, 'in questo giorno');
       expect(
         find.descendant(
           of: find.byType(NoteEditorScreen),

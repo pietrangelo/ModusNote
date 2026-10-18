@@ -127,7 +127,7 @@ void main() {
       await signIn(tester);
       await typeLink(tester, 'k7mq4 xt9ab');
       expect(
-        find.text('In attesa che l\'altro dispositivo faccia entrare questo…'),
+        find.textContaining('In attesa che l\'altro dispositivo dia accesso'),
         findsOneWidget,
       );
 
@@ -179,12 +179,7 @@ void main() {
       await typeLink(tester, 'K7MQ4-XT9AC');
       await tester.pumpAndSettle();
 
-      expect(
-        find.text(
-          'Codice errato o scaduto. Controlla quello sull\'altro dispositivo.',
-        ),
-        findsOneWidget,
-      );
+      expect(find.textContaining('Codice errato o scaduto.'), findsOneWidget);
       expect(await keeperOn(browserDb).exists, isFalse);
       expect(server.answered, isEmpty);
     });
@@ -207,6 +202,16 @@ void main() {
         ),
         findsOneWidget,
       );
+      // Only the code is wrong, so the passphrase stays to fix it; the
+      // account in use is on screen.
+      final passphrase = tester.widget<EditableText>(
+        find.descendant(
+          of: find.byKey(const ValueKey('passphrase')),
+          matching: find.byType(EditableText),
+        ),
+      );
+      expect(passphrase.controller.text, 'frase del browser');
+      expect(find.text('Accesso effettuato come $email'), findsOneWidget);
     });
 
     testWidgets('going back leaves a device with no vault, signed out', (
