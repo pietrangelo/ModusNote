@@ -837,6 +837,161 @@ void main() {
       );
     });
 
+    SealedRow signedBy(Device device, RecordRevision revision) => SealedRow(
+      record: revision.record,
+      ciphertext: device.sealDirectly(
+        SignedRevision(
+          revision: revision,
+          signature: identities.sign(
+            revision.signable,
+            signer: device.identity,
+          ),
+        ),
+      ),
+    );
+
+    VersionVector vector(Map<MemberId, int> counters) {
+      final members = counters.keys.toList()
+        ..sort((x, y) => x.hex.compareTo(y.hex));
+      final bytes = BytesBuilder()..add([0, members.length]);
+      for (final member in members) {
+        bytes
+          ..add(member.signingKey.bytes)
+          ..add(
+            Uint8List(4)..buffer.asByteData().setUint32(0, counters[member]!),
+          );
+      }
+      return VersionVector.parse(bytes.takeBytes());
+    }
+
+    test(
+      'a counter near the wire limit is refused, so the record stays editable',
+      () async {
+        await bob.engine.sync();
+        server.rows.add(
+          signedBy(
+            bob,
+            RecordRevision(
+              record: note,
+              workspace: workspaceId,
+              version: vector({alice.id: 0xffffffff, bob.id: 1}),
+              author: bob.id,
+              writtenAt: clock.now(),
+              ledgerHead: bob.engine.ledgerHead,
+              body: RevisionContents(text('trappola')),
+            ),
+          ),
+        );
+
+        final report = await alice.engine.sync();
+        await alice.engine.write(note, RevisionContents(text('ancora mia')));
+        await alice.engine.sync();
+        await bob.engine.sync();
+
+        expect(report.rejected, 1);
+        expect(await alice.read(note), 'ancora mia');
+        expect(await bob.read(note), 'ancora mia');
+      },
+    );
+
+    test('a vector naming someone who was never a member is refused', () async {
+      final stranger = identities.generateIdentity();
+      addTearDown(stranger.dispose);
+      server.rows.add(
+        signedBy(
+          bob,
+          RecordRevision(
+            record: note,
+            workspace: workspaceId,
+            version: VersionVector.empty
+                .increment(bob.id)
+                .increment(MemberId.of(stranger.publicIdentity)),
+            author: bob.id,
+            writtenAt: clock.now(),
+            ledgerHead: bob.engine.ledgerHead,
+            body: RevisionContents(text('gonfiata')),
+          ),
+        ),
+      );
+
+      final report = await alice.engine.sync();
+
+      expect(report.rejected, 1);
+      expect(await alice.read(note), isNull);
+    });
+
+    test(
+      'a viewer citing a log position nobody has cannot stop the sync',
+      () async {
+        final demoted = administration.changeRole(
+          alice.engine.ledger,
+          owner: alice.identity,
+          member: bob.id,
+          role: Role.viewer,
+        );
+        publish(demoted);
+        await bob.engine.sync();
+        server.rows.add(
+          signedBy(
+            bob,
+            RecordRevision(
+              record: note,
+              workspace: workspaceId,
+              version: VersionVector.empty.increment(bob.id),
+              author: bob.id,
+              writtenAt: clock.now(),
+              ledgerHead: LedgerHead(
+                sequence: 99,
+                signature: identities.sign(Uint8List(1), signer: bob.identity),
+              ),
+              body: RevisionContents(text('blocco')),
+            ),
+          ),
+        );
+        await alice.engine.write(other, RevisionContents(text('dopo')));
+        await alice.engine.sync();
+
+        final report = await bob.engine.sync();
+
+        expect(report.rejected, 1);
+        expect(await bob.read(other), 'dopo');
+        expect(await bob.read(note), isNull);
+      },
+    );
+
+    test('a key bundle seen before its record is picked up later', () async {
+      final carol = identities.generateIdentity();
+      addTearDown(carol.dispose);
+      publish(
+        administration.invite(
+          alice.engine.ledger,
+          alice.keyring,
+          owner: alice.identity,
+          invitee: carol.publicIdentity,
+          role: Role.viewer,
+        ),
+      );
+      await alice.engine.sync();
+      await bob.engine.sync();
+      final before = server.membershipLog.length;
+      publish(
+        administration.revoke(
+          alice.engine.ledger,
+          alice.keyring,
+          owner: alice.identity,
+          member: MemberId.of(carol.publicIdentity),
+        ),
+      );
+
+      // Bob reads the log just before the removal and the bundles after it.
+      server.withholdMembershipAfter = before;
+      await bob.engine.sync();
+      server.withholdMembershipAfter = null;
+      await bob.engine.sync();
+
+      expect(bob.keyring.epochs, contains(KeyEpoch(1)));
+    });
+
     test(
       'garbage rows are counted and skipped, never crash the sync',
       () async {
