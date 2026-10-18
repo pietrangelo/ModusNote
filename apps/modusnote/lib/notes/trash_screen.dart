@@ -120,7 +120,12 @@ class TrashScreen extends StatelessWidget {
                   child: ConstrainedBox(
                     constraints: const BoxConstraints(maxWidth: Extents.xxl),
                     child: ListView.builder(
-                      padding: const EdgeInsets.all(Spacing.m),
+                      // Edge to edge: the end scrolls clear of the
+                      // system navigation bar.
+                      padding: const EdgeInsets.all(Spacing.m).copyWith(
+                        bottom:
+                            Spacing.m + MediaQuery.paddingOf(context).bottom,
+                      ),
                       itemCount: trash.length,
                       itemBuilder: (context, index) {
                         final note = trash[index];

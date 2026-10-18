@@ -996,11 +996,15 @@ class _NoteLibraryScreenState extends State<NoteLibraryScreen> {
                 )
               else
                 SliverPadding(
-                  padding: const EdgeInsets.fromLTRB(
+                  // Room for the button, which sits above the system
+                  // navigation bar.
+                  padding: EdgeInsets.fromLTRB(
                     Spacing.m,
                     0,
                     Spacing.m,
-                    Spacing.xxl,
+                    Spacing.xxl +
+                        Spacing.xl +
+                        MediaQuery.paddingOf(context).bottom,
                   ),
                   sliver: SliverGrid.builder(
                     gridDelegate: _CardGridDelegate(

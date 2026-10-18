@@ -115,9 +115,14 @@ class CategoriesScreen extends StatelessWidget {
                   child: ConstrainedBox(
                     constraints: const BoxConstraints(maxWidth: Extents.xxl),
                     child: ListView(
-                      padding: const EdgeInsets.only(
+                      // Room for the button, which sits above the system
+                      // navigation bar.
+                      padding: EdgeInsets.only(
                         top: Spacing.s,
-                        bottom: Spacing.xxl + Spacing.xl,
+                        bottom:
+                            Spacing.xxl +
+                            Spacing.xl +
+                            MediaQuery.paddingOf(context).bottom,
                       ),
                       children: [
                         for (final category in ordered)
