@@ -91,7 +91,8 @@ test("blobs go first, then the account, then any blob left behind", async () => 
     "r2 GET", "r2 DELETE", "r2 DELETE",
   ]);
   const deleted = r2Calls.filter((call) => call.method === "DELETE").map((call) => call.url.pathname);
-  assert.deepEqual(deleted.slice(0, 2), [`/modus-blobs/${solo}/a.enc`, `/modus-blobs/${solo}/b.enc`]);
+  // The deletes of one page run in parallel, so their order is not fixed.
+  assert.deepEqual(deleted.slice(0, 2).sort(), [`/modus-blobs/${solo}/a.enc`, `/modus-blobs/${solo}/b.enc`]);
   const list = r2Calls[0].url;
   assert.equal(list.pathname, "/modus-blobs");
   assert.equal(list.searchParams.get("prefix"), `${solo}/`);
