@@ -151,8 +151,11 @@ class _JoinVaultScreenState extends State<JoinVaultScreen> {
       ServerUnavailableException() => _Problem.unreachable,
       SyncServerRejectedException() => _Problem.refused,
       TamperedWorkspaceDataException() ||
-      MalformedSyncDataException() => _Problem.untrusted,
-      _ => throw error,
+      MalformedSyncDataException() ||
+      MalformedWorkspaceDataException() ||
+      LedgerRollbackException() => _Problem.untrusted,
+      // Anything else still stops the wait, never a spinner forever.
+      _ => _Problem.refused,
     };
     _next?.cancel();
     _request?.cancel();

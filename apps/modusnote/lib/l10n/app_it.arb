@@ -125,7 +125,7 @@
   "cloudStateSynced": "Sincronizzato alle {time}",
   "cloudStateOffline": "Il server non è raggiungibile: le modifiche restano sul dispositivo e partiranno più tardi.",
   "cloudStateRefused": "Il server ha rifiutato la sincronizzazione. Prova a uscire e ad accedere di nuovo.",
-  "cloudStateFull": "Questo vault ha esaurito il suo spazio sul server. Elimina le note che non ti servono più, o registrazioni e immagini troppo grandi, poi sincronizza di nuovo.",
+  "cloudStateFull": "Questo vault ha esaurito il suo spazio sul server. Elimina per sempre le note che non ti servono più (spostarle nel cestino non libera spazio, svuotarlo sì), poi sincronizza di nuovo.",
   "cloudStateUntrusted": "Il server ha inviato dati che non superano la verifica, quindi non è stato applicato nulla.",
   "cloudStateRemoved": "Un altro dispositivo ha rimosso questo dal vault. Le note che hai qui restano leggibili, ma non si sincronizzano più e non si possono modificare.",
   "membersAction": "Membri del vault",
