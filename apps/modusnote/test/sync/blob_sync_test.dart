@@ -342,6 +342,8 @@ void main() {
     });
 
     test('a sweep deletes old blobs no note references, once a day', () async {
+      // A day after the sweep of setUp, remembered across unlocks.
+      phone.now = phone.now.add(const Duration(days: 1));
       // Left by a device that deleted a note before this feature.
       remote.objects[BlobId('left-behind')] = Uint8List(41);
       remote.storedAt[BlobId('left-behind')] = DateTime.utc(2026, 10, 1);
@@ -358,11 +360,12 @@ void main() {
       expect(remote.objects.keys, {take.id, BlobId('just-uploaded')});
       expect(remote.listings, listings + 1);
 
+      // A new unlock remembers the last sweep.
       final later = phone.attach(store);
       await later.afterSync();
       phone.now = phone.now.add(const Duration(hours: 2));
       await later.afterSync();
-      expect(remote.listings, listings + 2, reason: 'once per day');
+      expect(remote.listings, listings + 1, reason: 'once per day');
 
       phone.now = phone.now.add(const Duration(days: 1));
       await later.afterSync();

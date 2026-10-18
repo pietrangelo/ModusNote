@@ -40,6 +40,10 @@ final class BlobSync {
   /// the server.
   static const releasedSetting = 'sync.blobs-released';
 
+  /// When this device last swept the server, so a new unlock does not
+  /// list the workspace again.
+  static const sweptSetting = 'sync.blobs-swept';
+
   final BlobReplication _replication;
   final BlobPruning? _pruning;
   final Iterable<KeyedBlob> Function() _blobs;
@@ -51,7 +55,6 @@ final class BlobSync {
   final Duration _sweepEvery;
   Future<Set<String>>? _sent;
   Future<Set<String>>? _released;
-  DateTime? _swept;
 
   /// Runs after each sync that reached the server.
   Future<void> afterSync() async {
@@ -115,11 +118,14 @@ final class BlobSync {
       await _forget(sent, deleted);
     }
     final now = _clock();
-    if (_swept case final swept? when now.difference(swept) < _sweepEvery) {
-      return;
-    }
+    final since = now.difference(await _sweptAt() ?? DateTime(0));
+    // A clock set back counts as due, so a wrong date never stops sweeps.
+    if (!since.isNegative && since < _sweepEvery) return;
     final deleted = await pruning.sweep(referenced: referenced, now: now);
-    _swept = now;
+    await _save(
+      sweptSetting,
+      utf8.encode('${now.toUtc().microsecondsSinceEpoch}'),
+    );
     await _forget(sent, deleted);
   }
 
@@ -143,6 +149,17 @@ final class BlobSync {
   Future<Set<String>> _sentIds() => _sent ??= _restore(sentSetting);
 
   Future<Set<String>> _releasedIds() => _released ??= _restore(releasedSetting);
+
+  /// A damaged value counts as never swept: one listing too many.
+  Future<DateTime?> _sweptAt() async {
+    final stored = await _load(sweptSetting);
+    final micros = stored == null
+        ? null
+        : int.tryParse(utf8.decode(stored, allowMalformed: true));
+    return micros == null
+        ? null
+        : DateTime.fromMicrosecondsSinceEpoch(micros, isUtc: true);
+  }
 
   Future<Set<String>> _restore(String name) async {
     final stored = await _load(name);
