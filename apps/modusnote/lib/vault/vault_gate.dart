@@ -758,7 +758,12 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
   }
 
   void _onPointer(PointerEvent event) {
-    if (event is PointerDownEvent) _watched?.touch();
+    // Reading a long note with a wheel or trackpad is activity too.
+    if (event is PointerDownEvent ||
+        event is PointerScrollEvent ||
+        event is PointerPanZoomUpdateEvent) {
+      _watched?.touch();
+    }
   }
 
   bool _onKey(KeyEvent event) {

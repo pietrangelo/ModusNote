@@ -554,7 +554,7 @@
   "@cloudStateRefused": {
     "description": "Sync sheet: the server rejected a request."
   },
-  "cloudStateFull": "This vault has reached its space on the server. Delete notes you no longer need, or recordings and images that are too large, then sync again.",
+  "cloudStateFull": "This vault has reached its space on the server. Delete forever the notes you no longer need (moving them to the trash frees nothing, emptying it does), then sync again.",
   "@cloudStateFull": {
     "description": "Sync sheet: the server refused because the workspace or a blob is over its storage quota."
   },

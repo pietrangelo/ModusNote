@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:identity_cryptography/identity_cryptography.dart';
@@ -235,6 +236,21 @@ void main() {
       for (var i = 0; i < 3; i++) {
         await tester.pump(const Duration(seconds: 50));
         await tester.tapAt(const Offset(1, 300));
+      }
+      await tester.pump();
+
+      expect(find.byType(NoteLibraryScreen), findsOneWidget);
+    });
+
+    testWidgets('scrolling with a wheel keeps the vault open', (tester) async {
+      await pumpApp(tester, gateOn(database, autoLock: quickLock));
+      await create(tester, 'frase lunga', 'frase lunga');
+
+      for (var i = 0; i < 3; i++) {
+        await tester.pump(const Duration(seconds: 50));
+        final mouse = TestPointer(1, PointerDeviceKind.mouse);
+        await tester.sendEventToBinding(mouse.hover(const Offset(1, 300)));
+        await tester.sendEventToBinding(mouse.scroll(const Offset(0, 20)));
       }
       await tester.pump();
 
