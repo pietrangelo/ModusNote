@@ -20,22 +20,27 @@ final class EntrySearch {
 
   final List<String> _terms;
 
+  /// Entries are immutable, so each is folded once, not on every keystroke.
+  static final _haystacks = Expando<String>();
+
   bool matches(DynamicEntry entry) {
     if (_terms.isEmpty) return true;
-    final haystack = [
-      for (final value in entry.attributes.values)
-        ...switch (value) {
-          TextValue(:final text) => [text],
-          TagListValue(:final tags) => tags,
-          ChoiceValue(:final option) => [option],
-          ChecklistValue(:final items) => [for (final i in items) i.text],
-          // Captions and titles, not addresses: what the person wrote.
-          AttachmentsValue(:final items) => [for (final i in items) i.text],
-          _ => const <String>[],
-        },
-    ].map(fold).join('\n');
+    final haystack = _haystacks[entry] ??= _haystackOf(entry);
     return _terms.every(haystack.contains);
   }
+
+  static String _haystackOf(DynamicEntry entry) => [
+    for (final value in entry.attributes.values)
+      ...switch (value) {
+        TextValue(:final text) => [text],
+        TagListValue(:final tags) => tags,
+        ChoiceValue(:final option) => [option],
+        ChecklistValue(:final items) => [for (final i in items) i.text],
+        // Captions and titles, not addresses: what the person wrote.
+        AttachmentsValue(:final items) => [for (final i in items) i.text],
+        _ => const <String>[],
+      },
+  ].map(fold).join('\n');
 
   /// Lower case without the accents of Latin scripts, so "citta" finds
   /// "Città" and the other way round.

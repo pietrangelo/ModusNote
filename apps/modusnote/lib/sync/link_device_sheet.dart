@@ -300,16 +300,19 @@ class _CodeAdmissionPanelState extends State<CodeAdmissionPanel> {
           ),
         ],
         _Stage.failed => [
-          Text(
-            switch (_problem!) {
-              _Problem.expired => l10n.linkDeviceExpired,
-              _Problem.unreachable => l10n.cloudUnreachable,
-              _Problem.refused => texts.refused,
-              _Problem.untrusted => texts.untrusted,
-            },
-            key: const ValueKey('link-problem'),
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: theme.colorScheme.error,
+          Semantics(
+            liveRegion: true,
+            child: Text(
+              switch (_problem!) {
+                _Problem.expired => l10n.linkDeviceExpired,
+                _Problem.unreachable => l10n.cloudUnreachable,
+                _Problem.refused => texts.refused,
+                _Problem.untrusted => texts.untrusted,
+              },
+              key: const ValueKey('link-problem'),
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.error,
+              ),
             ),
           ),
           const SizedBox(height: Spacing.l),

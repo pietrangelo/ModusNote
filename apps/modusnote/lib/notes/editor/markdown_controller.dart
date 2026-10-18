@@ -25,12 +25,20 @@ class MarkdownEditingController extends TextEditingController {
   List<MdRun> _runs = const [];
   List<InlineImage> _pictures = const [];
 
+  // A long note has thousands of runs but few distinct marks: each style
+  // is built once until the field's style or the palette changes.
+  final _styles = <(int, bool), TextStyle>{};
+  TextStyle? _styledBase;
+  ModusPalette? _styledPalette;
+
   /// The most pictures drawn in one text, as many as a page can attach.
   static const maxPictures = 34;
 
   /// Draws a picture of the text; null where pictures cannot be shown,
-  /// which leaves their Markdown as it is.
-  Widget Function(InlineImage picture)? pictureBuilder;
+  /// which leaves their Markdown as it is. [occurrence] counts the earlier
+  /// pictures of the same blob, so a picture keeps who it is while the
+  /// text above it changes.
+  Widget Function(InlineImage picture, int occurrence)? pictureBuilder;
 
   /// Whether the field has the keyboard: only then does the cursor open a
   /// picture's Markdown.
@@ -79,15 +87,21 @@ class MarkdownEditingController extends TextEditingController {
         : TextRange.empty;
     final base = style ?? const TextStyle();
     final palette = ModusPalette.of(context);
+    if (base != _styledBase || palette != _styledPalette) {
+      _styles.clear();
+      _styledBase = base;
+      _styledPalette = palette;
+    }
     final shown = _shown();
     final builder = pictureBuilder;
     final children = <InlineSpan>[];
+    final seen = <BlobId, int>{};
     var next = 0;
     for (final run in _runs) {
       for (final (start, end, underline) in _split(run, composing)) {
         TextSpan piece(int from, int to) => TextSpan(
           text: text.substring(from, to),
-          style: MarkdownStyles.of(
+          style: _styles[(run.marks, underline)] ??= MarkdownStyles.of(
             base,
             run.marks,
             palette,
@@ -116,7 +130,14 @@ class MarkdownEditingController extends TextEditingController {
               at == picture.start
                   ? WidgetSpan(
                       alignment: PlaceholderAlignment.middle,
-                      child: builder(picture),
+                      child: builder(
+                        picture,
+                        seen.update(
+                          picture.blob,
+                          (n) => n + 1,
+                          ifAbsent: () => 0,
+                        ),
+                      ),
                     )
                   : _nothing,
             );

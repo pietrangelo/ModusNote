@@ -32,7 +32,9 @@ import '../sync/sync_controller.dart';
 import '../theme/golden_ratio.dart';
 import 'auto_lock.dart';
 import 'join_vault.dart';
+import 'passphrase_field.dart';
 import 'passphrase_warning.dart';
+import 'unreadable_notice.dart';
 import 'vault_note_store.dart';
 import 'vault_shelf_gate.dart';
 import '../theme/modus_palette.dart';
@@ -192,6 +194,7 @@ enum _Problem {
   passkeyCancelled,
   passkeyRejected,
   passkeyUnsupported,
+  unexpected,
 }
 
 class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
@@ -287,8 +290,9 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
     });
     // Let the progress indicator paint before Argon2id holds the isolate.
     await Future<void>.delayed(Duration.zero);
+    UnlockedVault? opened;
     try {
-      final vault = await opening();
+      final vault = opened = await opening();
       final shared = widget.account == null
           ? null
           : widget.sharedBlobsFor?.call(vault.engine);
@@ -352,6 +356,11 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
       _fail(_Problem.passkeyRejected);
     } on NoPasskeyException {
       _fail(_Problem.passkeyRejected);
+    } on Object {
+      // A damaged database or an app older than the vault: never a silent
+      // lock screen, and never keys left behind it.
+      opened?.lock();
+      _fail(_Problem.unexpected);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -789,6 +798,7 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
         child: NoteLibraryScreen(
           schemas: widget.catalog.current,
           store: store,
+          notice: UnreadableNotice(store: store),
           cloud: sync == null
               ? null
               : CloudButton(
@@ -838,6 +848,7 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
       _Problem.passkeyCancelled => l10n.passkeyCancelled,
       _Problem.passkeyRejected => l10n.passkeyRejected,
       _Problem.passkeyUnsupported => l10n.passkeyUnsupported,
+      _Problem.unexpected => l10n.vaultOpenFailed,
     };
     final submit = _busy || (creating && !_acknowledged)
         ? null
@@ -882,7 +893,7 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
                       ),
                     ],
                     const SizedBox(height: Spacing.xl),
-                    _PassphraseField(
+                    PassphraseField(
                       key: const ValueKey('passphrase'),
                       controller: _passphrase,
                       label: l10n.passphraseLabel,
@@ -891,7 +902,7 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
                     ),
                     if (creating) ...[
                       const SizedBox(height: Spacing.m),
-                      _PassphraseField(
+                      PassphraseField(
                         key: const ValueKey('passphrase-confirm'),
                         controller: _confirmation,
                         label: l10n.passphraseConfirmLabel,
@@ -908,13 +919,28 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
                     ],
                     if (problem != null) ...[
                       const SizedBox(height: Spacing.m),
-                      Text(
-                        problem,
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: theme.colorScheme.error,
+                      Semantics(
+                        liveRegion: true,
+                        child: Text(
+                          problem,
+                          key: const ValueKey('vault-problem'),
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: theme.colorScheme.error,
+                          ),
+                          textAlign: TextAlign.center,
                         ),
-                        textAlign: TextAlign.center,
                       ),
+                      if (_problem == _Problem.wrong) ...[
+                        const SizedBox(height: Spacing.s),
+                        Text(
+                          l10n.passphraseForgotten,
+                          key: const ValueKey('passphrase-forgotten'),
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: ModusPalette.of(context).muted,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
                     ],
                     const SizedBox(height: Spacing.l),
                     FilledButton(
@@ -965,32 +991,4 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
       ),
     );
   }
-}
-
-class _PassphraseField extends StatelessWidget {
-  const _PassphraseField({
-    required this.controller,
-    required this.label,
-    required this.enabled,
-    required this.onSubmitted,
-    super.key,
-  });
-
-  final TextEditingController controller;
-  final String label;
-  final bool enabled;
-  final VoidCallback? onSubmitted;
-
-  @override
-  Widget build(BuildContext context) => TextField(
-    controller: controller,
-    enabled: enabled,
-    obscureText: true,
-    autocorrect: false,
-    enableSuggestions: false,
-    keyboardType: TextInputType.visiblePassword,
-    autofillHints: const [AutofillHints.password],
-    decoration: InputDecoration(labelText: label),
-    onSubmitted: onSubmitted == null ? null : (_) => onSubmitted!(),
-  );
 }

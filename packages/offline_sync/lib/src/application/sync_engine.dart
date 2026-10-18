@@ -120,8 +120,10 @@ final class SyncEngine {
   /// Every record that currently has contents; deleted ones are left out.
   Future<Map<RecordId, RevisionContents>> records() async {
     final live = <RecordId, RevisionContents>{};
-    for (final id in await _store.recordIds()) {
-      if (await read(id) case final RevisionContents contents) {
+    for (final MapEntry(key: id, value: sealed)
+        in (await _store.loadAll()).entries) {
+      if (_openLocal(id, sealed).current.revision.body
+          case final RevisionContents contents) {
         live[id] = contents;
       }
     }
@@ -166,7 +168,7 @@ final class SyncEngine {
           : unreadable - 1,
     );
     await _saveLocal(LocalRecord(current: signed, seen: version));
-    await _store.saveOutbox((await _store.loadOutbox()).enqueue(row));
+    await _store.queue(row);
   }
 
   /// The largest time the wire carries (2^53 - 1 µs, in 2255).
@@ -423,7 +425,7 @@ final class SyncEngine {
     if (rows.isEmpty) return 0;
     await _server.push(_workspace, rows);
     // Re-read: an edit made while the push was in flight stays queued.
-    await _store.saveOutbox((await _store.loadOutbox()).acknowledge(rows));
+    await _store.unqueue(rows);
     return rows.length;
   }
 
@@ -606,11 +608,13 @@ final class SyncEngine {
 
   Future<LocalRecord?> _loadLocal(RecordId id) async {
     final sealed = await _store.load(id);
-    if (sealed == null) return null;
-    return LocalRecord.parse(
-      _envelopes.open(sealed, key: _localKey, associatedData: _localSlot(id)),
-    );
+    return sealed == null ? null : _openLocal(id, sealed);
   }
+
+  LocalRecord _openLocal(RecordId id, EncryptedEnvelope sealed) =>
+      LocalRecord.parse(
+        _envelopes.open(sealed, key: _localKey, associatedData: _localSlot(id)),
+      );
 
   Future<void> _saveLocal(LocalRecord record) async {
     final id = record.current.revision.record;

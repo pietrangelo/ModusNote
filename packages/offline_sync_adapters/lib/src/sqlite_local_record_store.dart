@@ -36,13 +36,15 @@ final class SqliteLocalRecordStore implements LocalRecordStore {
   }
 
   @override
-  Future<List<RecordId>> recordIds() async => [
+  Future<Map<RecordId, EncryptedEnvelope>> loadAll() async => {
     for (final row in _database.select(
-      'SELECT record FROM records WHERE workspace = ?',
+      'SELECT record, envelope FROM records WHERE workspace = ?',
       [_workspace],
     ))
-      RecordId.parse(row['record'] as String),
-  ];
+      RecordId.parse(row['record'] as String): EncryptedEnvelope.parse(
+        row['envelope'] as Uint8List,
+      ),
+  };
 
   @override
   Future<void> save(RecordId id, EncryptedEnvelope sealed) async =>
@@ -53,40 +55,57 @@ final class SqliteLocalRecordStore implements LocalRecordStore {
       );
 
   @override
-  Future<Outbox> loadOutbox() async {
-    final rows = _database.select(
+  Future<Outbox> loadOutbox() async => Outbox.of([
+    for (final row in _database.select(
       'SELECT record, epoch, envelope, supersedes FROM outbox '
       'WHERE workspace = ? ORDER BY position',
       [_workspace],
-    );
-    var outbox = Outbox.empty;
-    for (final row in rows) {
-      outbox = outbox.enqueue(
-        _sealedRow(
-          row['record'] as String,
-          row['epoch'] as int,
-          row['envelope'] as Uint8List,
-          row['supersedes'] as int,
-        ),
+    ))
+      _sealedRow(
+        row['record'] as String,
+        row['epoch'] as int,
+        row['envelope'] as Uint8List,
+        row['supersedes'] as int,
+      ),
+  ]);
+
+  @override
+  Future<void> queue(SealedRow row) async {
+    final values = [
+      row.ciphertext.epoch.value,
+      row.ciphertext.envelope.toBytes(),
+      row.supersedes,
+    ];
+    _transaction(() {
+      // shortcut: scans the workspace's queued rows, no index on record;
+      // add one (schema v6) if outboxes ever grow to thousands of rows.
+      _database.execute(
+        'UPDATE outbox SET epoch = ?, envelope = ?, supersedes = ? '
+        'WHERE workspace = ? AND record = ?',
+        [...values, _workspace, row.record.hex],
       );
-    }
-    return outbox;
+      if (_database.updatedRows > 0) return;
+      _database.execute(
+        'INSERT INTO outbox '
+        '(workspace, position, record, epoch, envelope, supersedes) '
+        'SELECT ?, coalesce(max(position) + 1, 0), ?, ?, ?, ? '
+        'FROM outbox WHERE workspace = ?',
+        [_workspace, row.record.hex, ...values, _workspace],
+      );
+    });
   }
 
   @override
-  Future<void> saveOutbox(Outbox outbox) async {
+  Future<void> unqueue(Iterable<SealedRow> pushed) async {
     _transaction(() {
-      _database.execute('DELETE FROM outbox WHERE workspace = ?', [_workspace]);
-      final insert = _database.prepare(
-        'INSERT INTO outbox '
-        '(workspace, position, record, epoch, envelope, supersedes) '
-        'VALUES (?, ?, ?, ?, ?, ?)',
+      final delete = _database.prepare(
+        'DELETE FROM outbox WHERE workspace = ? AND record = ? '
+        'AND epoch = ? AND envelope = ? AND supersedes = ?',
       );
       try {
-        for (final (position, row) in outbox.pending.indexed) {
-          insert.execute([
+        for (final row in pushed) {
+          delete.execute([
             _workspace,
-            position,
             row.record.hex,
             row.ciphertext.epoch.value,
             row.ciphertext.envelope.toBytes(),
@@ -94,7 +113,7 @@ final class SqliteLocalRecordStore implements LocalRecordStore {
           ]);
         }
       } finally {
-        insert.close();
+        delete.close();
       }
     });
   }

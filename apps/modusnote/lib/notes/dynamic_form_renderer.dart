@@ -703,11 +703,12 @@ class _MarkdownInputState extends State<_MarkdownInput> {
     super.dispose();
   }
 
-  Widget Function(InlineImage)? _pictureBuilder(double width) {
+  Widget Function(InlineImage, int)? _pictureBuilder(double width) {
     final hooks = widget.pictures;
     if (hooks == null) return null;
-    return (picture) => InlinePicture(
-      key: ValueKey('picture-${picture.start}-${picture.blob.value}'),
+    return (picture, occurrence) => InlinePicture(
+      // Not by offset: typing above a picture would remount it.
+      key: ValueKey('picture-${picture.blob.value}-$occurrence'),
       picture: picture,
       size: hooks.imageSize?.call(picture.blob),
       maxWidth: width,
@@ -1209,6 +1210,7 @@ class _RatingInput extends StatelessWidget {
           for (var rating = lowest; rating <= highest; rating++)
             IconButton(
               tooltip: l10n.ratingValue(rating, highest),
+              isSelected: rating == value,
               iconSize: IconSizes.inline,
               color: gold,
               icon: Icon(rating <= current ? Icons.star : Icons.star_border),

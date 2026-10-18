@@ -67,7 +67,7 @@ void main() {
       expect(await reopened.load(other), envelope(3));
     });
 
-    test('lists the ids of its own workspace only', () async {
+    test('loads every record of its own workspace only', () async {
       await store.save(note, envelope(1));
       await store.save(other, envelope(2));
       await SqliteLocalRecordStore(
@@ -75,7 +75,7 @@ void main() {
         workspace: otherWorkspace,
       ).save(note, envelope(3));
 
-      expect(await store.recordIds(), unorderedEquals([note, other]));
+      expect(await store.loadAll(), {note: envelope(1), other: envelope(2)});
     });
 
     test(
@@ -99,7 +99,9 @@ void main() {
 
     test('keeps the order and the exact rows across reopening', () async {
       final outbox = Outbox.empty.enqueue(row(other, 1)).enqueue(row(note, 2));
-      await store.saveOutbox(outbox);
+      for (final queued in outbox.pending) {
+        await store.queue(queued);
+      }
 
       final reopened = reopen();
 
@@ -110,7 +112,9 @@ void main() {
       final outbox = Outbox.empty
           .enqueue(row(note, 1, supersedes: 41))
           .enqueue(row(other, 2));
-      await store.saveOutbox(outbox);
+      for (final queued in outbox.pending) {
+        await store.queue(queued);
+      }
 
       final pending = (await reopen().loadOutbox()).pending;
 
@@ -118,12 +122,23 @@ void main() {
       expect(pending, outbox.pending);
     });
 
-    test('saving replaces the previous outbox entirely', () async {
-      await store.saveOutbox(Outbox.empty.enqueue(row(note, 1)));
-      await store.saveOutbox(Outbox.empty.enqueue(row(other, 2)));
+    test(
+      'a record queued again keeps its place, unqueue keeps newer rows',
+      () async {
+        await store.queue(row(note, 1));
+        await store.queue(row(other, 2));
+        await store.queue(row(note, 3));
+        expect((await store.loadOutbox()).pending, [
+          row(note, 3),
+          row(other, 2),
+        ]);
 
-      expect((await store.loadOutbox()).pending, [row(other, 2)]);
-    });
+        await store.unqueue([row(note, 1), row(other, 2)]);
+        await store.queue(row(note, 4));
+
+        expect((await reopen().loadOutbox()).pending, [row(note, 4)]);
+      },
+    );
   });
 
   group('cursors', () {
@@ -167,7 +182,7 @@ void main() {
 
   group('schema', () {
     test('a version 4 database keeps its queued rows when upgraded', () async {
-      await store.saveOutbox(Outbox.empty.enqueue(row(note, 1)));
+      await store.queue(row(note, 1));
       database
         ..execute('DROP TABLE unreadable_rows')
         ..execute('ALTER TABLE outbox DROP COLUMN supersedes')
@@ -220,7 +235,7 @@ void main() {
     );
 
     test('a corrupted outbox row surfaces as malformed, not a crash', () async {
-      await store.saveOutbox(Outbox.empty.enqueue(row(note, 1)));
+      await store.queue(row(note, 1));
       database.execute('UPDATE outbox SET record = ?', ['not-an-id']);
 
       await expectLater(

@@ -305,7 +305,7 @@ final class FakeLocalStore implements LocalRecordStore {
   Future<EncryptedEnvelope?> load(RecordId id) async => records[id];
 
   @override
-  Future<List<RecordId>> recordIds() async => [...records.keys];
+  Future<Map<RecordId, EncryptedEnvelope>> loadAll() async => {...records};
 
   @override
   Future<void> save(RecordId id, EncryptedEnvelope sealed) async =>
@@ -315,7 +315,11 @@ final class FakeLocalStore implements LocalRecordStore {
   Future<Outbox> loadOutbox() async => outbox;
 
   @override
-  Future<void> saveOutbox(Outbox outbox) async => this.outbox = outbox;
+  Future<void> queue(SealedRow row) async => outbox = outbox.enqueue(row);
+
+  @override
+  Future<void> unqueue(Iterable<SealedRow> pushed) async =>
+      outbox = outbox.acknowledge(pushed);
 
   @override
   Future<int> loadCursor(SyncStream stream) async => cursors[stream] ?? 0;

@@ -558,11 +558,11 @@
   "@cloudStateFull": {
     "description": "Sync sheet: the server refused because the workspace or a blob is over its storage quota."
   },
-  "cloudStateUntrusted": "The server sent data that failed verification, so none of it was applied.",
+  "cloudStateUntrusted": "The server sent data that failed verification, so none of it was applied. The notes on this device are safe. Sync again later; if this keeps happening, two owners may have changed the members at the same time: ask the other one to sync, then try again.",
   "@cloudStateUntrusted": {
     "description": "Sync sheet: the server hid or forged data."
   },
-  "cloudStateRemoved": "Another device removed this one from the vault. The notes here stay readable, but they no longer sync and cannot be changed.",
+  "cloudStateRemoved": "Another device removed this one from the vault. The notes here stay readable, but they no longer sync and cannot be changed. To work in that vault again, add a new vault from the vault list on the lock screen and link it with a code from a device still in the vault.",
   "@cloudStateRemoved": {
     "description": "Sync sheet: an owner revoked this device."
   },
@@ -696,7 +696,7 @@
   "@cloudCodeInvalid": {
     "description": "The code field does not hold a code."
   },
-  "cloudCodeRefused": "Wrong or expired code or link.",
+  "cloudCodeRefused": "Wrong or expired code or link. Use the one in the latest email, or send a new code.",
   "@cloudCodeRefused": {
     "description": "The server refused the code."
   },
@@ -824,11 +824,11 @@
   "@joinVaultSubmit": {
     "description": "Join screen: sends the answer to the other device."
   },
-  "joinVaultWaiting": "Waiting for the other device to let this one in…",
+  "joinVaultWaiting": "Waiting for the other device to let this one in. Keep the code on screen there…",
   "@joinVaultWaiting": {
     "description": "Join screen: the answer was posted, the other device has not admitted this one yet."
   },
-  "joinVaultCodeRejected": "Wrong or expired code. Check the one on the other device.",
+  "joinVaultCodeRejected": "Wrong or expired code. Check the one on the other device: to link your own device, both must be signed in with the same email.",
   "@joinVaultCodeRejected": {
     "description": "Join screen: no offer opens with the code."
   },
@@ -1956,7 +1956,7 @@
   "@pageTextSize": {
     "description": "Page appearance sheet: the size of the note's text."
   },
-  "pageTextSizeValue": "{size} pt",
+  "pageTextSizeValue": "{size} sp",
   "@pageTextSizeValue": {
     "description": "Page appearance sheet: one text size, in points.",
     "placeholders": {
@@ -2228,5 +2228,47 @@
   "journalReminderChannelDescription": "A reminder each day to write in the journal.",
   "@journalReminderChannelDescription": {
     "description": "Description of the Android notification channel of the daily journal reminder."
+  },
+  "passphraseForgotten": "Forgot it? Nobody can reset it or recover these notes, not even the makers of the app. To start again, add a new vault from the vault list, then create it or link it to another device of yours.",
+  "@passphraseForgotten": {
+    "description": "Lock screen, under the wrong-passphrase error: what to do when the passphrase is lost."
+  },
+  "vaultOpenFailed": "The vault could not be opened. Restart the app; if it keeps happening, update it: a newer version may have written this vault.",
+  "@vaultOpenFailed": {
+    "description": "Lock screen: opening the vault failed for an unexpected reason (damaged database, older app)."
+  },
+  "unreadableNotes": "{count, plural, =1{1 note needs a newer version of Modus Notes. Update the app to see it.} other{{count} notes need a newer version of Modus Notes. Update the app to see them.}}",
+  "@unreadableNotes": {
+    "description": "Library banner: notes written by a newer app, left out of the library.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "editorSaveFailedBody": "This device could not save the note. If you can only read this vault, or this device was removed from it, changes cannot be saved. Keep writing to try again, or discard your changes.",
+  "@editorSaveFailedBody": {
+    "description": "Leaving a note whose save failed (not missing fields)."
+  },
+  "cloudResendCode": "Send a new code",
+  "@cloudResendCode": {
+    "description": "Sign-in form: sends the email with the code again."
+  },
+  "cloudTooltip": "{state, select, signedOut{Sync: not signed in} syncing{Sync: in progress} synced{Sync: up to date} offline{Sync: offline} other{Sync: needs attention}}",
+  "@cloudTooltip": {
+    "description": "Tooltip of the library sync button, with the sync state.",
+    "placeholders": {
+      "state": {
+        "type": "String"
+      }
+    }
+  },
+  "cloudNeedsSync": "Available once the vault is synced.",
+  "@cloudNeedsSync": {
+    "description": "Under the disabled link and invite buttons: why they are disabled."
+  },
+  "playbackSeek": "Playback position",
+  "@playbackSeek": {
+    "description": "Screen reader label of the waveform, which seeks in the recording."
   }
 }

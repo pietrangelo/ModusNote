@@ -188,21 +188,35 @@ class _Scrubber extends StatelessWidget {
         Expanded(
           child: LayoutBuilder(
             builder: (context, constraints) {
+              String at(double fraction) => l10n.playbackPosition(
+                formatLength(length * fraction.clamp(0.0, 1.0)),
+                formatLength(length),
+              );
               void seekAt(Offset local) =>
                   onSeek(local.dx / constraints.maxWidth);
-              return GestureDetector(
-                key: const ValueKey('waveform'),
-                behavior: HitTestBehavior.opaque,
-                onTapDown: (details) => seekAt(details.localPosition),
-                onHorizontalDragUpdate: (details) =>
-                    seekAt(details.localPosition),
-                child: CustomPaint(
-                  size: Size(constraints.maxWidth, Spacing.xl),
-                  painter: WaveformPainter(
-                    peaks: opened.waveform.peaks,
-                    played: ModusPalette.of(context).violet,
-                    ahead: ModusPalette.of(context).muted,
-                    progress: progress,
+              // Screen readers move through the recording a tenth at a time.
+              return Semantics(
+                slider: true,
+                label: l10n.playbackSeek,
+                value: at(progress),
+                increasedValue: at(progress + 0.1),
+                decreasedValue: at(progress - 0.1),
+                onIncrease: () => onSeek(progress + 0.1),
+                onDecrease: () => onSeek(progress - 0.1),
+                child: GestureDetector(
+                  key: const ValueKey('waveform'),
+                  behavior: HitTestBehavior.opaque,
+                  onTapDown: (details) => seekAt(details.localPosition),
+                  onHorizontalDragUpdate: (details) =>
+                      seekAt(details.localPosition),
+                  child: CustomPaint(
+                    size: Size(constraints.maxWidth, Spacing.xl),
+                    painter: WaveformPainter(
+                      peaks: opened.waveform.peaks,
+                      played: ModusPalette.of(context).violet,
+                      ahead: ModusPalette.of(context).muted,
+                      progress: progress,
+                    ),
                   ),
                 ),
               );
