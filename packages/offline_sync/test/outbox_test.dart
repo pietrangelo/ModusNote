@@ -17,6 +17,16 @@ SealedRow row(String id, int marker) => SealedRow(
 );
 
 void main() {
+  test('of keeps write order and only the last row of each record', () {
+    final written = [row('a', 1), row('b', 1), row('a', 2), row('c', 1)];
+
+    expect(
+      Outbox.of(written).pending,
+      written.fold(Outbox.empty, (outbox, row) => outbox.enqueue(row)).pending,
+    );
+    expect(Outbox.of(written).pending, [row('a', 2), row('b', 1), row('c', 1)]);
+  });
+
   test('keeps pending rows in the order they were written', () {
     final outbox = Outbox.empty
         .enqueue(row('a', 1))

@@ -203,6 +203,26 @@ void main() {
     expect(server.rows, hasLength(1));
   });
 
+  test('the periodic sync slows down while nothing changes', () async {
+    final (phone, server) = await device();
+    await phone.sync.syncNow();
+    final quiet = SyncController(
+      engine: phone.vault.engine,
+      account: await signedIn(auth),
+      onPulled: phone.store.reload,
+      interval: const Duration(milliseconds: 30),
+    );
+    addTearDown(quiet.dispose);
+    final before = server.headsAsked;
+
+    quiet.start();
+    await Future<void>.delayed(const Duration(milliseconds: 375));
+
+    // 12 ticks: once a tick would be 13 questions.
+    expect(server.headsAsked - before, inInclusiveRange(3, 6));
+    expect(quiet.state, SyncState.synced);
+  });
+
   group('recordings', () {
     Future<(SyncController, MemorySyncServer)> withUploads(
       Future<void> Function() afterSync,

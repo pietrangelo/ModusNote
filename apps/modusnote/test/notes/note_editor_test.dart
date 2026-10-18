@@ -323,6 +323,19 @@ void main() {
           .style;
       expect(styleOf('forte')?.fontWeight, FontWeight.w700);
       expect(styleOf('Titolo')?.fontSize, 26);
+      // Styles are kept between calls, but not past a change of the base.
+      final larger = controller.buildTextSpan(
+        context: tester.element(textInput('content')),
+        style: const TextStyle(fontSize: 20),
+        withComposing: false,
+      );
+      expect(
+        (larger.children!.cast<TextSpan>())
+            .firstWhere((child) => child.text == 'forte')
+            .style
+            ?.fontSize,
+        20,
+      );
       // The source stays what is edited and saved.
       expect(controller.text, '# Titolo\n**forte**');
     });

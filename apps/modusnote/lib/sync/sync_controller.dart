@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 
 import 'package:blob_storage_media/blob_storage_media.dart';
 import 'package:collaboration_access_control/collaboration_access_control.dart';
@@ -37,7 +38,8 @@ enum SyncProblem {
 
 /// Keeps an open vault in step with the server: right after unlock and
 /// sign-in, a moment after each saved edit, every [interval] and when the
-/// app returns to the foreground. One sync runs at a time; a request while
+/// app returns to the foreground. While syncs find nothing, the periodic
+/// one slows down to every [maxQuietTicks] + 1 intervals. One sync runs at a time; a request while
 /// one runs makes it go round once more.
 ///
 /// Created on unlock and disposed on lock, before the keys are released:
@@ -68,6 +70,9 @@ final class SyncController extends ChangeNotifier {
   final Duration _interval;
   final DateTime Function() _clock;
 
+  /// Periodic ticks skipped at most after syncs that moved nothing.
+  static const maxQuietTicks = 4;
+
   var _state = SyncState.signedOut;
   SyncProblem? _problem;
   DateTime? _lastSynced;
@@ -75,6 +80,8 @@ final class SyncController extends ChangeNotifier {
   Timer? _periodic;
   Future<void>? _running;
   var _again = false;
+  var _quiet = 0;
+  var _skip = 0;
   var _disposed = false;
   bool _retired;
 
@@ -96,13 +103,20 @@ final class SyncController extends ChangeNotifier {
 
   void start() {
     _account.onChanged = _accountChanged;
-    _periodic = Timer.periodic(_interval, (_) => syncNow());
+    _periodic = Timer.periodic(_interval, (_) {
+      if (_skip > 0) {
+        _skip--;
+      } else {
+        unawaited(syncNow());
+      }
+    });
     unawaited(syncNow());
   }
 
   /// An edit was saved: sync once edits stop coming for a moment.
   void changed() {
     if (_disposed) return;
+    _quiet = _skip = 0;
     _soon?.cancel();
     _soon = Timer(_debounce, syncNow);
   }
@@ -192,6 +206,11 @@ final class SyncController extends ChangeNotifier {
           _account.signedIn ? SyncState.offline : SyncState.signedOut,
         );
       }
+      if (report.pushed > 0 || report.pulled > 0) {
+        _quiet = _skip = 0;
+      } else {
+        _skip = _quiet = min(_quiet + 1, maxQuietTicks);
+      }
       if (report.pulled > 0) await _onPulled();
       if (_disposed) return;
       await _afterSync?.call();
@@ -218,6 +237,8 @@ final class SyncController extends ChangeNotifier {
     } on Object {
       // The vault locked under a running sync and its keys are gone.
       if (_disposed) return;
+      // Never left showing "syncing" with the button off.
+      _fail(SyncProblem.refused);
       rethrow;
     }
   }

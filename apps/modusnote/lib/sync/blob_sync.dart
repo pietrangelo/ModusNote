@@ -56,6 +56,10 @@ final class BlobSync {
   Future<Set<String>>? _sent;
   Future<Set<String>>? _released;
 
+  /// Blobs of other devices this one has not downloaded: they only come
+  /// down through [ensureLocal], so they are not looked for every minute.
+  final _remoteOnly = <String>{};
+
   /// Runs after each sync that reached the server.
   Future<void> afterSync() async {
     await uploadPending();
@@ -66,12 +70,23 @@ final class BlobSync {
   /// failure: what went up stays recorded as sent.
   Future<void> uploadPending() async {
     final sent = await _sentIds();
-    for (final blob in _blobs()) {
-      final id = blob.id.value;
-      if (sent.contains(id) || !await _replication.isLocal(blob.id)) continue;
-      await _replication.upload(blob.blob);
-      sent.add(id);
-      await _store(sentSetting, sent);
+    var uploaded = false;
+    try {
+      for (final blob in _blobs()) {
+        final id = blob.id.value;
+        if (sent.contains(id) || _remoteOnly.contains(id)) continue;
+        if (!await _replication.isLocal(blob.id)) {
+          _remoteOnly.add(id);
+          continue;
+        }
+        await _replication.upload(blob.blob);
+        sent.add(id);
+        uploaded = true;
+      }
+    } finally {
+      // Sealed once, not after every blob; one lost to a crash is only
+      // uploaded again, which the server takes as already there.
+      if (uploaded) await _store(sentSetting, sent);
     }
   }
 

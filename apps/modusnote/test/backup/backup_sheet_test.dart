@@ -174,7 +174,7 @@ void main() {
 
     expect(opened, isNotNull);
     expect(
-      find.text('Ripristino completato: 3 aggiunti, 1 già presenti.'),
+      find.text('Ripristino completato: 3 aggiunti, 1 già presente.'),
       findsOneWidget,
     );
   });

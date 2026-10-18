@@ -216,6 +216,9 @@ void main() {
       player: FakePlayer(),
       ensureLocal: tabletSync.ensureLocal,
     );
+    // Not held here yet: nothing to send, and it stays known as such.
+    await tabletSync.uploadPending();
+    expect(remote.uploads, hasLength(1));
 
     await playback.open(take);
 

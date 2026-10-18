@@ -98,6 +98,10 @@ class NoteEditorScreen extends StatefulWidget {
   /// How long typing must pause before the note is saved.
   static const autosaveDelay = Duration(seconds: 1);
 
+  /// How long typing must pause before a chapter's or a journal page's
+  /// words are counted again: counting a long text on every key is wasted.
+  static const wordCountDelay = Duration(milliseconds: 377);
+
   /// Ctrl+Shift+F, or ⌘⇧F on Apple platforms: focus mode on and off.
   static SingleActivator get focusActivator => SingleActivator(
     LogicalKeyboardKey.keyF,
@@ -156,6 +160,7 @@ class NoteEditorScreenState extends State<NoteEditorScreen>
   /// The day of a journal page, as it is picked.
   late final _day = ValueNotifier<DateValue?>(_dayOf(_draft.values));
   Timer? _timer;
+  Timer? _recount;
   var _dirty = false;
   var _state = SaveState.saved;
   Future<SaveState>? _saving;
@@ -223,7 +228,13 @@ class NoteEditorScreenState extends State<NoteEditorScreen>
 
   void _onDraft(FormDraft draft) {
     _draft = draft;
-    if (_countedField != null) _words.value = _countWords();
+    if (_countedField != null) {
+      _recount?.cancel();
+      _recount = Timer(
+        NoteEditorScreen.wordCountDelay,
+        () => _words.value = _countWords(),
+      );
+    }
     if (_isJournal) _day.value = _dayOf(draft.values);
     // Typing on a soft keyboard is not a pointer event.
     AutoLockScope.maybeOf(context)?.touch();
@@ -378,7 +389,12 @@ class NoteEditorScreenState extends State<NoteEditorScreen>
               ? l10n.editorSaveFailed
               : l10n.editorLeaveTitle,
         ),
-        content: Text(l10n.editorLeaveBody),
+        // A failed write highlights no field: it is the vault saying no.
+        content: Text(
+          state == SaveState.failed
+              ? l10n.editorSaveFailedBody
+              : l10n.editorLeaveBody,
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
@@ -480,12 +496,7 @@ class NoteEditorScreenState extends State<NoteEditorScreen>
     return null;
   }
 
-  DynamicEntry? _find(EntryId id) {
-    for (final entry in widget.store.entries) {
-      if (entry.id == id) return entry;
-    }
-    return null;
-  }
+  DynamicEntry? _find(EntryId id) => widget.store.entryOf(id);
 
   /// Picks a picture, seals it and puts it in the text where the cursor
   /// is; it joins the note at the next save.
@@ -603,6 +614,7 @@ class NoteEditorScreenState extends State<NoteEditorScreen>
     // Closed from outside (the vault locking): what was not saved goes,
     // since the keys to save it are being released.
     _timer?.cancel();
+    _recount?.cancel();
     if (_takes.isNotEmpty || _pictures.isNotEmpty) {
       widget.store.discardTakes([..._takes.values, ..._pictures.values]);
     }
@@ -919,9 +931,7 @@ class NoteEditorScreenState extends State<NoteEditorScreen>
                                   backlinks: [
                                     for (final entry in widget.store.entries)
                                       if (entry.id != _id &&
-                                          NoteLinks.targets(
-                                            entry.attributes.values,
-                                          ).contains(_id))
+                                          NoteLinks.of(entry).contains(_id))
                                         entry,
                                   ],
                                   find: _find,

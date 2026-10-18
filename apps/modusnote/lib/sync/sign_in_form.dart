@@ -180,6 +180,19 @@ class _SignInFormState extends State<SignInForm> {
       ),
       const SizedBox(height: Spacing.s),
       TextButton(
+        key: const ValueKey('cloud-resend'),
+        onPressed: _busy
+            ? null
+            : () {
+                _code.clear();
+                _run(
+                  () => widget.sendCode(_sentTo!),
+                  refused: _Problem.emailRefused,
+                );
+              },
+        child: Text(l10n.cloudResendCode),
+      ),
+      TextButton(
         onPressed: _busy
             ? null
             : () => setState(() {
@@ -215,11 +228,14 @@ class _SignInFormState extends State<SignInForm> {
     if (text == null) return const [];
     return [
       const SizedBox(height: Spacing.m),
-      Text(
-        text,
-        key: const ValueKey('cloud-problem'),
-        style: Theme.of(context).textTheme.bodyMedium
-            ?.copyWith(color: Theme.of(context).colorScheme.error),
+      Semantics(
+        liveRegion: true,
+        child: Text(
+          text,
+          key: const ValueKey('cloud-problem'),
+          style: Theme.of(context).textTheme.bodyMedium
+              ?.copyWith(color: Theme.of(context).colorScheme.error),
+        ),
       ),
     ];
   }

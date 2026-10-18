@@ -36,7 +36,7 @@ class CloudButton extends StatelessWidget {
       listenable: sync,
       builder: (context, _) => IconButton(
         key: const ValueKey('cloud'),
-        tooltip: l10n.cloudSync,
+        tooltip: l10n.cloudTooltip(sync.state.name),
         onPressed: () => CloudSheet.show(
           context,
           sync,
@@ -169,13 +169,16 @@ class _CloudSheetState extends State<CloudSheet> {
         style: Theme.of(context).textTheme.bodyMedium,
       ),
       const SizedBox(height: Spacing.s),
-      Text(
-        state,
-        key: const ValueKey('cloud-state'),
-        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-          color: sync.state == SyncState.failed
-              ? Theme.of(context).colorScheme.error
-              : ModusPalette.of(context).muted,
+      Semantics(
+        liveRegion: true,
+        child: Text(
+          state,
+          key: const ValueKey('cloud-state'),
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+            color: sync.state == SyncState.failed
+                ? Theme.of(context).colorScheme.error
+                : ModusPalette.of(context).muted,
+          ),
         ),
       ),
       const SizedBox(height: Spacing.l),
@@ -198,6 +201,15 @@ class _CloudSheetState extends State<CloudSheet> {
           icon: const Icon(Icons.devices_outlined),
           label: Text(l10n.linkDeviceAction),
         ),
+        if (sync.state != SyncState.synced) ...[
+          const SizedBox(height: Spacing.xs),
+          Text(
+            l10n.cloudNeedsSync,
+            key: const ValueKey('link-device-hint'),
+            style: Theme.of(context).textTheme.bodySmall
+                ?.copyWith(color: ModusPalette.of(context).muted),
+          ),
+        ],
       ],
       const SizedBox(height: Spacing.s),
       OutlinedButton.icon(
@@ -229,11 +241,14 @@ class _CloudSheetState extends State<CloudSheet> {
       ),
       if (_deleteProblem case final problem?) ...[
         const SizedBox(height: Spacing.s),
-        Text(
-          problem,
-          key: const ValueKey('delete-account-problem'),
-          style: Theme.of(context).textTheme.bodyMedium
-              ?.copyWith(color: Theme.of(context).colorScheme.error),
+        Semantics(
+          liveRegion: true,
+          child: Text(
+            problem,
+            key: const ValueKey('delete-account-problem'),
+            style: Theme.of(context).textTheme.bodyMedium
+                ?.copyWith(color: Theme.of(context).colorScheme.error),
+          ),
         ),
       ],
     ];

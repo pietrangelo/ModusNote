@@ -86,4 +86,19 @@ void main() {
       expect(EntrySearch('.*').matches(tricky), isFalse);
     });
   });
+
+  test('an edited entry is searched by its new text, not a cached one', () {
+    final before = noteEntry('prima');
+    final after = valueOf(
+      before.update(
+        schema: SeedSchemas.quickNoteV1,
+        changes: {key('content'): const TextValue('dopo')},
+        at: at,
+      ),
+    );
+    expect(EntrySearch('prima').matches(before), isTrue);
+    expect(EntrySearch('dopo').matches(after), isTrue);
+    expect(EntrySearch('prima').matches(after), isFalse);
+    expect(EntrySearch('dopo').matches(before), isFalse);
+  });
 }

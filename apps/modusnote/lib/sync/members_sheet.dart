@@ -88,14 +88,27 @@ class _MembersSheetState extends State<MembersSheet> {
                     icon: const Icon(Icons.person_add_alt_outlined),
                     label: Text(l10n.inviteAction),
                   ),
+                  if (sync.state != SyncState.synced) ...[
+                    const SizedBox(height: Spacing.xs),
+                    Text(
+                      l10n.cloudNeedsSync,
+                      key: const ValueKey('invite-hint'),
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: ModusPalette.of(context).muted,
+                      ),
+                    ),
+                  ],
                 ],
                 if (_problem case final problem?) ...[
                   const SizedBox(height: Spacing.s),
-                  Text(
-                    problem,
-                    key: const ValueKey('members-problem'),
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: theme.colorScheme.error,
+                  Semantics(
+                    liveRegion: true,
+                    child: Text(
+                      problem,
+                      key: const ValueKey('members-problem'),
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: theme.colorScheme.error,
+                      ),
                     ),
                   ),
                 ],
