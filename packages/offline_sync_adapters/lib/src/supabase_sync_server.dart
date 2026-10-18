@@ -324,13 +324,16 @@ final class SupabaseSyncServer
   );
 
   /// A deployment without `admit_member` answers 404: admitting another
-  /// account needs it, but one's own account is already in.
+  /// account needs it, but one's own account is already in. `write` is
+  /// sent only for a reader, which a deployment older than
+  /// `20261018000000_member_capabilities.sql` cannot tell apart.
   @override
   Future<void> admitMember(
     WorkspaceId workspace,
     MemberId member, {
     AccountId? account,
     bool manages = false,
+    bool writes = true,
   }) async {
     try {
       await _rpc('admit_member', {
@@ -338,6 +341,7 @@ final class SupabaseSyncServer
         'member': member.hex,
         'account': account?.uuid,
         'manage': manages,
+        if (!writes) 'write': false,
       });
     } on SyncServerRejectedException catch (error) {
       if (error.status != 404 || account != null) rethrow;

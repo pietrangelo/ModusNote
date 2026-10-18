@@ -523,9 +523,17 @@ void main() {
         final member = ownerVault.engine.ledger.workspace.member(bea.member);
         expect(member?.role, Role.editor);
         expect(FakeMemberAccounts.accounts[friendAccount], isFalse);
+        expect(FakeMemberAccounts.writers, contains(friendAccount));
         expect(FakeMemberAccounts.members[bea.member], friendAccount);
       },
     );
+
+    test('a reader\'s account is let in to read only', () async {
+      await joined(role: Role.viewer);
+
+      expect(FakeMemberAccounts.accounts[friendAccount], isFalse);
+      expect(FakeMemberAccounts.writers, isNot(contains(friendAccount)));
+    });
 
     test('an editor writes and the owner reads it', () async {
       final bea = await joined();

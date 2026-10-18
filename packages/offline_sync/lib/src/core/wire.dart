@@ -9,11 +9,19 @@ final class WireWriter {
 
   void uint8(int value) => _bytes.addByte(value);
 
-  void uint16(int value) =>
-      _bytes.add(Uint8List(2)..buffer.asByteData().setUint16(0, value));
+  // ByteData truncates out-of-range values silently; a record written that
+  // way would never parse again.
+  void uint16(int value) => _bytes.add(
+    Uint8List(2)..buffer.asByteData().setUint16(0, _range(value, 0xffff)),
+  );
 
-  void uint32(int value) =>
-      _bytes.add(Uint8List(4)..buffer.asByteData().setUint32(0, value));
+  void uint32(int value) => _bytes.add(
+    Uint8List(4)..buffer.asByteData().setUint32(0, _range(value, 0xffffffff)),
+  );
+
+  static int _range(int value, int max) => value >= 0 && value <= max
+      ? value
+      : throw RangeError.range(value, 0, max);
 
   void int64(int value) {
     final bytes = Uint8List(8);

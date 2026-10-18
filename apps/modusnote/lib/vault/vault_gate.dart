@@ -501,7 +501,14 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
       replication: shared.replication,
       pruning: shared.pruning,
       blobs: () => store.blobs,
-      canPrune: () => store.unreadable == 0,
+      // A reader may not delete blobs on the server: it only downloads.
+      canPrune: () =>
+          store.unreadable == 0 &&
+          (vault.engine.ledger.workspace
+                  .member(vault.engine.me)
+                  ?.role
+                  .writesContent ??
+              false),
       unsentWrites: vault.engine.hasUnsentWrites,
       load: (name) async {
         try {

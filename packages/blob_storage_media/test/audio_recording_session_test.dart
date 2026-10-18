@@ -45,6 +45,7 @@ void main() {
       store: store,
       encryptor: newEncryptor(),
       subkeys: newSubkeys(),
+      hasher: newHasher(),
     );
     contentKey = newEncryptor().generateKey();
     capture = FakeCapture();

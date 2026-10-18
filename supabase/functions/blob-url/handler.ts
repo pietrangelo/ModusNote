@@ -14,9 +14,10 @@ export interface HandlerConfig {
   r2: { accountId: string; bucket: string; accessKeyId: string; secretAccessKey: string };
   expiresSeconds: number;
   now: () => Date;
-  // True when the token's account belongs to the workspace; throws when
-  // the database cannot be asked.
-  authorize: (token: string, workspace: string) => Promise<boolean>;
+  // True when the token's account belongs to the workspace and, for
+  // "write", may change what it holds (an account admitted only to read
+  // may not); throws when the database cannot be asked.
+  authorize: (token: string, workspace: string, access: Access) => Promise<boolean>;
   // Records an upload of `size` bytes against the account's quotas
   // (reserve_blob_upload, as the caller); throws when the database cannot
   // be asked.
@@ -30,6 +31,7 @@ export interface HandlerConfig {
 }
 
 export type Reservation = "ok" | "denied" | "too-large" | "over-budget";
+export type Access = "read" | "write";
 
 const workspacePattern = /^[0-9a-f]{32}$/;
 // The BlobId alphabet of the domain: no separators, so no path traversal.
@@ -129,7 +131,9 @@ export function makeHandler(config: HandlerConfig): (request: Request) => Promis
 
     let member: boolean;
     try {
-      member = await config.authorize(token, workspace);
+      // Uploading and deleting change what every member sees.
+      const access = action.method === "PUT" || action.method === "DELETE" ? "write" : "read";
+      member = await config.authorize(token, workspace, access);
     } catch {
       return refuse(request, 503, "authorization unavailable");
     }

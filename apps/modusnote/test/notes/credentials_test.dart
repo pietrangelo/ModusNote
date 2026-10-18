@@ -29,6 +29,11 @@ void main() {
     WidgetTester tester, {
     Map<FieldKey, FieldValue> values = const {},
   }) async {
+    // No sensitive clipboard, as on the web: the plain one is used.
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      const MethodChannel('run.serv.modus/clipboard'),
+      (call) async => throw MissingPluginException(),
+    );
     tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
       SystemChannels.platform,
       (call) async {
@@ -113,6 +118,33 @@ void main() {
     expect(editable(tester, 'password').obscureText, isTrue);
     expect(find.textContaining('30 secondi'), findsOneWidget);
 
+    await tester.runAsync(SecretClipboard.flush);
+    expect(clipboard, '');
+  });
+
+  testWidgets('on a phone the copy goes through the sensitive clipboard', (
+    tester,
+  ) async {
+    await render(
+      tester,
+      values: {k('password'): const SecretValue('zebra-Quokka-42')},
+    );
+    final copies = <Object?>[];
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      const MethodChannel('run.serv.modus/clipboard'),
+      (call) async {
+        copies.add(call.arguments);
+        return true;
+      },
+    );
+    await tester.tap(find.byKey(const ValueKey('password-copy')));
+    await tester.pump();
+
+    expect(copies, [
+      {'text': 'zebra-Quokka-42', 'seconds': 30},
+    ]);
+    expect(clipboard, isNull, reason: 'the plain clipboard is not used');
+    clipboard = 'zebra-Quokka-42';
     await tester.runAsync(SecretClipboard.flush);
     expect(clipboard, '');
   });

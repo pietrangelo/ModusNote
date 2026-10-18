@@ -1,6 +1,7 @@
 /// libsodium adapters for the Identity & Cryptography bounded context.
 library;
 
+export 'src/sodium_content_hasher.dart';
 export 'src/sodium_envelope_encryptor.dart';
 export 'src/sodium_identity_service.dart';
 export 'src/sodium_key_derivation_service.dart';

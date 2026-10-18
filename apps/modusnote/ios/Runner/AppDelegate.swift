@@ -11,6 +11,7 @@ import UserNotifications
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
     privacyCover.start()
+    excludeVaultsFromBackup()
     // Password expiry reminders show while the app is open too.
     UNUserNotificationCenter.current().delegate = self as? UNUserNotificationCenterDelegate
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
@@ -18,6 +19,48 @@ import UserNotifications
 
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
+    if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "SensitiveClipboard") {
+      SensitiveClipboard.register(with: registrar)
+    }
+  }
+
+  /// Vaults, recordings and the vault list live in Application Support,
+  /// which iOS copies to iCloud and computer backups. A restored copy would
+  /// sign as this device on another phone, and the backup would carry the
+  /// sealed identity off the device: keep the whole folder out, as Android's
+  /// allowBackup="false" does.
+  private func excludeVaultsFromBackup() {
+    let files = FileManager.default
+    guard var folder = files.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+    else { return }
+    try? files.createDirectory(at: folder, withIntermediateDirectories: true)
+    var values = URLResourceValues()
+    values.isExcludedFromBackup = true
+    try? folder.setResourceValues(values)
+  }
+}
+
+/// Copies a password so it stays on this device and leaves by itself:
+/// never handed to Universal Clipboard, gone after the expiry even if the
+/// app is killed before it clears it.
+final class SensitiveClipboard {
+  static func register(with registrar: FlutterPluginRegistrar) {
+    let channel = FlutterMethodChannel(
+      name: "run.serv.modus/clipboard", binaryMessenger: registrar.messenger())
+    channel.setMethodCallHandler { call, result in
+      guard call.method == "copySecret",
+        let args = call.arguments as? [String: Any],
+        let text = args["text"] as? String,
+        let seconds = args["seconds"] as? Int
+      else { return result(FlutterMethodNotImplemented) }
+      UIPasteboard.general.setItems(
+        [["public.utf8-plain-text": text]],
+        options: [
+          .localOnly: true,
+          .expirationDate: Date(timeIntervalSinceNow: TimeInterval(seconds)),
+        ])
+      result(nil)
+    }
   }
 }
 

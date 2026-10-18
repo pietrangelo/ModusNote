@@ -958,6 +958,8 @@ final class LinkRequest {
     final granted = <KeyBundle>[];
     var cursor = 0;
     for (final (position, bundle) in bundles) {
+      // Read again after the record it names, which the engine will fetch.
+      if (bundle.atSequence >= ledger.records.length) break;
       cursor = position;
       if (!bundle.grants.any((grant) => grant.recipient == me)) continue;
       try {

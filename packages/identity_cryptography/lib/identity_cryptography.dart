@@ -5,6 +5,7 @@
 /// library, never files under `src/`.
 library;
 
+export 'src/application/content_hasher.dart';
 export 'src/application/envelope_encryptor.dart';
 export 'src/application/identity_service.dart';
 export 'src/application/key_derivation_service.dart';
@@ -12,6 +13,7 @@ export 'src/application/passkey_prf.dart';
 export 'src/application/secret.dart';
 export 'src/application/subkey_derivation_service.dart';
 export 'src/core/associated_data.dart';
+export 'src/core/content_digest.dart';
 export 'src/core/cryptography_exception.dart';
 export 'src/core/encrypted_envelope.dart';
 export 'src/core/kdf_parameters.dart';

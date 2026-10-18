@@ -100,12 +100,15 @@ abstract interface class InviteChannel {
 abstract interface class MemberAccounts {
   /// Lets [account] (this device's own when null) into [workspace] and
   /// records that [member] signs in with it; [manages] lets it admit and
-  /// remove others. Safe to repeat.
+  /// remove others, and without [writes] (a member that only reads) it
+  /// appends nothing and changes no blob. An account keeps the most any of
+  /// its members was given. Safe to repeat.
   Future<void> admitMember(
     WorkspaceId workspace,
     MemberId member, {
     AccountId? account,
     bool manages = false,
+    bool writes = true,
   });
 
   /// Forgets [member]'s account and removes it from [workspace] once no

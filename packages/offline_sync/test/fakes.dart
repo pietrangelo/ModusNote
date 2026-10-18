@@ -258,9 +258,13 @@ final class FakeMemberAccounts implements MemberAccounts {
   static final accounts = <AccountId, bool>{};
   static final members = <MemberId, AccountId>{};
 
+  /// Accounts that may append and change blobs.
+  static final writers = <AccountId>{};
+
   static void reset() {
     accounts.clear();
     members.clear();
+    writers.clear();
   }
 
   @override
@@ -269,10 +273,12 @@ final class FakeMemberAccounts implements MemberAccounts {
     MemberId member, {
     AccountId? account,
     bool manages = false,
+    bool writes = true,
   }) async {
     if (!online) throw const ServerUnavailableException();
     final target = account ?? caller;
     accounts[target] = (accounts[target] ?? false) || manages;
+    if (writes || manages) writers.add(target);
     members.putIfAbsent(member, () => target);
   }
 

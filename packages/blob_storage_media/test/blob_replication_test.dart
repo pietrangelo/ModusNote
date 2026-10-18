@@ -54,6 +54,24 @@ final class FakeRemote implements RemoteBlobStore {
       const StoredBlobPage([]);
 }
 
+/// Hands out one chosen key id: what a member who read the note can do to
+/// seal a blob under the BlobKey the note names.
+final class ChosenKeyId implements SubkeyDerivationService {
+  ChosenKeyId(this.id);
+
+  final SubkeyId id;
+
+  @override
+  SubkeyId newSubkeyId() => id;
+
+  @override
+  SymmetricKey deriveSubkey({
+    required SymmetricKey parent,
+    required KeyContext context,
+    required SubkeyId id,
+  }) => newSubkeys().deriveSubkey(parent: parent, context: context, id: id);
+}
+
 void main() {
   late InMemoryBlobStore phone;
   late InMemoryBlobStore tablet;
@@ -76,6 +94,7 @@ void main() {
         store: store,
         encryptor: newEncryptor(),
         subkeys: newSubkeys(),
+        hasher: newHasher(),
       );
 
   Future<SealedBlob> record() =>
@@ -83,7 +102,7 @@ void main() {
           .write(piecewise(recording, [4096]), id: id, contentKey: contentKey);
 
   BlobReplication on(InMemoryBlobStore store) =>
-      BlobReplication(local: store, remote: remote);
+      BlobReplication(local: store, remote: remote, hasher: newHasher());
 
   test('a recording uploaded by one device plays on another', () async {
     final blob = await record();
@@ -108,6 +127,45 @@ void main() {
       hasLength(ChunkLayout.ciphertextLengthFor(recording.length)),
     );
   });
+
+  test(
+    'adversary: a blob replaced on the server by another member is refused',
+    () async {
+      final blob = await record();
+      await on(phone).upload(blob);
+      // Bob holds the GroupKey and read the key id in the note: he seals
+      // his own audio, as long as the original, under the same BlobKey.
+      final bobs = InMemoryBlobStore();
+      final forged = recording.map((byte) => byte ^ 0xff).toList();
+      await EncryptedBlobStorage(
+        store: bobs,
+        encryptor: newEncryptor(),
+        subkeys: ChosenKeyId(blob.keyId),
+        hasher: newHasher(),
+      ).write(Stream.value(forged), id: id, contentKey: contentKey);
+      remote.objects[id] = bobs.committed[id]!;
+
+      await expectLater(
+        on(tablet).ensureLocal(blob),
+        throwsA(isA<MalformedBlobException>()),
+      );
+      expect(await tablet.contains(id), isFalse);
+
+      // A note written before digests cannot tell: the known limit.
+      final undigested = SealedBlob(
+        id: blob.id,
+        keyId: blob.keyId,
+        plaintextLength: blob.plaintextLength,
+      );
+      await on(tablet).ensureLocal(undigested);
+      expect(
+        await collect(
+          storageOn(tablet).read(undigested, contentKey: contentKey),
+        ),
+        forged,
+      );
+    },
+  );
 
   test('a blob already on the device is not downloaded', () async {
     final blob = await record();
@@ -202,7 +260,7 @@ void main() {
       expect(tablet.committed, isEmpty);
     });
 
-    test('a swapped blob of the right size is kept but never plays', () async {
+    test('a swapped blob of the right size never lands', () async {
       final blob = await record();
       await on(phone).upload(blob);
       // Another recording of the same length, re-served under this id.
@@ -215,12 +273,11 @@ void main() {
       expect(other.plaintextLength, blob.plaintextLength);
       remote.objects[id] = elsewhere.committed[id]!;
 
-      await on(tablet).ensureLocal(blob);
-
       await expectLater(
-        collect(storageOn(tablet).read(blob, contentKey: contentKey)),
-        throwsA(isA<AuthenticationTagMismatchException>()),
+        on(tablet).ensureLocal(blob),
+        throwsA(isA<MalformedBlobException>()),
       );
+      expect(await tablet.contains(id), isFalse);
     });
   });
 }

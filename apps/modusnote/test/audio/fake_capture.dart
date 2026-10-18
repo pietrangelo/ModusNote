@@ -41,6 +41,7 @@ Uint8List voice([int length = 3000]) =>
       store: FileSystemCiphertextBlobStore(files.directory('/blobs')),
       encryptor: SodiumEnvelopeEncryptor(sodium),
       subkeys: SodiumSubkeyDerivationService(sodium),
+      hasher: SodiumContentHasher(sodium),
     ),
     files: files,
   );

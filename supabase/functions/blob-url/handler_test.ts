@@ -7,7 +7,7 @@ const workspace = "00112233445566778899aabbccddeeff";
 const origin = "https://modus.serv.run";
 const secretAccessKey = "r2-secret-access-key-never-leaves";
 
-type Call = { token: string; workspace: string };
+type Call = { token: string; workspace: string; access: string };
 type R2Call = { method: string; url: URL; headers: Record<string, string> };
 
 type Reserved = { token: string; workspace: string; blob: string; size: number };
@@ -32,9 +32,9 @@ function setup(
     now: () => new Date("2026-10-11T12:00:00Z"),
     authorize:
       authorize ??
-      (async (token, workspace) => {
-        calls.push({ token, workspace });
-        return token === "member-token";
+      (async (token, workspace, access) => {
+        calls.push({ token, workspace, access });
+        return token === "member-token" || (token === "reader-token" && access === "read");
       }),
     reserve:
       reserve ??
@@ -98,7 +98,7 @@ test("a member gets a short-lived GET URL for the blob's object", async () => {
   assert.equal(json.method, "GET");
   assert.deepEqual(json.headers, {});
   assert.equal(json.expires_in, 300);
-  assert.deepEqual(calls, [{ token: "member-token", workspace }]);
+  assert.deepEqual(calls, [{ token: "member-token", workspace, access: "read" }]);
 });
 
 test("a PUT URL only creates, and only the announced size", async () => {
@@ -194,7 +194,7 @@ describe("deleting", () => {
 
     assert.equal(response.status, 200);
     assert.deepEqual(await response.json(), { deleted: 2 });
-    assert.deepEqual(calls, [{ token: "member-token", workspace }]);
+    assert.deepEqual(calls, [{ token: "member-token", workspace, access: "write" }]);
     assert.deepEqual(
       r2Calls.map(({ method, url }) => [method, url.host, url.pathname]),
       [
@@ -207,6 +207,25 @@ describe("deleting", () => {
       /^AWS4-HMAC-SHA256 Credential=r2-access-key-id\/20261011\/auto\/s3\/aws4_request,/,
     );
     assert.equal(r2Calls[0].url.search, "", "nothing signed into the URL");
+  });
+
+  test("adversary: an account admitted only to read deletes and uploads nothing", async () => {
+    const { handler, r2Calls, reserved } = setup();
+
+    for (const body of [
+      { workspace_id: workspace, method: "DELETE", blob_ids: ["take-1"] },
+      { workspace_id: workspace, blob_id: "take-1", method: "PUT", size: 41 },
+    ]) {
+      const response = await handler(request(body, { token: "reader-token" }));
+      assert.equal(response.status, 403);
+    }
+    assert.deepEqual(r2Calls, []);
+    assert.deepEqual(reserved, []);
+
+    const read = await handler(
+      request({ workspace_id: workspace, blob_id: "take-1", method: "GET" }, { token: "reader-token" }),
+    );
+    assert.equal(read.status, 200);
   });
 
   test("a blob R2 no longer has counts as deleted", async () => {

@@ -3,7 +3,7 @@
 // R2_ACCESS_KEY_ID=... R2_SECRET_ACCESS_KEY=...`). SUPABASE_URL and
 // SUPABASE_ANON_KEY are provided by the platform.
 
-import { makeHandler, type Reservation } from "./handler.ts";
+import { makeHandler, type Access, type Reservation } from "./handler.ts";
 
 declare const Deno: {
   env: { get(name: string): string | undefined };
@@ -20,9 +20,10 @@ const supabaseUrl = required("SUPABASE_URL");
 const anonKey = required("SUPABASE_ANON_KEY");
 
 // Asks the database as the caller, so the answer comes from the same
-// security-definer helper the RLS policies use.
-async function authorize(token: string, workspace: string): Promise<boolean> {
-  const response = await fetch(`${supabaseUrl}/rest/v1/rpc/is_workspace_account`, {
+// security-definer helpers the RLS policies use.
+async function authorize(token: string, workspace: string, access: Access): Promise<boolean> {
+  const helper = access === "write" ? "writes_workspace" : "is_workspace_account";
+  const response = await fetch(`${supabaseUrl}/rest/v1/rpc/${helper}`, {
     method: "POST",
     headers: {
       apikey: anonKey,
