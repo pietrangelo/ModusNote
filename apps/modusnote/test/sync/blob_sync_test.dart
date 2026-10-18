@@ -82,8 +82,13 @@ final class DeviceBlobs {
       store: local,
       encryptor: SodiumEnvelopeEncryptor(sodium),
       subkeys: SodiumSubkeyDerivationService(sodium),
+      hasher: SodiumContentHasher(sodium),
     );
-    replication = BlobReplication(local: local, remote: remote);
+    replication = BlobReplication(
+      local: local,
+      remote: remote,
+      hasher: SodiumContentHasher(sodium),
+    );
     pruning = BlobPruning(remote: remote);
   }
 

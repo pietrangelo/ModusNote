@@ -8,13 +8,15 @@ import 'chunk_layout.dart';
 
 /// What a reader needs to decrypt and verify a blob: which BlobKey to
 /// derive and how long the plaintext must be. Knowing the exact length is
-/// what turns a dropped or appended chunk into a detectable error.
+/// what turns a dropped or appended chunk into a detectable error, and the
+/// [digest] of the ciphertext what ties the blob to the note that names it.
 @immutable
 final class SealedBlob {
   SealedBlob({
     required this.id,
     required this.keyId,
     required this.plaintextLength,
+    this.digest,
   }) {
     if (plaintextLength < 0 ||
         plaintextLength > ChunkLayout.maxPlaintextBytes) {
@@ -28,6 +30,12 @@ final class SealedBlob {
   final SubkeyId keyId;
   final int plaintextLength;
 
+  /// Of the whole ciphertext, as stored. Chunk authentication proves only
+  /// that someone with the GroupKey sealed it, so any writing member could
+  /// otherwise replace the blob behind someone else's note. Null for blobs
+  /// sealed before digests existed.
+  final ContentDigest? digest;
+
   int get chunkCount => ChunkLayout.chunkCountFor(plaintextLength);
 
   int get ciphertextLength => ChunkLayout.ciphertextLengthFor(plaintextLength);
@@ -37,10 +45,11 @@ final class SealedBlob {
       other is SealedBlob &&
       other.id == id &&
       other.keyId == keyId &&
-      other.plaintextLength == plaintextLength;
+      other.plaintextLength == plaintextLength &&
+      other.digest == digest;
 
   @override
-  int get hashCode => Object.hash(id, keyId, plaintextLength);
+  int get hashCode => Object.hash(id, keyId, plaintextLength, digest);
 }
 
 /// Describes one encrypted audio blob. It travels only inside encrypted

@@ -20,6 +20,7 @@ final class EncryptedBlobStorage {
     required this._store,
     required this._encryptor,
     required this._subkeys,
+    required this._hasher,
   });
 
   static final blobKeyContext = KeyContext('mn-blob1');
@@ -27,6 +28,7 @@ final class EncryptedBlobStorage {
   final CiphertextBlobStore _store;
   final EnvelopeEncryptor _encryptor;
   final SubkeyDerivationService _subkeys;
+  final ContentHasher _hasher;
 
   /// Encrypts [plaintext] into blob [id]. If [plaintext] errors, the write
   /// is aborted and the error rethrown: a blob is complete or absent.
@@ -39,6 +41,12 @@ final class EncryptedBlobStorage {
     final keyId = _subkeys.newSubkeyId();
     final blobKey = _blobKey(contentKey, keyId);
     final buffer = Uint8List(ChunkLayout.plaintextChunkBytes);
+    final digest = _hasher.start();
+    Future<void> store(Uint8List frame) {
+      digest.add(frame);
+      return writer.add(frame);
+    }
+
     try {
       var filled = 0;
       var index = 0;
@@ -53,7 +61,7 @@ final class EncryptedBlobStorage {
           // A full chunk is sealed only once more data proves it is not the
           // last, so the final flag is always truthful.
           if (filled == buffer.length) {
-            await writer.add(_seal(buffer, blobKey, id, index++, false));
+            await store(_seal(buffer, blobKey, id, index++, false));
             filled = 0;
           }
           final take = min(buffer.length - filled, piece.length - offset);
@@ -62,7 +70,7 @@ final class EncryptedBlobStorage {
           offset += take;
         }
       }
-      await writer.add(
+      await store(
         _seal(
           Uint8List.sublistView(buffer, 0, filled),
           blobKey,
@@ -71,9 +79,17 @@ final class EncryptedBlobStorage {
           true,
         ),
       );
+      final sealed = SealedBlob(
+        id: id,
+        keyId: keyId,
+        plaintextLength: total,
+        digest: await digest.close(),
+      );
       await writer.commit();
-      return SealedBlob(id: id, keyId: keyId, plaintextLength: total);
+      return sealed;
     } catch (_) {
+      // Releases the hash state; after a successful close this is a no-op.
+      digest.close().ignore();
       await writer.abort();
       rethrow;
     } finally {
@@ -186,10 +202,11 @@ final class _FrameReader {
   bool _gather(int bytes) {
     if (_pending.length >= bytes) return true;
     if (_pending.length + _incoming.length < bytes) return false;
-    _pending = (BytesBuilder(copy: false)
-          ..add(_pending)
-          ..add(_incoming.takeBytes()))
-        .takeBytes();
+    _pending =
+        (BytesBuilder(copy: false)
+              ..add(_pending)
+              ..add(_incoming.takeBytes()))
+            .takeBytes();
     return true;
   }
 }

@@ -218,6 +218,7 @@ void main() {
           store: store,
           encryptor: newEncryptor(),
           subkeys: newSubkeys(),
+          hasher: newHasher(),
         ),
       );
       contentKey = newEncryptor().generateKey();
@@ -287,6 +288,7 @@ void main() {
               store: store,
               encryptor: newEncryptor(),
               subkeys: newSubkeys(),
+              hasher: newHasher(),
             ).write(
               Stream.value('<svg/>'.codeUnits),
               id: BlobId('svg'),

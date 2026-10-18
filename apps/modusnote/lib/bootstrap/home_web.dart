@@ -114,6 +114,7 @@ VaultGate _gate({
     store: blobStore,
     encryptor: SodiumEnvelopeEncryptor(sodium),
     subkeys: SodiumSubkeyDerivationService(sodium),
+    hasher: SodiumContentHasher(sodium),
   );
   return VaultGate(
     keeper: keeper,
@@ -124,7 +125,11 @@ VaultGate _gate({
         : (engine) {
             final remote = cloud.remoteBlobs!(engine.ledger.workspace.id.hex);
             return (
-              replication: BlobReplication(local: blobStore, remote: remote),
+              replication: BlobReplication(
+                local: blobStore,
+                remote: remote,
+                hasher: SodiumContentHasher(sodium),
+              ),
               pruning: BlobPruning(remote: remote),
             );
           },

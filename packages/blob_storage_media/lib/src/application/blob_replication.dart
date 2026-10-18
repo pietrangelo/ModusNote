@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:identity_cryptography/identity_cryptography.dart';
 import 'package:schema_dynamic_content/schema_dynamic_content.dart';
 
 import '../core/blob_exception.dart';
@@ -41,13 +42,19 @@ abstract interface class RemoteBlobStore {
 /// storage, as ciphertext only.
 ///
 /// Nothing downloaded is trusted: it lands in the local store only when it
-/// is exactly as long as the note's metadata says, and every chunk is still
-/// authenticated by [EncryptedBlobStorage] when it is played.
+/// is exactly as long as the note's metadata says and, when the note names
+/// one, has its digest; every chunk is still authenticated by
+/// [EncryptedBlobStorage] when it is played.
 final class BlobReplication {
-  BlobReplication({required this._local, required this._remote});
+  BlobReplication({
+    required this._local,
+    required this._remote,
+    required this._hasher,
+  });
 
   final CiphertextBlobStore _local;
   final RemoteBlobStore _remote;
+  final ContentHasher _hasher;
   final _fetching = <BlobId, Future<void>>{};
 
   /// Whether this device holds blob [id].
@@ -74,6 +81,7 @@ final class BlobReplication {
   Future<void> _fetch(SealedBlob blob) async {
     final expected = ChunkLayout.ciphertextLengthFor(blob.plaintextLength);
     final writer = await _local.create(blob.id);
+    final digest = _hasher.start();
     try {
       var received = 0;
       await for (final piece in _remote.download(blob.id)) {
@@ -82,11 +90,19 @@ final class BlobReplication {
         if (received > expected) {
           throw const MalformedBlobException('download longer than the blob');
         }
+        digest.add(piece);
         await writer.add(piece);
       }
       if (received != expected) throw const TruncatedBlobException();
+      // Another writing member can replace the object on the server with
+      // a blob sealed under the same key: only the digest tells them apart.
+      final actual = await digest.close();
+      if (blob.digest case final named? when named != actual) {
+        throw const MalformedBlobException('blob does not match its note');
+      }
       await writer.commit();
     } catch (_) {
+      digest.close().ignore();
       await writer.abort();
       rethrow;
     }

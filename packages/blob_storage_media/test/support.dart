@@ -15,6 +15,8 @@ EnvelopeEncryptor newEncryptor() => SodiumEnvelopeEncryptor(sodium);
 
 SubkeyDerivationService newSubkeys() => SodiumSubkeyDerivationService(sodium);
 
+ContentHasher newHasher() => SodiumContentHasher(sodium);
+
 /// Deterministic, recognisable plaintext: byte i is `i * 31 + 7`, so a
 /// leak of any run of it into storage is easy to search for.
 Uint8List audio(int length) =>

@@ -23,6 +23,7 @@ void main() {
       store: store,
       encryptor: newEncryptor(),
       subkeys: newSubkeys(),
+      hasher: newHasher(),
     );
     contentKey = newEncryptor().generateKey();
   });
@@ -76,6 +77,7 @@ void main() {
           store: store,
           encryptor: newEncryptor(),
           subkeys: newSubkeys(),
+          hasher: newHasher(),
         );
         final plaintext = audio(length);
         final blob = await write(plaintext);
@@ -96,6 +98,7 @@ void main() {
       store: InMemoryBlobStore(),
       encryptor: newEncryptor(),
       subkeys: newSubkeys(),
+      hasher: newHasher(),
     );
     final plaintext = audio(length);
     final blob = await local.write(
@@ -371,6 +374,7 @@ void main() {
           store: local,
           encryptor: newEncryptor(),
           subkeys: newSubkeys(),
+          hasher: newHasher(),
         );
         final blob = SealedBlob(
           id: id,

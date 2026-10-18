@@ -45,6 +45,7 @@ void main() {
       store: FileSystemCiphertextBlobStore(fs.directory('/cache/blobs')),
       encryptor: SodiumEnvelopeEncryptor(sodium),
       subkeys: SodiumSubkeyDerivationService(sodium),
+      hasher: SodiumContentHasher(sodium),
     );
     contentKey = SodiumEnvelopeEncryptor(sodium).generateKey();
   });
