@@ -133,7 +133,10 @@ void main() {
       code: goodLink.replaceFirst('project.supabase.co', 'evil.example'),
     );
 
-    expect(find.text('Codice o link errato o scaduto.'), findsOneWidget);
+    expect(
+      find.textContaining('Codice o link errato o scaduto.'),
+      findsOneWidget,
+    );
     expect(account.signedIn, isFalse);
     expect(auth.requests, ['/auth/v1/otp']);
   });
@@ -148,9 +151,37 @@ void main() {
 
     await signIn(tester, code: '654321');
 
-    expect(find.text('Codice o link errato o scaduto.'), findsOneWidget);
+    expect(
+      find.textContaining('Codice o link errato o scaduto.'),
+      findsOneWidget,
+    );
     expect(account.signedIn, isFalse);
     expect(server.workspaces, isEmpty);
+  });
+
+  testWidgets('a new code can be sent, and the button tells the state', (
+    tester,
+  ) async {
+    final account = auth.account();
+    final server = MemorySyncServer(account.accessToken);
+    await pumpApp(tester, cloudGate(database, account, server));
+    await create(tester);
+    expect(
+      find.byTooltip('Sincronizzazione: accesso non effettuato'),
+      findsOneWidget,
+    );
+    await signIn(tester, code: '654321');
+
+    await tester.tap(find.byKey(const ValueKey('cloud-resend')));
+    await tester.pumpAndSettle();
+    expect(auth.requests.where((path) => path == '/auth/v1/otp'), hasLength(2));
+    expect(find.byKey(const ValueKey('cloud-problem')), findsNothing);
+    await tester.enterText(find.byKey(const ValueKey('cloud-code')), goodCode);
+    await tester.tap(find.text('Accedi'));
+    await tester.pumpAndSettle();
+
+    expect(account.signedIn, isTrue);
+    expect(find.byTooltip('Sincronizzazione: aggiornato'), findsOneWidget);
   });
 
   testWidgets('an address that is not one is caught before any request', (

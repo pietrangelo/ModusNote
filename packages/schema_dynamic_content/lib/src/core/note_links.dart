@@ -1,3 +1,4 @@
+import 'dynamic_entry.dart';
 import 'field_value.dart';
 import 'identifiers.dart';
 
@@ -37,4 +38,11 @@ abstract final class NoteLinks {
             if (seen.add(match.group(1)!)) EntryId(match.group(1)!),
     ];
   }
+
+  static final _ofEntry = Expando<List<EntryId>>();
+
+  /// [targets] of [entry]'s values, found once per entry: entries are
+  /// immutable, and every note's links are read on each editor rebuild.
+  static List<EntryId> of(DynamicEntry entry) =>
+      _ofEntry[entry] ??= List.unmodifiable(targets(entry.attributes.values));
 }

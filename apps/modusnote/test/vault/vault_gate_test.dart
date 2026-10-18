@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -9,6 +11,7 @@ import 'package:modusnote/notes/note_editor.dart';
 import 'package:modusnote/notes/note_library.dart';
 import 'package:modusnote/vault/auto_lock.dart';
 import 'package:modusnote/vault/vault_gate.dart';
+import 'package:offline_sync/offline_sync.dart';
 import 'package:schema_dynamic_content/schema_dynamic_content.dart';
 import 'package:sqlite3/sqlite3.dart';
 
@@ -61,6 +64,27 @@ void main() {
     await tester.tap(find.text('Sblocca'));
     await tester.pumpAndSettle();
   }
+
+  testWidgets('the passphrase can be shown while it is typed', (tester) async {
+    await pumpApp(tester, gateOn(database));
+    await tester.enterText(passphraseField, 'frase lunga');
+    bool hidden() => tester
+        .widget<EditableText>(
+          find.descendant(
+            of: passphraseField,
+            matching: find.byType(EditableText),
+          ),
+        )
+        .obscureText;
+
+    expect(hidden(), isTrue);
+    await tester.tap(find.byTooltip('Mostra password').first);
+    await tester.pump();
+    expect(hidden(), isFalse);
+    await tester.tap(find.byTooltip('Nascondi password').first);
+    await tester.pump();
+    expect(hidden(), isTrue);
+  });
 
   testWidgets('a new device asks to create the vault, then opens the notes', (
     tester,
@@ -468,7 +492,61 @@ void main() {
       await unlock(tester, 'frase sbagliata');
 
       expect(find.text('Passphrase errata.'), findsOneWidget);
+      // A forgotten passphrase is a dead end: the screen says what is left.
+      expect(
+        find.byKey(const ValueKey('passphrase-forgotten')),
+        findsOneWidget,
+      );
       expect(find.byType(NoteLibraryScreen), findsNothing);
+    });
+
+    testWidgets('an unexpected failure says so instead of nothing', (
+      tester,
+    ) async {
+      await pumpApp(tester, gateOn(database));
+      await create(tester, 'frase lunga', 'frase lunga');
+      await tester.tap(find.byTooltip('Blocca'));
+      await tester.pumpAndSettle();
+      database.execute('DROP TABLE vault_settings');
+
+      await unlock(tester, 'frase lunga');
+
+      expect(
+        find.textContaining('Non è stato possibile aprire il vault.'),
+        findsOneWidget,
+      );
+      expect(find.byKey(const ValueKey('passphrase-forgotten')), findsNothing);
+      expect(find.byType(NoteLibraryScreen), findsNothing);
+    });
+
+    testWidgets('notes from a newer app are counted, not hidden in silence', (
+      tester,
+    ) async {
+      await pumpApp(tester, gateOn(database));
+      await create(tester, 'frase lunga', 'frase lunga');
+      await tester.tap(find.byTooltip('Blocca'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('unreadable-notice')), findsNothing);
+      final vault = await tester.runAsync(
+        () => keeperOn(database).unlock(passphrase('frase lunga')),
+      );
+      await tester.runAsync(
+        () => vault!.engine.write(
+          RecordId.parse('f' * 32),
+          RevisionContents(utf8.encode('{"from": "a newer app"}')),
+        ),
+      );
+      vault!.lock();
+
+      await unlock(tester, 'frase lunga');
+
+      expect(
+        find.text(
+          '1 nota richiede una versione più recente di Modus Notes. '
+          "Aggiorna l'app per vederla.",
+        ),
+        findsOneWidget,
+      );
     });
 
     testWidgets('the typed passphrase does not stay in the text field', (

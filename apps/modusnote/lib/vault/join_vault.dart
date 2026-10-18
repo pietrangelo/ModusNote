@@ -11,6 +11,7 @@ import 'package:offline_sync_adapters/offline_sync_adapters.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../sync/sign_in_form.dart';
 import '../theme/golden_ratio.dart';
+import 'passphrase_field.dart';
 import 'passphrase_warning.dart';
 import '../theme/modus_palette.dart';
 
@@ -86,19 +87,16 @@ class _JoinVaultScreenState extends State<JoinVaultScreen> {
       null => LinkCode.tryParse(_code.text),
       _ => LinkCode.tryParse(_code.text) ?? InviteCode.tryParse(_code.text),
     };
+    // A mistyped code keeps the passphrase: nothing was read from it yet.
+    if (code == null) return setState(() => _problem = _Problem.codeShape);
     final mismatch = _passphrase.text != _confirmation.text;
     // As on the create form: the Strings are dropped at once.
     final bytes = Uint8List.fromList(utf8.encode(_passphrase.text));
     _passphrase.clear();
     _confirmation.clear();
-    final problem = code == null
-        ? _Problem.codeShape
-        : mismatch
-        ? _Problem.mismatch
-        : null;
-    if (problem != null) {
+    if (mismatch) {
       bytes.fillRange(0, bytes.length, 0);
-      return setState(() => _problem = problem);
+      return setState(() => _problem = _Problem.mismatch);
     }
     setState(() {
       _busy = true;
@@ -109,7 +107,7 @@ class _JoinVaultScreenState extends State<JoinVaultScreen> {
     try {
       final request = switch (code) {
         final InviteCode invite => await widget.accept!(invite, bytes),
-        _ => await widget.join(code! as LinkCode, bytes),
+        _ => await widget.join(code as LinkCode, bytes),
       };
       if (!mounted) return request.cancel();
       _code.clear();
@@ -252,6 +250,14 @@ class _JoinVaultScreenState extends State<JoinVaultScreen> {
         style: muted,
         textAlign: TextAlign.center,
       ),
+      const SizedBox(height: Spacing.s),
+      // The likeliest reason a code is refused is another account.
+      Text(
+        l10n.cloudSignedInAs(widget.account.email ?? ''),
+        key: const ValueKey('join-account'),
+        style: muted,
+        textAlign: TextAlign.center,
+      ),
       if (waiting) ...[
         const SizedBox(height: Spacing.l),
         const Center(child: CircularProgressIndicator()),
@@ -267,28 +273,21 @@ class _JoinVaultScreenState extends State<JoinVaultScreen> {
           decoration: InputDecoration(labelText: l10n.joinVaultCodeLabel),
         ),
         const SizedBox(height: Spacing.m),
-        TextField(
+        PassphraseField(
           key: const ValueKey('passphrase'),
           controller: _passphrase,
           enabled: !_busy,
-          obscureText: true,
-          autocorrect: false,
-          enableSuggestions: false,
-          keyboardType: TextInputType.visiblePassword,
           autofillHints: const [AutofillHints.newPassword],
-          decoration: InputDecoration(labelText: l10n.passphraseLabel),
+          label: l10n.passphraseLabel,
         ),
         const SizedBox(height: Spacing.m),
-        TextField(
+        PassphraseField(
           key: const ValueKey('passphrase-confirm'),
           controller: _confirmation,
           enabled: !_busy,
-          obscureText: true,
-          autocorrect: false,
-          enableSuggestions: false,
-          keyboardType: TextInputType.visiblePassword,
-          decoration: InputDecoration(labelText: l10n.passphraseConfirmLabel),
-          onSubmitted: _busy || !_acknowledged ? null : (_) => _submit(),
+          autofillHints: null,
+          label: l10n.passphraseConfirmLabel,
+          onSubmitted: _busy || !_acknowledged ? null : _submit,
         ),
         const SizedBox(height: Spacing.l),
         PassphraseWarning(
@@ -298,13 +297,16 @@ class _JoinVaultScreenState extends State<JoinVaultScreen> {
         ),
         if (problem != null) ...[
           const SizedBox(height: Spacing.m),
-          Text(
-            problem,
-            key: const ValueKey('join-problem'),
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: theme.colorScheme.error,
+          Semantics(
+            liveRegion: true,
+            child: Text(
+              problem,
+              key: const ValueKey('join-problem'),
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.error,
+              ),
+              textAlign: TextAlign.center,
             ),
-            textAlign: TextAlign.center,
           ),
         ],
         const SizedBox(height: Spacing.l),

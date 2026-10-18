@@ -140,7 +140,7 @@ async function scenario(browser, origin, mode) {
   await page.getByRole('button', { name: 'Unlock' }).click();
   // Argon2id runs on the UI thread and the form is disabled meanwhile:
   // typing before the verdict would be lost on a slow machine.
-  await page.getByText('Wrong passphrase.').waitFor({ timeout: 120000 });
+  await page.getByText('Wrong passphrase.').first().waitFor({ timeout: 120000 });
   await settle();
   check(await page.getByText('Unlock your notes').count() > 0, 'a wrong passphrase opened the vault');
   check(await page.getByText(noteText).count() === 0, 'a note showed behind a wrong passphrase');

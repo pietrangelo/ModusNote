@@ -130,13 +130,20 @@ enum SyncStream {
 abstract interface class LocalRecordStore {
   Future<EncryptedEnvelope?> load(RecordId id);
 
-  Future<List<RecordId>> recordIds();
+  /// Every record of the workspace, in one read.
+  Future<Map<RecordId, EncryptedEnvelope>> loadAll();
 
   Future<void> save(RecordId id, EncryptedEnvelope sealed);
 
   Future<Outbox> loadOutbox();
 
-  Future<void> saveOutbox(Outbox outbox);
+  /// Adds [row] to the outbox as [Outbox.enqueue] does: it replaces a
+  /// queued row of the same record in place, or goes last.
+  Future<void> queue(SealedRow row);
+
+  /// Drops these rows once the server holds them; a row queued since for
+  /// the same record stays.
+  Future<void> unqueue(Iterable<SealedRow> pushed);
 
   Future<int> loadCursor(SyncStream stream);
 

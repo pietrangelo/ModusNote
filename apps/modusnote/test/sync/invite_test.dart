@@ -167,6 +167,22 @@ void main() {
       expect(opened, 1);
     });
 
+    testWidgets('says why the invitation waits for a sync', (tester) async {
+      final sync = controllerFor(owner);
+      await showMembers(tester, sync, onInvite: () {});
+
+      expect(
+        tester
+            .widget<ButtonStyleButton>(find.byKey(const ValueKey('invite')))
+            .onPressed,
+        isNull,
+      );
+      expect(
+        find.text('Disponibile quando il vault è sincronizzato.'),
+        findsOneWidget,
+      );
+    });
+
     testWidgets('a reader sees the members but cannot invite or remove', (
       tester,
     ) async {

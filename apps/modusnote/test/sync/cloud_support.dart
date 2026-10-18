@@ -130,8 +130,11 @@ final class MemorySyncServer
     this.rows.addAll(rows);
   }
 
+  var headsAsked = 0;
+
   @override
   Future<SyncHeads?> heads(WorkspaceId workspace) async {
+    headsAsked++;
     await _check();
     return SyncHeads(
       rows: rows.length,

@@ -124,11 +124,14 @@ void main() {
       },
     );
 
-    await tester.tap(find.byTooltip('Rimuovi il task').first);
+    await tester.tap(find.byTooltip('Rimuovi l\'attività').first);
     await tester.pumpAndSettle();
 
     expect(reported(), ChecklistValue([const ChecklistItem('pane')]));
-    expect(find.byTooltip('Rimuovi il task'), findsNothing); // The last stays.
+    expect(
+      find.byTooltip('Rimuovi l\'attività'),
+      findsNothing,
+    ); // The last stays.
   });
 
   testWidgets('"Add a task" continues a list that was ended', (tester) async {
@@ -139,13 +142,13 @@ void main() {
       },
     );
 
-    await tester.tap(find.text('Aggiungi un task'));
+    await tester.tap(find.text('Aggiungi un\'attività'));
     await tester.pumpAndSettle();
     expect(rows(), findsNWidgets(2));
     expect(focused(tester).controller.text, isEmpty);
 
     // Asking again while the new task is still empty adds nothing.
-    await tester.tap(find.text('Aggiungi un task'));
+    await tester.tap(find.text('Aggiungi un\'attività'));
     await tester.pumpAndSettle();
     expect(rows(), findsNWidgets(2));
   });

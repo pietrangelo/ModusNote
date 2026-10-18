@@ -39,6 +39,7 @@ class NoteLibraryScreen extends StatefulWidget {
     required this.schemas,
     required this.store,
     this.cloud,
+    this.notice,
     this.onLock,
     this.onPasskey,
     this.onBackup,
@@ -52,6 +53,10 @@ class NoteLibraryScreen extends StatefulWidget {
 
   /// The sync status button; null in a build without a server.
   final Widget? cloud;
+
+  /// Shown above the notes, such as the vault's word on notes it could not
+  /// read; null for none.
+  final Widget? notice;
 
   /// Locks the vault; without it (no vault, e.g. the web preview) the
   /// library shows no lock button.
@@ -551,26 +556,26 @@ class _NoteLibraryScreenState extends State<NoteLibraryScreen> {
     ].where((command) => named(command.label));
     final search = EntrySearch(query);
     final dates = MaterialLocalizations.of(context);
-    final notes = [
-      for (final entry in widget.store.entries)
-        if (search.matches(entry))
-          () {
-            final schema = _schemaOf(entry);
-            final title = NoteTitle.of(
-              entry,
-              schema,
-              day: JournalDays.longIn(context),
-            );
-            return PaletteCommand(
-              icon: NoteAppearance.icon(schema?.icon),
-              color: ModusPalette.of(context).tint(schema?.tint),
-              label: title.isEmpty ? l10n.untitled : title,
-              detail: dates.formatMediumDate(entry.audit.updatedAt.toLocal()),
-              run: () =>
-                  wide ? unawaited(_openBeside(entry.id)) : _open(entry: entry),
-            );
-          }(),
-    ];
+    // The palette shows no more than this: the rest is never searched.
+    final notes = widget.store.entries
+        .where(search.matches)
+        .take(CommandPalette.shown)
+        .map((entry) {
+          final schema = _schemaOf(entry);
+          final title = NoteTitle.of(
+            entry,
+            schema,
+            day: JournalDays.longIn(context),
+          );
+          return PaletteCommand(
+            icon: NoteAppearance.icon(schema?.icon),
+            color: ModusPalette.of(context).tint(schema?.tint),
+            label: title.isEmpty ? l10n.untitled : title,
+            detail: dates.formatMediumDate(entry.audit.updatedAt.toLocal()),
+            run: () =>
+                wide ? unawaited(_openBeside(entry.id)) : _open(entry: entry),
+          );
+        });
     return terms.isEmpty ? [...notes, ...actions] : [...actions, ...notes];
   }
 
@@ -757,6 +762,11 @@ class _NoteLibraryScreenState extends State<NoteLibraryScreen> {
         ),
         child: _searchField(l10n),
       ),
+      if (widget.notice case final notice?)
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: Spacing.m),
+          child: notice,
+        ),
       Padding(
         padding: const EdgeInsets.symmetric(horizontal: Spacing.m),
         child: Row(
@@ -861,9 +871,7 @@ class _NoteLibraryScreenState extends State<NoteLibraryScreen> {
       DynamicEntry? entry;
       SchemaDefinition? schema;
       if (opened is EntryId) {
-        entry = widget.store.entries
-            .where((entry) => entry.id == opened)
-            .firstOrNull;
+        entry = widget.store.entryOf(opened);
         schema = entry == null ? null : _schemaOf(entry);
       } else if (opened is _NewNote) {
         schema = opened.schema ?? _type ?? widget.schemas.last;
@@ -927,6 +935,7 @@ class _NoteLibraryScreenState extends State<NoteLibraryScreen> {
                 sliver: SliverList.list(
                   children: [
                     _searchField(l10n),
+                    ?widget.notice,
                     if (!tree.isEmpty) ...[
                       const SizedBox(height: Spacing.s),
                       _CategoryBar(

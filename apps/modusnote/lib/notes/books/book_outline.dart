@@ -41,6 +41,10 @@ final class BookOutline {
   static const character = 'book_character';
   static const place = 'book_place';
 
+  /// Each chapter counted once: entries are immutable, and the book counts
+  /// all of them on every rebuild.
+  static final _words = Expando<int>();
+
   /// Null when the book is in no category: there is nothing to gather.
   static BookOutline? of({
     required CategoryId? category,
@@ -60,7 +64,9 @@ final class BookOutline {
           chapters.add(
             OutlinedChapter(
               entry,
-              words: switch (entry.valueOf(FieldKey('body'))) {
+              words: _words[entry] ??= switch (entry.valueOf(
+                FieldKey('body'),
+              )) {
                 TextValue(:final text) => WordCount.of(text),
                 _ => 0,
               },
@@ -76,8 +82,10 @@ final class BookOutline {
           places.add(entry);
       }
     }
+    // Once per note, not twice per comparison.
+    final titles = <EntryId, String>{};
     String title(DynamicEntry entry) =>
-        NoteTitle.of(entry, schemaOf(entry)).toLowerCase();
+        titles[entry.id] ??= NoteTitle.of(entry, schemaOf(entry)).toLowerCase();
     int byTitle(DynamicEntry a, DynamicEntry b) {
       final named = title(a).compareTo(title(b));
       return named != 0 ? named : a.id.value.compareTo(b.id.value);
