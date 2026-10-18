@@ -303,6 +303,18 @@
   "@passphraseWarningAcknowledge": {
     "description": "Checkbox the person must tick before creating or joining a vault."
   },
+  "legalNotice": "By going on you accept the terms of service. The privacy policy explains what data is processed.",
+  "@legalNotice": {
+    "description": "Under the passphrase warning, before the links to the terms of service and the privacy policy."
+  },
+  "legalTerms": "Terms of service",
+  "@legalTerms": {
+    "description": "Link that opens the terms of service page in the browser."
+  },
+  "legalPrivacy": "Privacy policy",
+  "@legalPrivacy": {
+    "description": "Link that opens the privacy policy page in the browser."
+  },
   "vaultCreateTitle": "Create your vault",
   "@vaultCreateTitle": {
     "description": "Title of the screen that creates the encrypted vault on first launch."

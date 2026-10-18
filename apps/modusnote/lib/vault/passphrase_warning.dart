@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../attachments/open_in_browser.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../theme/golden_ratio.dart';
 import '../theme/modus_palette.dart';
@@ -7,7 +8,8 @@ import '../theme/modus_palette.dart';
 /// Shown wherever a passphrase is chosen (a new vault, a device joining
 /// one): nobody can recover a forgotten passphrase, not even the developer,
 /// because it never leaves the device. The form stays closed until the
-/// person ticks that they understood.
+/// person ticks that they understood. It also links the terms of service
+/// and the privacy policy, accepted by going on.
 class PassphraseWarning extends StatelessWidget {
   const PassphraseWarning({
     required this.acknowledged,
@@ -90,9 +92,33 @@ class PassphraseWarning extends StatelessWidget {
                 ),
               ),
             ),
+            Text(
+              l10n.legalNotice,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: ModusPalette.of(context).muted,
+              ),
+            ),
+            Wrap(
+              spacing: Spacing.s,
+              children: [
+                TextButton(
+                  key: const ValueKey('legal-terms'),
+                  onPressed: () => openInBrowser(_legal('terms.html')),
+                  child: Text(l10n.legalTerms),
+                ),
+                TextButton(
+                  key: const ValueKey('legal-privacy'),
+                  onPressed: () => openInBrowser(_legal('privacy.html')),
+                  child: Text(l10n.legalPrivacy),
+                ),
+              ],
+            ),
           ],
         ),
       ),
     );
   }
+
+  // The published pages, also from the phone and from a local web build.
+  static Uri _legal(String page) => Uri.https('modus.serv.run', '/$page');
 }
