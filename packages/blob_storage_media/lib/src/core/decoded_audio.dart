@@ -19,7 +19,11 @@ final class DecodedAudio {
   }
 
   static const minSampleRate = 8000;
-  static const maxSampleRate = 192000;
+
+  /// Every recorder of the app writes 48 kHz, and the memory budget below
+  /// holds only up to it: a hostile 192 kHz take would be four times as
+  /// large for the same thirty minutes.
+  static const maxSampleRate = 48000;
 
   /// Playback decodes the whole recording into memory: thirty minutes at
   /// 48 kHz is about 170 MB of samples, and the cap also stops a few bytes

@@ -159,27 +159,37 @@ final class EncryptedBlobStorage {
 final class _FrameReader {
   Uint8List _pending = Uint8List(0);
 
-  bool get hasRemainder => _pending.isNotEmpty;
+  // Pieces wait here until a whole frame may be in: joining them on every
+  // add would copy up to a frame per byte when a store hands back tiny
+  // pieces.
+  final _incoming = BytesBuilder(copy: true);
 
-  void add(Uint8List piece) {
-    _pending = _pending.isEmpty
-        ? Uint8List.fromList(piece)
-        : (Uint8List(_pending.length + piece.length)
-            ..setAll(0, _pending)
-            ..setAll(_pending.length, piece));
-  }
+  bool get hasRemainder => _pending.isNotEmpty || _incoming.isNotEmpty;
+
+  void add(Uint8List piece) => _incoming.add(piece);
 
   Uint8List? next() {
     const prefix = ChunkLayout.lengthPrefixBytes;
-    if (_pending.length < prefix) return null;
+    if (!_gather(prefix)) return null;
     final length = ByteData.sublistView(_pending).getUint32(0);
     if (length < ChunkLayout.minEnvelopeBytes ||
         length > ChunkLayout.maxEnvelopeBytes) {
       throw const MalformedBlobException('frame length out of bounds');
     }
-    if (_pending.length < prefix + length) return null;
+    if (!_gather(prefix + length)) return null;
     final body = Uint8List.sublistView(_pending, prefix, prefix + length);
     _pending = Uint8List.sublistView(_pending, prefix + length);
     return body;
+  }
+
+  /// Whether [bytes] are pending, joining the pieces only once they are.
+  bool _gather(int bytes) {
+    if (_pending.length >= bytes) return true;
+    if (_pending.length + _incoming.length < bytes) return false;
+    _pending = (BytesBuilder(copy: false)
+          ..add(_pending)
+          ..add(_incoming.takeBytes()))
+        .takeBytes();
+    return true;
   }
 }

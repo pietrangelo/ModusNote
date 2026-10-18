@@ -138,6 +138,17 @@ void main() {
   });
 
   group('adversary', () {
+    test('a store handing back single bytes is read in linear time', () async {
+      final plaintext = audio(2 * chunk + 999);
+      final blob = await write(plaintext);
+      store.readPiece = 1;
+
+      // Joining the pending bytes on every piece took minutes here.
+      final watch = Stopwatch()..start();
+      expect(await read(blob), plaintext);
+      expect(watch.elapsed, lessThan(const Duration(seconds: 10)));
+    });
+
     test(
       'no plaintext ever reaches the store, committed or in flight',
       () async {
