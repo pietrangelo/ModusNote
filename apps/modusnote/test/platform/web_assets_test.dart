@@ -15,10 +15,10 @@ void main() {
     return entry![1]!;
   }
 
-  test('sodium.js is the sumo build sodium 4.1.1+2 verifies', () {
-    expect(locked('sodium'), '4.1.1+2');
+  test('sodium.js is the sumo build sodium 4.1.2 verifies', () {
+    expect(locked('sodium'), '4.1.2');
     final digest = sha512.convert(File('web/sodium.js').readAsBytesSync());
-    // HookConstants.jsSumoDist.hash in package:sodium 4.1.1+2.
+    // HookConstants.jsSumoDist.hash in package:sodium 4.1.2.
     expect(
       digest.toString(),
       'd95956f041be5bcf8a9644027e3f4866138903a38f8fe84fdb0410a0076b0121'
