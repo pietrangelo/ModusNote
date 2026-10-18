@@ -1,0 +1,8 @@
+{
+  "name": "modusnote-deploy",
+  "private": true,
+  "description": "Wrangler, pinned with its whole dependency tree, for the Pages deploy job.",
+  "dependencies": {
+    "wrangler": "4.139.0"
+  }
+}
