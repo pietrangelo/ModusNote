@@ -1,7 +1,7 @@
 name: modusnote
 description: "ModusNote: note offline-first cifrate end-to-end, a schemi dinamici."
 publish_to: none
-version: 0.1.0+1
+version: 0.2.0+2
 resolution: workspace
 
 environment:
@@ -14,7 +14,7 @@ dependencies:
   collaboration_access_control: any
   flutter:
     sdk: flutter
-  flutter_soloud: 5.1.2
+  flutter_soloud: 5.2.1
   flutter_localizations:
     sdk: flutter
   file: ^7.0.1
