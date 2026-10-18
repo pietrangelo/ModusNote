@@ -93,4 +93,30 @@ void main() {
       isTrue,
     );
   });
+
+  test('every Android version from 11 draws edge to edge, as 15 does', () {
+    // Google Play asks apps targeting API 35 to opt in on older versions
+    // too, so that the insets the app handles are the same everywhere.
+    final activity = File(
+      'android/app/src/main/kotlin/run/serv/modus/MainActivity.kt',
+    ).readAsStringSync();
+    final edgeToEdge = activity.indexOf(
+      'WindowCompat.setDecorFitsSystemWindows(window, false)',
+    );
+    expect(edgeToEdge, isNonNegative);
+    expect(edgeToEdge, lessThan(activity.indexOf('super.onCreate(')));
+    for (final values in ['values-v30', 'values-night-v30']) {
+      final styles = File('android/app/src/main/res/$values/styles.xml')
+          .readAsStringSync();
+      for (final theme in ['LaunchTheme', 'NormalTheme']) {
+        expect(styles, contains('name="$theme"'));
+      }
+      expect(
+        RegExp(
+          '<item name="android:navigationBarColor">@android:color/transparent',
+        ).allMatches(styles),
+        hasLength(2),
+      );
+    }
+  });
 }
