@@ -171,3 +171,33 @@ jobs:
           name: web-bundle
           path: apps/modusnote/build/web
           if-no-files-found: error
+
+  # The sync server on Durable Objects (CLAUDE.md, «Server su Durable Objects»): the Rust
+  # crates against the golden vectors, then the Worker in workerd with local Durable Objects
+  # and R2. Nothing here talks to Cloudflare.
+  server:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Rust toolchain
+        run: |
+          rustup toolchain install stable --profile minimal --component clippy,rustfmt --target wasm32-unknown-unknown
+          rustup default stable
+
+      - name: Format
+        run: cargo fmt --check
+
+      - name: Lint, native and for Workers
+        run: |
+          cargo clippy --locked --all-targets -- -D warnings
+          cargo clippy --locked -p modusnote-server --target wasm32-unknown-unknown -- -D warnings
+
+      - name: Tests, golden vectors included
+        run: cargo test --locked
+
+      - name: Worker against workerd, Durable Objects and R2
+        run: bash e2e/run.sh
