@@ -18,6 +18,7 @@ class BookSection extends StatelessWidget {
     required this.goal,
     required this.schemas,
     required this.onOpen,
+    this.offered,
     required this.onAdd,
     super.key,
   });
@@ -30,6 +31,10 @@ class BookSection extends StatelessWidget {
   final List<SchemaDefinition> schemas;
   final ValueChanged<DynamicEntry> onOpen;
 
+  /// The types a new part may take; [schemas] when null. A part whose
+  /// type is turned off on this device has no button.
+  final List<SchemaDefinition>? offered;
+
   /// Writes a new note of this type in the book.
   final ValueChanged<SchemaDefinition> onAdd;
 
@@ -41,7 +46,7 @@ class BookSection extends StatelessWidget {
   }
 
   SchemaDefinition? _current(String name) {
-    for (final schema in schemas) {
+    for (final schema in offered ?? schemas) {
       if (schema.id.name == name) return schema;
     }
     return null;
@@ -94,12 +99,13 @@ class BookSection extends StatelessWidget {
 
     Widget add(String name, String label) {
       final schema = _current(name);
+      if (schema == null) return const SizedBox.shrink();
       return Align(
         alignment: AlignmentDirectional.centerStart,
         child: TextButton.icon(
           icon: const Icon(Icons.add, size: IconSizes.inline),
           label: Text(label),
-          onPressed: schema == null ? null : () => onAdd(schema),
+          onPressed: () => onAdd(schema),
         ),
       );
     }

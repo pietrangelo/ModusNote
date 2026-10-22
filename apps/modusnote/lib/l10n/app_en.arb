@@ -2282,5 +2282,13 @@
   "playbackSeek": "Playback position",
   "@playbackSeek": {
     "description": "Screen reader label of the waveform, which seeks in the recording."
+  },
+  "noteTypesSettings": "Note types",
+  "@noteTypesSettings": {
+    "description": "Button, palette command and sheet that turn note types on or off on this device."
+  },
+  "noteTypesSettingsHint": "A type turned off is no longer offered for new notes, in the filters or in the palette, and the journal's reminder stops with the journal. The notes you already have stay where they are. This is a setting of this device.",
+  "@noteTypesSettingsHint": {
+    "description": "Explanation under the title of the note types sheet."
   }
 }
