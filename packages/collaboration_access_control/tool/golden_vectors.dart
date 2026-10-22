@@ -134,6 +134,22 @@ final class Log {
   }
 }
 
+/// [wire] with the byte at [flip] changed and signed again by [issuer]:
+/// a bundle the issuer really signed, whose content is out of shape.
+Uint8List resigned(
+  Uint8List wire,
+  IdentityKeyPair issuer, {
+  required int flip,
+}) {
+  final body = Uint8List.fromList(wire.sublist(0, wire.length - 64));
+  body[flip] ^= 0x03;
+  final signature = identities.sign(
+    Uint8List.fromList([...utf8.encode('modusnote.keybundle.v1'), ...body]),
+    signer: issuer,
+  );
+  return Uint8List.fromList([...body, ...signature.bytes]);
+}
+
 KeyBundle signedBundle(
   IdentityKeyPair issuer, {
   required int atSequence,
@@ -195,6 +211,7 @@ Map<String, Object> describe(
   required int accepted,
   VerifiedLedger? state,
   List<(KeyBundle, bool)> bundles = const [],
+  List<(Uint8List, bool)> rawBundles = const [],
 }) {
   final workspace = state?.workspace;
   return {
@@ -211,6 +228,8 @@ Map<String, Object> describe(
     'bundles': [
       for (final (bundle, valid) in bundles)
         {'bundle': hex(bundle.toBytes()), 'valid': valid},
+      for (final (wire, valid) in rawBundles)
+        {'bundle': hex(wire), 'valid': valid},
     ],
   };
 }
@@ -314,6 +333,30 @@ List<Map<String, Object>> _cases() {
         ),
         // An empty bundle from an owner says nothing, but is genuine.
         (signedBundle(alice, atSequence: 0, grants: const []), true),
+      ],
+      rawBundles: [
+        // Signed by an owner, but the sealed key's envelope is of a version
+        // no device opens: refused before anyone stores it.
+        (
+          resigned(
+            signedBundle(
+              alice,
+              atSequence: 0,
+              grants: [
+                GroupKeyGrant(
+                  recipient: id(alice),
+                  epoch: KeyEpoch.initial,
+                  sealedKey: sealedToBob,
+                ),
+              ],
+            ).toBytes(),
+            alice,
+            // Header (55 bytes), epoch and recipient (36), then byte 1120
+            // of the sealed key: its envelope version.
+            flip: 55 + 36 + 1120,
+          ),
+          false,
+        ),
       ],
     ),
   );
