@@ -61,6 +61,7 @@ class NoteEditorScreen extends StatefulWidget {
     required this.schemas,
     required this.store,
     required this.initialSchema,
+    this.offered,
     this.entry,
     this.onClose,
     this.onFocusChanged,
@@ -74,6 +75,11 @@ class NoteEditorScreen extends StatefulWidget {
   final List<SchemaDefinition> schemas;
   final NoteStore store;
   final SchemaDefinition initialSchema;
+
+  /// The types a new note may take, here and in the notes it starts (a
+  /// book's chapter, a manual's page); [schemas] when null. A note of a
+  /// type turned off still opens and saves.
+  final List<SchemaDefinition>? offered;
 
   /// The note being edited, or null for a new one.
   final DynamicEntry? entry;
@@ -489,6 +495,8 @@ class NoteEditorScreenState extends State<NoteEditorScreen>
     return images.open(image);
   }
 
+  List<SchemaDefinition> get _offered => widget.offered ?? widget.schemas;
+
   SchemaDefinition? _schemaOf(DynamicEntry entry) {
     for (final schema in widget.schemas) {
       if (schema.id == entry.schemaId) return schema;
@@ -573,6 +581,7 @@ class NoteEditorScreenState extends State<NoteEditorScreen>
     if (!mounted) return;
     final screen = NoteEditorScreen(
       schemas: widget.schemas,
+      offered: widget.offered,
       store: widget.store,
       initialSchema: schema,
       entry: entry,
@@ -723,7 +732,7 @@ class NoteEditorScreenState extends State<NoteEditorScreen>
                 ? null
                 : _TypeTitle(
                     schema: _schema,
-                    schemas: _saved == null ? widget.schemas : const [],
+                    schemas: _saved == null ? _offered : const [],
                     text: text,
                     onSwitch: _switchTo,
                   ),
@@ -874,6 +883,7 @@ class NoteEditorScreenState extends State<NoteEditorScreen>
                                       _ => null,
                                     },
                                     schemas: widget.schemas,
+                                    offered: _offered,
                                     onOpen: _openLinked,
                                     onAdd: (schema) =>
                                         _openOver(schema, category: category),
@@ -895,8 +905,12 @@ class NoteEditorScreenState extends State<NoteEditorScreen>
                                     current: _id,
                                     schemaOf: _schemaOf,
                                     onOpen: _openLinked,
-                                    onAdd: () =>
-                                        _openOver(_schema, category: category),
+                                    onAdd: _offered.contains(_schema)
+                                        ? () => _openOver(
+                                            _schema,
+                                            category: category,
+                                          )
+                                        : null,
                                   );
                                 },
                               ),

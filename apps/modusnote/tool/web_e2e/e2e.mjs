@@ -117,7 +117,7 @@ async function scenario(browser, origin, mode) {
   // A song with a guide track recorded from the microphone.
   await page.getByText('New note').first().click();
   await settle();
-  await page.getByRole('button', { name: /Note type/ }).click();
+  await page.getByRole('button', { name: /^Note type(?!s)/ }).click();
   await page.getByLabel('Song', { exact: true }).click();
   await settle();
   await typeInto(/^Title/, songTitle);

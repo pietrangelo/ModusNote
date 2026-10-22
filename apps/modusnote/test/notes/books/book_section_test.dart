@@ -22,6 +22,7 @@ void main() {
     SchemaDefinition schema, {
     DynamicEntry? entry,
     CategoryId? category,
+    List<SchemaDefinition>? offered,
   }) async {
     await pumpApp(
       tester,
@@ -33,6 +34,7 @@ void main() {
                 MaterialPageRoute<void>(
                   builder: (_) => NoteEditorScreen(
                     schemas: SeedSchemas.all,
+                    offered: offered,
                     store: store,
                     entry: entry,
                     category: category,
@@ -96,6 +98,23 @@ void main() {
     expect(store.categoryOf(chapter.id), novel);
     // Back on the book, counted with the rest.
     expect(find.text('9 di 80.000 parole'), findsOneWidget);
+  });
+
+  testWidgets('a part of a type turned off has no button; its rows stay', (
+    tester,
+  ) async {
+    await open(
+      tester,
+      SeedSchemas.bookV1,
+      entry: entry(bookId),
+      offered: [
+        for (final schema in SeedSchemas.all)
+          if (schema.id != SeedSchemas.bookChapterV1.id) schema,
+      ],
+    );
+    expect(find.text('Nuovo capitolo'), findsNothing);
+    expect(find.text('Nuovo personaggio'), findsOneWidget);
+    expect(find.byKey(ValueKey('book-${'c1' * 16}')), findsOneWidget);
   });
 
   testWidgets('a book in no category says where its parts go', (tester) async {

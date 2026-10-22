@@ -22,6 +22,7 @@ import 'note_appearance.dart';
 import 'note_editor.dart';
 import 'note_store.dart';
 import 'note_title.dart';
+import 'note_types.dart';
 import 'schema_text.dart';
 import 'trash_screen.dart';
 import '../theme/modus_palette.dart';
@@ -44,6 +45,7 @@ class NoteLibraryScreen extends StatefulWidget {
     this.onPasskey,
     this.onBackup,
     this.journalSettings,
+    this.noteTypes,
     this.clock = DateTime.now,
     super.key,
   });
@@ -72,6 +74,10 @@ class NoteLibraryScreen extends StatefulWidget {
   /// Opens the journal's settings (the daily reminder); null where there
   /// are none to change.
   final VoidCallback? journalSettings;
+
+  /// Which of [schemas] this device offers, and a way to change it; null
+  /// offers them all, with nothing to change.
+  final NoteTypeSetting? noteTypes;
 
   /// Which day is today, for the journal.
   final DateTime Function() clock;
@@ -105,6 +111,46 @@ class NoteLibraryScreen extends StatefulWidget {
 class _NoteLibraryScreenState extends State<NoteLibraryScreen> {
   var _search = EntrySearch('');
   SchemaDefinition? _type;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.noteTypes?.addListener(_typesChanged);
+  }
+
+  @override
+  void didUpdateWidget(NoteLibraryScreen old) {
+    super.didUpdateWidget(old);
+    if (old.noteTypes != widget.noteTypes) {
+      old.noteTypes?.removeListener(_typesChanged);
+      widget.noteTypes?.addListener(_typesChanged);
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.noteTypes?.removeListener(_typesChanged);
+    super.dispose();
+  }
+
+  /// The types offered for new notes, filters and the palette. Notes of
+  /// the others are still shown and opened: [widget.schemas] reads them.
+  List<SchemaDefinition> get _offered =>
+      widget.noteTypes?.value.offered(widget.schemas) ?? widget.schemas;
+
+  /// A filter by a type just turned off would hide its notes with no way
+  /// back: it goes, and the list shows every note.
+  void _typesChanged() => setState(() {
+    if (_type case final type? when !_offered.contains(type)) _type = null;
+  });
+
+  void _showNoteTypes() {
+    if (widget.noteTypes case final setting?) {
+      unawaited(
+        NoteTypesSheet.show(context, schemas: widget.schemas, setting: setting),
+      );
+    }
+  }
 
   /// The category being looked at; null for every note. It may name one
   /// that is gone, which shows every note.
@@ -150,7 +196,7 @@ class _NoteLibraryScreenState extends State<NoteLibraryScreen> {
 
   /// The journal's type, if the app offers it.
   SchemaDefinition? get _journal {
-    for (final schema in widget.schemas) {
+    for (final schema in _offered) {
       if (schema.id.name == Journal.schema) return schema;
     }
     return null;
@@ -345,12 +391,13 @@ class _NoteLibraryScreenState extends State<NoteLibraryScreen> {
 
   void _open({DynamicEntry? entry, SchemaDefinition? schema, DateValue? day}) {
     schema = entry == null
-        ? schema ?? _type ?? widget.schemas.last
+        ? schema ?? _type ?? _offered.last
         : _schemaOf(entry);
     if (schema == null) return;
     _push(
       NoteEditorScreen(
         schemas: widget.schemas,
+        offered: _offered,
         store: widget.store,
         initialSchema: schema,
         entry: entry,
@@ -456,7 +503,7 @@ class _NoteLibraryScreenState extends State<NoteLibraryScreen> {
     }
 
     final actions = [
-      for (final schema in widget.schemas)
+      for (final schema in _offered)
         PaletteCommand(
           icon: NoteAppearance.icon(schema.icon),
           color: ModusPalette.of(context).tint(schema.tint),
@@ -487,6 +534,12 @@ class _NoteLibraryScreenState extends State<NoteLibraryScreen> {
         label: l10n.categories,
         run: _openCategories,
       ),
+      if (widget.noteTypes != null)
+        PaletteCommand(
+          icon: Icons.tune,
+          label: l10n.noteTypesSettings,
+          run: _showNoteTypes,
+        ),
       if (wide) ...[
         PaletteCommand(
           icon: Icons.menu,
@@ -683,7 +736,10 @@ class _NoteLibraryScreenState extends State<NoteLibraryScreen> {
                   child: ListenableBuilder(
                     listenable: widget.store,
                     builder: (context, _) => _SideColumn(
-                      schemas: widget.schemas,
+                      schemas: _offered,
+                      onNoteTypes: widget.noteTypes == null
+                          ? null
+                          : _showNoteTypes,
                       tree: widget.store.categories,
                       text: text,
                       type: _type,
@@ -874,7 +930,7 @@ class _NoteLibraryScreenState extends State<NoteLibraryScreen> {
         entry = widget.store.entryOf(opened);
         schema = entry == null ? null : _schemaOf(entry);
       } else if (opened is _NewNote) {
-        schema = opened.schema ?? _type ?? widget.schemas.last;
+        schema = opened.schema ?? _type ?? _offered.last;
       }
       if (schema == null) {
         return Center(
@@ -888,6 +944,7 @@ class _NoteLibraryScreenState extends State<NoteLibraryScreen> {
       return NoteEditorScreen(
         key: _editor,
         schemas: widget.schemas,
+        offered: _offered,
         store: widget.store,
         initialSchema: schema,
         entry: entry,
@@ -953,12 +1010,19 @@ class _NoteLibraryScreenState extends State<NoteLibraryScreen> {
                       child: Row(
                         spacing: Spacing.s,
                         children: [
+                          if (widget.noteTypes != null)
+                            IconButton(
+                              key: const ValueKey('note-types-settings'),
+                              onPressed: _showNoteTypes,
+                              tooltip: l10n.noteTypesSettings,
+                              icon: const Icon(Icons.tune),
+                            ),
                           ChoiceChip(
                             label: Text(l10n.allNoteTypes),
                             selected: _type == null,
                             onSelected: (_) => setState(() => _type = null),
                           ),
-                          for (final schema in widget.schemas)
+                          for (final schema in _offered)
                             ChoiceChip(
                               avatar: Icon(
                                 NoteAppearance.icon(schema.icon),
@@ -1323,6 +1387,7 @@ class _SideColumn extends StatelessWidget {
     required this.onTrash,
     required this.onHide,
     required this.actions,
+    this.onNoteTypes,
   });
 
   final List<SchemaDefinition> schemas;
@@ -1339,6 +1404,9 @@ class _SideColumn extends StatelessWidget {
   /// Folds the column into the rail.
   final VoidCallback onHide;
   final List<Widget> actions;
+
+  /// Opens the choice of the types offered; null where there is none.
+  final VoidCallback? onNoteTypes;
 
   @override
   Widget build(BuildContext context) {
@@ -1397,7 +1465,23 @@ class _SideColumn extends StatelessWidget {
                 selected: !trash && type == null && category == null,
                 onTap: onAll,
               ),
-              heading(l10n.noteType),
+              if (onNoteTypes case final onNoteTypes?)
+                Row(
+                  children: [
+                    Expanded(child: heading(l10n.noteType)),
+                    Padding(
+                      padding: const EdgeInsetsDirectional.only(end: Spacing.s),
+                      child: IconButton(
+                        key: const ValueKey('note-types-settings'),
+                        onPressed: onNoteTypes,
+                        tooltip: l10n.noteTypesSettings,
+                        icon: const Icon(Icons.tune),
+                      ),
+                    ),
+                  ],
+                )
+              else
+                heading(l10n.noteType),
               for (final schema in schemas)
                 ListTile(
                   key: ValueKey('nav-${schema.id.name}'),
