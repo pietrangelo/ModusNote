@@ -20,6 +20,7 @@ import '../appearance/appearance_scope.dart';
 import '../appearance/page_appearance.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../notes/note_library.dart';
+import '../notes/note_types.dart';
 import '../notes/schema_text.dart';
 import '../notes/journal/journal_settings_sheet.dart';
 import '../reminders/journal_reminder.dart';
@@ -159,6 +160,7 @@ final class _Open extends _Stage {
     this.sync,
     this.reminders,
     this.journal,
+    this.types,
   );
 
   final UnlockedVault vault;
@@ -169,6 +171,9 @@ final class _Open extends _Stage {
 
   /// The journal's daily reminder; null where there are no reminders.
   final JournalReminderSetting? journal;
+
+  /// The note types this device offers.
+  final NoteTypeSetting types;
 }
 
 /// The Supabase session, sealed in the vault under the local key: it opens
@@ -181,6 +186,10 @@ const _retiredSetting = 'sync.retired';
 /// How this device shows the page of a note (width, text size): sealed
 /// like everything else in the vault, though it says nothing of the notes.
 const _pageSetting = 'ui.page';
+
+/// The note types this device turned off: like [_pageSetting], a choice
+/// of the device, sealed though it says nothing of the notes.
+const _typesSetting = 'ui.types';
 
 /// Whether, and when, this device reminds its person to write in the
 /// journal.
@@ -313,6 +322,7 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
       }
       final sync = await _connect(vault, store, blobs);
       final page = await _storedPage(vault);
+      final types = _typesOf(vault, await _storedTypes(vault));
       final daily = widget.remindersFor == null
           ? const JournalReminder()
           : await _storedJournal(vault);
@@ -334,11 +344,27 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
               store: store,
               scheduler: scheduler,
               texts: ReminderTexts(l10n),
-              journal: journal,
+              journal: journal == null
+                  ? null
+                  : OfferedJournalReminder(
+                      journal,
+                      types: types,
+                      journalOn: () => types.value
+                          .offered(widget.catalog.current)
+                          .any((schema) => schema.id.name == Journal.schema),
+                    ),
             );
       _attachAppearance(vault, page);
       setState(
-        () => _stage = _Open(vault, store, autoLock, sync, reminders, journal),
+        () => _stage = _Open(
+          vault,
+          store,
+          autoLock,
+          sync,
+          reminders,
+          journal,
+          types,
+        ),
       );
       sync?.start();
       reminders?.start();
@@ -551,6 +577,30 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
     } on MalformedSyncDataException {
       return const PageAppearance();
     }
+  }
+
+  Future<NoteTypeChoice> _storedTypes(UnlockedVault vault) async {
+    try {
+      return NoteTypeChoice.fromBytes(
+        await widget.keeper.loadSetting(vault, _typesSetting),
+      );
+    } on MalformedSyncDataException {
+      return const NoteTypeChoice();
+    }
+  }
+
+  NoteTypeSetting _typesOf(UnlockedVault vault, NoteTypeChoice choice) {
+    final keeper = widget.keeper;
+    return NoteTypeSetting(
+      choice,
+      persist: (bytes) async {
+        try {
+          await keeper.saveSetting(vault, _typesSetting, bytes);
+        } on VaultLockedException {
+          // Locked meanwhile: the change stays on the screen only.
+        }
+      },
+    );
   }
 
   Future<JournalReminder> _storedJournal(UnlockedVault vault) async {
@@ -792,7 +842,13 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
     _Checking() => const Scaffold(
       body: Center(child: CircularProgressIndicator()),
     ),
-    _Open(:final store, :final autoLock, :final sync, :final journal) =>
+    _Open(
+      :final store,
+      :final autoLock,
+      :final sync,
+      :final journal,
+      :final types,
+    ) =>
       AutoLockScope(
         autoLock: autoLock,
         child: NoteLibraryScreen(
@@ -814,6 +870,7 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
           journalSettings: journal == null
               ? null
               : () => JournalSettingsSheet.show(context, journal),
+          noteTypes: types,
         ),
       ),
     _Joining() => JoinVaultScreen(
