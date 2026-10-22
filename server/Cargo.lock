@@ -280,6 +280,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "sync"
+version = "0.1.0"
+dependencies = [
+ "crypto",
+ "ed25519-dalek",
+ "hex",
+ "ledger",
+ "serde_json",
+]
+
+[[package]]
 name = "typenum"
 version = "1.20.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
