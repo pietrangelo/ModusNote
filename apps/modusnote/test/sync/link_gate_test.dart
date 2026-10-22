@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:collaboration_access_control/collaboration_access_control.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:identity_cryptography/identity_cryptography.dart';
@@ -7,7 +8,6 @@ import 'package:identity_cryptography_adapters/identity_cryptography_adapters.da
 import 'package:modusnote/vault/vault_gate.dart';
 import 'package:modusnote/vault/vault_note_store.dart';
 import 'package:offline_sync/offline_sync.dart';
-import 'package:offline_sync_adapters/offline_sync_adapters.dart';
 import 'package:schema_dynamic_content/schema_dynamic_content.dart';
 import 'package:sqlite3/sqlite3.dart';
 
@@ -19,16 +19,11 @@ import 'cloud_support.dart';
 PasswordSecret secret(List<int> utf8Bytes) =>
     SodiumPasswordSecret.fromUtf8Bytes(sodium, Uint8List.fromList(utf8Bytes));
 
-Widget gate(Database database, SyncAccount account, MemorySyncServer server) =>
-    VaultGate(
-      keeper: keeperOn(database, server: server),
-      passwordFrom: (bytes) =>
-          SodiumPasswordSecret.fromUtf8Bytes(sodium, bytes),
-      catalog: SeedSchemas.catalog,
-      account: account,
-    );
-
-const email = 'pietro@example.com';
+Widget gate(Database database, MemorySyncServer server) => VaultGate(
+  keeper: keeperOn(database, gateway: server),
+  passwordFrom: (bytes) => SodiumPasswordSecret.fromUtf8Bytes(sodium, bytes),
+  catalog: SeedSchemas.catalog,
+);
 
 /// Lets Argon2id and the server round trips finish under a spinner, which
 /// never lets the tester settle.
@@ -48,19 +43,32 @@ Future<void> tapOn(WidgetTester tester, Finder finder) async {
   await tester.tap(finder);
 }
 
+/// Creates the vault on the gate's first screen.
+Future<void> createVault(WidgetTester tester) async {
+  for (final key in ['passphrase', 'passphrase-confirm']) {
+    await tester.enterText(find.byKey(ValueKey(key)), 'frase lunga');
+  }
+  await tapOn(tester, find.byKey(const ValueKey('passphrase-acknowledged')));
+  await tapOn(tester, find.text('Crea il vault'));
+  await tester.pumpAndSettle();
+}
+
+/// Opens the sync sheet and turns the sync on.
+Future<void> turnOnSync(WidgetTester tester) async {
+  await tapOn(tester, find.byKey(const ValueKey('cloud')));
+  await tester.pumpAndSettle();
+  await tapOn(tester, find.byKey(const ValueKey('cloud-enable')));
+  await tester.pumpAndSettle();
+}
+
 void main() {
   setUpAll(loadSodium);
-  late FakeAuthServer auth;
-  late SyncAccount phoneAccount;
   late MemorySyncServer server;
   late Database phoneDb;
   late Database browserDb;
 
-  setUp(() async {
-    auth = FakeAuthServer();
-    phoneAccount = auth.account()..attach(null, persist: (_) async {});
-    await phoneAccount.signIn(email, goodCode);
-    server = MemorySyncServer(phoneAccount.accessToken);
+  setUp(() {
+    server = MemorySyncServer();
     phoneDb = memoryDatabase();
     browserDb = memoryDatabase();
   });
@@ -73,7 +81,7 @@ void main() {
   Future<UnlockedVault> phoneWithANote() async {
     final vault = await keeperOn(
       phoneDb,
-      server: server,
+      gateway: server,
     ).create(secret('frase del telefono'.codeUnits));
     addTearDown(vault.lock);
     final store = await VaultNoteStore.open(
@@ -85,16 +93,16 @@ void main() {
     return vault;
   }
 
-  Future<void> signIn(WidgetTester tester) async {
-    await tester.enterText(find.byKey(const ValueKey('cloud-email')), email);
-    await tapOn(tester, find.text('Invia il codice'));
-    await tester.pumpAndSettle();
-    await tester.enterText(find.byKey(const ValueKey('cloud-code')), goodCode);
-    await tapOn(tester, find.text('Accedi'));
-    await tester.pumpAndSettle();
-  }
+  /// The phone shows [code] for another device of its person.
+  Future<InviteOffering> offer(UnlockedVault phone, InviteCode code) =>
+      keeperOn(phoneDb, gateway: server).offerInvite(
+        phone,
+        secret(code.toBytes()),
+        lookup: code.lookup,
+        role: Role.owner,
+      );
 
-  Future<void> typeLink(WidgetTester tester, String code) async {
+  Future<void> typeCode(WidgetTester tester, String code) async {
     await tester.enterText(find.byKey(const ValueKey('join-code')), code);
     await tester.enterText(
       find.byKey(const ValueKey('passphrase')),
@@ -109,23 +117,19 @@ void main() {
     await work(tester);
   }
 
+  final code = InviteCode.tryParse('K7MQ4X-T9ABCD-EF01')!;
+
   group('the new device', () {
-    testWidgets('joins with the code and opens on the shared notes', (
-      tester,
-    ) async {
+    testWidgets('joins with the code and opens on the shared notes, '
+        'syncing', (tester) async {
       final phone = await phoneWithANote();
-      final code = LinkCode.tryParse('K7MQ4-XT9AB')!;
-      final offering = await keeperOn(
-        phoneDb,
-        server: server,
-      ).offerLink(phone, secret(code.toBytes()));
-      await pumpApp(tester, gate(browserDb, auth.account(), server));
+      final offering = await offer(phone, code);
+      await pumpApp(tester, gate(browserDb, server));
       await tester.pumpAndSettle();
 
       await tapOn(tester, find.byKey(const ValueKey('join-vault')));
       await tester.pumpAndSettle();
-      await signIn(tester);
-      await typeLink(tester, 'k7mq4 xt9ab');
+      await typeCode(tester, code.display.toLowerCase());
       expect(
         find.textContaining('In attesa che l\'altro dispositivo dia accesso'),
         findsOneWidget,
@@ -136,19 +140,16 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Dal telefono'), findsOneWidget);
-      await tapOn(tester, find.byKey(const ValueKey('cloud')));
-      await tester.pumpAndSettle();
-      expect(find.text('Accesso effettuato come $email'), findsOneWidget);
+      expect(find.byTooltip('Sincronizzazione: aggiornato'), findsOneWidget);
     });
 
     testWidgets('joining waits for the warning to be acknowledged', (
       tester,
     ) async {
-      await pumpApp(tester, gate(browserDb, auth.account(), server));
+      await pumpApp(tester, gate(browserDb, server));
       await tester.pumpAndSettle();
       await tapOn(tester, find.byKey(const ValueKey('join-vault')));
       await tester.pumpAndSettle();
-      await signIn(tester);
       final submit = find.byKey(const ValueKey('join-submit'));
 
       expect(find.byKey(const ValueKey('passphrase-warning')), findsOneWidget);
@@ -165,70 +166,59 @@ void main() {
       tester,
     ) async {
       final phone = await phoneWithANote();
-      final offering = await keeperOn(
-        phoneDb,
-        server: server,
-      ).offerLink(phone, secret(LinkCode.tryParse('K7MQ4-XT9AB')!.toBytes()));
+      final offering = await offer(phone, code);
       addTearDown(offering.cancel);
-      await pumpApp(tester, gate(browserDb, auth.account(), server));
+      await pumpApp(tester, gate(browserDb, server));
       await tester.pumpAndSettle();
       await tapOn(tester, find.byKey(const ValueKey('join-vault')));
       await tester.pumpAndSettle();
-      await signIn(tester);
 
-      await typeLink(tester, 'K7MQ4-XT9AC');
+      // The same lookup, the rest of the code wrong.
+      await typeCode(tester, 'K7MQ4X-T9ABCD-EF02');
       await tester.pumpAndSettle();
 
       expect(find.textContaining('Codice errato o scaduto.'), findsOneWidget);
       expect(await keeperOn(browserDb).exists, isFalse);
-      expect(server.answered, isEmpty);
+      expect(server.inviteAnswered, isEmpty);
     });
 
     testWidgets('something that is not a code is caught before any work', (
       tester,
     ) async {
-      await pumpApp(tester, gate(browserDb, auth.account(), server));
+      await pumpApp(tester, gate(browserDb, server));
       await tester.pumpAndSettle();
       await tapOn(tester, find.byKey(const ValueKey('join-vault')));
       await tester.pumpAndSettle();
-      await signIn(tester);
 
-      await typeLink(tester, 'K7MQ4');
+      await typeCode(tester, 'K7MQ4-XT9AB');
       await tester.pumpAndSettle();
 
       expect(
-        find.text(
-          'Il codice è formato da 10 lettere e cifre, o 16 se è un invito.',
-        ),
+        find.text('Il codice è formato da 16 lettere e cifre.'),
         findsOneWidget,
       );
-      // Only the code is wrong, so the passphrase stays to fix it; the
-      // account in use is on screen.
-      final passphrase = tester.widget<EditableText>(
+      // Only the code is wrong, so the passphrase stays to fix it.
+      final field = tester.widget<EditableText>(
         find.descendant(
           of: find.byKey(const ValueKey('passphrase')),
           matching: find.byType(EditableText),
         ),
       );
-      expect(passphrase.controller.text, 'frase del browser');
-      expect(find.text('Accesso effettuato come $email'), findsOneWidget);
+      expect(field.controller.text, 'frase del browser');
+      expect(server.signed, isEmpty);
     });
 
-    testWidgets('going back leaves a device with no vault, signed out', (
-      tester,
-    ) async {
-      final account = auth.account();
-      await pumpApp(tester, gate(browserDb, account, server));
+    testWidgets('going back leaves a device with no vault', (tester) async {
+      await pumpApp(tester, gate(browserDb, server));
       await tester.pumpAndSettle();
       await tapOn(tester, find.byKey(const ValueKey('join-vault')));
       await tester.pumpAndSettle();
-      await signIn(tester);
 
       await tapOn(tester, find.byKey(const ValueKey('join-back')));
       await tester.pumpAndSettle();
 
       expect(find.text('Crea il vault'), findsOneWidget);
-      expect(account.signedIn, isFalse);
+      expect(await keeperOn(browserDb).exists, isFalse);
     });
 
     testWidgets('a build without a server offers no linking', (tester) async {
@@ -252,40 +242,35 @@ void main() {
       WidgetTester tester, {
       bool offline = false,
     }) async {
-      await pumpApp(tester, gate(phoneDb, auth.account(), server));
+      await pumpApp(tester, gate(phoneDb, server));
       await tester.pumpAndSettle();
-      for (final key in ['passphrase', 'passphrase-confirm']) {
-        await tester.enterText(find.byKey(ValueKey(key)), 'frase lunga');
-      }
-      await tapOn(
-        tester,
-        find.byKey(const ValueKey('passphrase-acknowledged')),
-      );
-      await tapOn(tester, find.text('Crea il vault'));
-      await tester.pumpAndSettle();
-      await tapOn(tester, find.byKey(const ValueKey('cloud')));
-      await tester.pumpAndSettle();
-      await signIn(tester);
+      await createVault(tester);
+      await turnOnSync(tester);
       await tapOn(tester, find.byKey(const ValueKey('link-device')));
       if (offline) server.online = false;
       await work(tester);
     }
 
-    String shownCode(WidgetTester tester) => tester
-        .widget<SelectableText>(find.byKey(const ValueKey('link-code')))
-        .data!;
+    InviteCode shownCode(WidgetTester tester) => InviteCode.tryParse(
+      tester
+          .widget<SelectableText>(find.byKey(const ValueKey('link-code')))
+          .data!,
+    )!;
 
-    testWidgets('shows a code and admits the device that types it', (
-      tester,
-    ) async {
+    Future<LinkRequest> answer(InviteCode code) =>
+        keeperOn(browserDb, gateway: server).acceptInvite(
+          code: secret(code.toBytes()),
+          lookup: code.lookup,
+          passphrase: secret('frase del browser'.codeUnits),
+        );
+
+    testWidgets('shows a code and admits the device that types it, '
+        'as an owner', (tester) async {
       await openLinkSheet(tester);
-      final code = LinkCode.tryParse(shownCode(tester))!;
+      final code = shownCode(tester);
       expect(find.textContaining('Vale una volta sola'), findsOneWidget);
 
-      final request = await keeperOn(browserDb, server: server).join(
-        code: secret(code.toBytes()),
-        passphrase: secret('frase del browser'.codeUnits),
-      );
+      final request = await answer(code);
       addTearDown(request.cancel);
       await tester.pump(const Duration(seconds: 2));
       await tester.pump();
@@ -295,6 +280,10 @@ void main() {
       addTearDown(() => joined?.lock());
       expect(joined, isNotNull);
       expect(server.membershipLog, hasLength(2));
+      expect(
+        joined!.engine.ledger.workspace.member(joined.member)?.role,
+        Role.owner,
+      );
     });
 
     testWidgets('a code that could not be posted can be made again', (
@@ -311,25 +300,35 @@ void main() {
       await tapOn(tester, find.text('Nuovo codice'));
       await work(tester);
 
-      expect(LinkCode.tryParse(shownCode(tester)), isNotNull);
+      expect(shownCode(tester), isNotNull);
       await tapOn(tester, find.text('Chiudi'));
       await tester.pumpAndSettle();
     });
 
     testWidgets('closing the sheet withdraws the code', (tester) async {
       await openLinkSheet(tester);
-      final code = LinkCode.tryParse(shownCode(tester))!;
+      final code = shownCode(tester);
 
       await tapOn(tester, find.text('Chiudi'));
       await tester.pumpAndSettle();
-      final request = await keeperOn(browserDb, server: server).join(
-        code: secret(code.toBytes()),
-        passphrase: secret('frase del browser'.codeUnits),
-      );
-      addTearDown(request.cancel);
-      await tester.pump(const Duration(seconds: 4));
+      expect(server.closed, contains(code.lookup));
 
+      await expectLater(
+        answer(code),
+        throwsA(isA<LinkCodeRejectedException>()),
+      );
+      await tester.pump(const Duration(seconds: 4));
       expect(server.membershipLog, hasLength(1));
+    });
+
+    testWidgets('only an owner is offered linking', (tester) async {
+      await pumpApp(tester, gate(phoneDb, server));
+      await tester.pumpAndSettle();
+      await createVault(tester);
+
+      await turnOnSync(tester);
+
+      expect(find.byKey(const ValueKey('link-device')), findsOneWidget);
     });
   });
 }

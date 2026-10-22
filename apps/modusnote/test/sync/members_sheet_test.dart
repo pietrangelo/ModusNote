@@ -14,7 +14,6 @@ import 'package:sqlite3/sqlite3.dart';
 import '../notes/harness.dart';
 import '../vault/support.dart';
 import 'cloud_support.dart';
-import 'sync_controller_test.dart' show signedIn;
 
 PasswordSecret secret(String text) => SodiumPasswordSecret.fromUtf8Bytes(
   sodium,
@@ -33,25 +32,27 @@ void main() {
 
   /// The phone founds the vault and links the browser, outside the UI.
   Future<void> twoDevices() async {
-    final account = await signedIn(FakeAuthServer());
-    server = MemorySyncServer(account.accessToken);
+    server = MemorySyncServer();
     phoneDb = memoryDatabase();
     browserDb = memoryDatabase();
     addTearDown(phoneDb.close);
     addTearDown(browserDb.close);
     phone = await keeperOn(
       phoneDb,
-      server: server,
+      gateway: server,
     ).create(secret('frase del telefono'));
     addTearDown(phone.lock);
     await phone.engine.sync();
-    final code = LinkCode.tryParse('K7MQ4-XT9AB')!;
-    final offering = await keeperOn(
-      phoneDb,
-      server: server,
-    ).offerLink(phone, secret(String.fromCharCodes(code.toBytes())));
-    final request = await keeperOn(browserDb, server: server).join(
+    final code = InviteCode.tryParse('K7MQ4X-T9ABC-D2EFG')!;
+    final offering = await keeperOn(phoneDb, gateway: server).offerInvite(
+      phone,
+      secret(String.fromCharCodes(code.toBytes())),
+      lookup: code.lookup,
+      role: Role.owner,
+    );
+    final request = await keeperOn(browserDb, gateway: server).acceptInvite(
       code: secret(String.fromCharCodes(code.toBytes())),
+      lookup: code.lookup,
       passphrase: secret('frase del browser'),
     );
     await offering.poll();
@@ -60,7 +61,7 @@ void main() {
     SyncController controller(UnlockedVault vault) {
       final sync = SyncController(
         engine: vault.engine,
-        account: account,
+        enabled: true,
         onPulled: () async {},
         interval: const Duration(hours: 1),
       );

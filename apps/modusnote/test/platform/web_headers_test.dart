@@ -9,8 +9,6 @@ import 'package:flutter_test/flutter_test.dart';
 /// well-meant edit of `web/_headers` from opening it up.
 /// The sync project and the R2 endpoint of the account that stores the
 /// encrypted recordings: full origins, never a wildcard over other tenants.
-const supabase = 'https://oobxqzjzauhmurvxvhuo.supabase.co';
-const r2 = 'https://9bc65f198cf14dc51e892d6657550260.r2.cloudflarestorage.com';
 
 void main() {
   final headers = <String, String>{};
@@ -45,8 +43,8 @@ void main() {
     expect(csp['worker-src'], ["'self'", 'blob:']);
   });
 
-  test('the page connects only to its origin, Supabase and R2', () {
-    expect(csp['connect-src'], ["'self'", supabase, r2]);
+  test('the page connects only to its own origin', () {
+    expect(csp['connect-src'], ["'self'"]);
   });
 
   test('DOM sinks need Trusted Types: Flutter\'s policy and our default', () {
@@ -98,10 +96,6 @@ void main() {
       expect(values, isNot(contains('*')));
       for (final MapEntry(key: directive, value: sources) in csp.entries) {
         for (final source in sources) {
-          // The two sync hosts, exactly, and only for fetches.
-          if (directive == 'connect-src' && [supabase, r2].contains(source)) {
-            continue;
-          }
           expect(
             source,
             isNot(matches(RegExp(r'^(https?:|wss?:|data:$)'))),

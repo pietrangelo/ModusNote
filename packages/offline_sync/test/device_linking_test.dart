@@ -282,6 +282,20 @@ void main() {
     expect(invites.closed, [code.lookup]);
   });
 
+  test(
+    'a withdrawn code is cleared from the server and answers nothing',
+    () async {
+      final offering = await offer();
+
+      offering.cancel();
+      offering.cancel();
+      await Future<void>.delayed(Duration.zero);
+
+      expect(invites.closed, [code.lookup]);
+      await expectLater(offering.poll(), throwsA(isA<LinkExpiredException>()));
+    },
+  );
+
   test('a device that already has a vault cannot join', () async {
     await offer();
 

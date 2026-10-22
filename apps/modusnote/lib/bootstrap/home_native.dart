@@ -36,7 +36,7 @@ Future<AppHome> buildHome() async {
   final sodium = await SodiumSumoInit.init();
   final directory = (await getApplicationSupportDirectory()).path;
   final player = SoloudRecordingPlayer();
-  final cloud = cloudWiring(SyncConfig.fromEnvironment());
+  final cloud = cloudWiring(SyncConfig.fromEnvironment(), blake2b: blake2b256);
   final shelf = sqlite3.open('$directory/$shelfDatabaseName');
   final home = VaultShelfGate(
     store: SqliteShelfStore(shelf),
@@ -55,7 +55,7 @@ Future<AppHome> buildHome() async {
         sodium: sodium,
         database: database,
         kdf: KdfParameters.moderate,
-        server: cloud.server,
+        gateway: cloud.gateway,
       );
       return ShelfVault(
         build: (switcher) => _gate(
@@ -102,12 +102,11 @@ VaultGate _gate({
   );
   return VaultGate(
     keeper: keeper,
-    account: cloud.account,
     switcher: switcher,
     sharedBlobsFor: cloud.remoteBlobs == null
         ? null
-        : (engine) {
-            final remote = cloud.remoteBlobs!(engine.ledger.workspace.id.hex);
+        : (vault) {
+            final remote = cloud.remoteBlobs!(vault);
             return (
               replication: BlobReplication(
                 local: blobStore,

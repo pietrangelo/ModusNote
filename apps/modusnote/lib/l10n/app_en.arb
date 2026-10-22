@@ -562,7 +562,7 @@
   "@cloudStateOffline": {
     "description": "Sync sheet: the last sync found no server."
   },
-  "cloudStateRefused": "The server refused the sync. Try signing out and in again.",
+  "cloudStateRefused": "The server refused the sync. Try again later.",
   "@cloudStateRefused": {
     "description": "Sync sheet: the server rejected a request."
   },
@@ -633,15 +633,15 @@
   "membersRemoved": "Device removed.",
   "inviteAction": "Invite a person",
   "inviteTitle": "Invite a person",
-  "inviteBody": "Choose what they may do. They will join with their own account and their own device, and get a code from you.",
+  "inviteBody": "Choose what they may do. They will join with their own device, and get a code from you.",
   "inviteRoleViewer": "Reads the notes but cannot change them.",
   "inviteRoleEditor": "Reads and changes the notes.",
   "inviteRoleOwner": "Like you: may also invite and remove members.",
   "inviteCreate": "Create the code",
-  "inviteInstructions": "Give this code to the person you invite, face to face or through a channel you trust: whoever knows it gets in. In Modus Notes they choose “Link to an existing vault”, sign in with their own email and enter it. It works once, for 10 minutes.",
+  "inviteInstructions": "Give this code to the person you invite, face to face or through a channel you trust: whoever knows it gets in. In Modus Notes they choose “Link to an existing vault” and enter it. It works once, for 10 minutes.",
   "inviteWaiting": "Waiting for the invited person…",
   "inviteDone": "Person invited. The notes reach them with their next sync.",
-  "inviteRefused": "The server refused the invitation. Try signing out and in again.",
+  "inviteRefused": "The server refused the invitation. Sync the vault and try again.",
   "inviteUntrusted": "The server sent data that fails verification, so no one was let in.",
   "@membersRemoved": {
     "description": "Members sheet: snackbar after removal."
@@ -667,106 +667,13 @@
       }
     }
   },
-  "cloudSignInBody": "Sign in with your email to keep your notes on the server too. It only ever receives encrypted data, and your passphrase never leaves this device.",
-  "@cloudSignInBody": {
-    "description": "Sync sheet: why and how to sign in."
-  },
-  "cloudEmailLabel": "Email",
-  "@cloudEmailLabel": {
-    "description": "Label of the email field."
-  },
-  "cloudSendCode": "Send code",
-  "@cloudSendCode": {
-    "description": "Button that emails a sign-in code."
-  },
-  "cloudCodeSent": "We sent an email to {email}. Enter its code, or copy the link in it and paste it here.",
-  "@cloudCodeSent": {
-    "description": "Shown after the sign-in code was emailed.",
-    "placeholders": {
-      "email": {
-        "type": "String"
-      }
-    }
-  },
-  "cloudCodeLabel": "Code or link from the email",
-  "@cloudCodeLabel": {
-    "description": "Label of the sign-in code field."
-  },
-  "cloudSignIn": "Sign in",
-  "@cloudSignIn": {
-    "description": "Button that signs in with the code."
-  },
-  "cloudChangeEmail": "Use another address",
-  "@cloudChangeEmail": {
-    "description": "Goes back to the email field."
-  },
-  "cloudEmailInvalid": "Enter a valid email address.",
-  "@cloudEmailInvalid": {
-    "description": "The email field does not hold an address."
-  },
-  "cloudCodeInvalid": "Enter the 6 to 10 digits in the email, or paste its link.",
-  "@cloudCodeInvalid": {
-    "description": "The code field does not hold a code."
-  },
-  "cloudCodeRefused": "Wrong or expired code or link. Use the one in the latest email, or send a new code.",
-  "@cloudCodeRefused": {
-    "description": "The server refused the code."
-  },
-  "cloudEmailRefused": "The server did not accept this address. Try again later.",
-  "@cloudEmailRefused": {
-    "description": "The server refused to send a code."
-  },
   "cloudUnreachable": "The server cannot be reached. Check the connection.",
   "@cloudUnreachable": {
-    "description": "Signing in failed for lack of network."
-  },
-  "cloudSignedInAs": "Signed in as {email}",
-  "@cloudSignedInAs": {
-    "description": "Sync sheet: the account's email.",
-    "placeholders": {
-      "email": {
-        "type": "String"
-      }
-    }
+    "description": "A code could not be made or used for lack of network."
   },
   "cloudSyncNow": "Sync now",
   "@cloudSyncNow": {
     "description": "Button that syncs at once."
-  },
-  "cloudSignOut": "Sign out",
-  "@cloudSignOut": {
-    "description": "Button that signs out of the sync account."
-  },
-  "cloudDeleteAccount": "Delete account",
-  "@cloudDeleteAccount": {
-    "description": "Sync sheet: button that deletes the sync account and what the server keeps for it."
-  },
-  "cloudDeleteAccountTitle": "Delete the account?",
-  "@cloudDeleteAccountTitle": {
-    "description": "Title of the dialog confirming the account deletion."
-  },
-  "cloudDeleteAccountBody": "The account {email} is deleted for good, with everything the server keeps for it: the encrypted notes and recordings of the vaults it is the only account of. The notes stay on this device, but this vault will no longer sync, nor will the other devices linked to this account.",
-  "@cloudDeleteAccountBody": {
-    "description": "Body of the dialog confirming the account deletion.",
-    "placeholders": {
-      "email": {"type": "String"}
-    }
-  },
-  "cloudDeleteAccountConfirm": "Delete for good",
-  "@cloudDeleteAccountConfirm": {
-    "description": "Confirms the account deletion."
-  },
-  "cloudDeleteAccountOffline": "The server cannot be reached and the account was not deleted. Try again when you are online.",
-  "@cloudDeleteAccountOffline": {
-    "description": "The account deletion failed for lack of network or a server error."
-  },
-  "cloudDeleteAccountRefused": "The server did not accept the session and the account was not deleted. Sign out, sign in again and retry.",
-  "@cloudDeleteAccountRefused": {
-    "description": "The account deletion was refused (expired session)."
-  },
-  "cloudAccountDeleted": "You deleted the sync account: the server no longer keeps anything of this vault. The notes stay on this device, which no longer syncs.",
-  "@cloudAccountDeleted": {
-    "description": "Sync sheet of a vault whose account was deleted."
   },
   "linkDeviceAction": "Link another device",
   "@linkDeviceAction": {
@@ -780,7 +687,7 @@
   "@linkDevicePreparing": {
     "description": "Link sheet: the code is being stretched and posted."
   },
-  "linkDeviceInstructions": "On the other device, choose “Link to an existing vault”, sign in with the same email and enter this code. It works once, for 10 minutes.",
+  "linkDeviceInstructions": "On the other device, choose “Link to an existing vault” and enter this code. It works once, for 10 minutes.",
   "@linkDeviceInstructions": {
     "description": "Link sheet: what to do with the code on the other device."
   },
@@ -800,7 +707,7 @@
   "@linkDeviceNewCode": {
     "description": "Link sheet: makes a fresh code after a failure."
   },
-  "linkDeviceRefused": "The server refused the link. Try signing out and in again.",
+  "linkDeviceRefused": "The server refused the link. Sync the vault and try again.",
   "@linkDeviceRefused": {
     "description": "Link sheet: the server refused the account."
   },
@@ -816,11 +723,7 @@
   "@joinVaultTitle": {
     "description": "Title of the screen that joins another device's vault."
   },
-  "joinVaultSignInBody": "Sign in with the email you use on your other device or, if someone invited you, with your own.",
-  "@joinVaultSignInBody": {
-    "description": "Join screen: the sign-in step."
-  },
-  "joinVaultBody": "On the other device, open Sync and choose “Link another device”. Enter the code it shows, then choose a passphrase for this device: it can differ from the other one's. With an invitation, enter the code the person who invited you gave you.",
+  "joinVaultBody": "On the other device, open Sync and choose “Link another device”; if the vault is someone else's, ask them for an invitation. Enter the code, then choose a passphrase for this device: it can differ from the other one's.",
   "@joinVaultBody": {
     "description": "Join screen: where the code comes from and which passphrase to choose."
   },
@@ -828,7 +731,7 @@
   "@joinVaultCodeLabel": {
     "description": "Join screen: the code field."
   },
-  "joinVaultCodeShape": "The code has 10 letters and digits, or 16 for an invitation.",
+  "joinVaultCodeShape": "The code has 16 letters and digits.",
   "@joinVaultCodeShape": {
     "description": "Join screen: the typed code is not a code."
   },
@@ -840,7 +743,7 @@
   "@joinVaultWaiting": {
     "description": "Join screen: the answer was posted, the other device has not admitted this one yet."
   },
-  "joinVaultCodeRejected": "Wrong or expired code. Check the one on the other device: to link your own device, both must be signed in with the same email.",
+  "joinVaultCodeRejected": "Wrong or expired code. Check the one on the other device, or have a new one made.",
   "@joinVaultCodeRejected": {
     "description": "Join screen: no offer opens with the code."
   },
@@ -1121,7 +1024,9 @@
   "@notesPicked": {
     "description": "Wide library: how many notes are picked.",
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "pickAll": "Select all",
@@ -1140,22 +1045,30 @@
   "@notesTrashed": {
     "description": "Snackbar after the picked notes go to the trash.",
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "notesFiled": "{count, plural, =1{1 note moved to “{name}”.} other{{count} notes moved to “{name}”.}}",
   "@notesFiled": {
     "description": "Snackbar after the picked notes are filed in a category.",
     "placeholders": {
-      "count": {"type": "int"},
-      "name": {"type": "String"}
+      "count": {
+        "type": "int"
+      },
+      "name": {
+        "type": "String"
+      }
     }
   },
   "notesUnfiled": "{count, plural, =1{1 note taken out of its category.} other{{count} notes taken out of their categories.}}",
   "@notesUnfiled": {
     "description": "Snackbar after the picked notes leave every category.",
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "backupSettings": "Backup and export",
@@ -1254,8 +1167,12 @@
   "@backupRestored": {
     "description": "Snackbar after a restore: records written and records kept.",
     "placeholders": {
-      "added": {"type": "int"},
-      "kept": {"type": "int"}
+      "added": {
+        "type": "int"
+      },
+      "kept": {
+        "type": "int"
+      }
     }
   },
   "iconFolder": "Folder",
@@ -2262,11 +2179,7 @@
   "@editorSaveFailedBody": {
     "description": "Leaving a note whose save failed (not missing fields)."
   },
-  "cloudResendCode": "Send a new code",
-  "@cloudResendCode": {
-    "description": "Sign-in form: sends the email with the code again."
-  },
-  "cloudTooltip": "{state, select, signedOut{Sync: not signed in} syncing{Sync: in progress} synced{Sync: up to date} offline{Sync: offline} other{Sync: needs attention}}",
+  "cloudTooltip": "{state, select, off{Sync: off} syncing{Sync: in progress} synced{Sync: up to date} offline{Sync: offline} other{Sync: needs attention}}",
   "@cloudTooltip": {
     "description": "Tooltip of the library sync button, with the sync state.",
     "placeholders": {
@@ -2290,5 +2203,45 @@
   "noteTypesSettingsHint": "A type turned off is no longer offered for new notes, in the filters or in the palette, and the journal's reminder stops with the journal. The notes you already have stay where they are. This is a setting of this device.",
   "@noteTypesSettingsHint": {
     "description": "Explanation under the title of the note types sheet."
+  },
+  "cloudOffBody": "Sync is off: the notes of this vault stay on this device only. Turn it on to keep them on the server too, and to link other devices or people. The server only ever receives encrypted data, and your passphrase never leaves this device.",
+  "@cloudOffBody": {
+    "description": "Sync sheet, before the sync is turned on."
+  },
+  "cloudEnable": "Turn on sync",
+  "@cloudEnable": {
+    "description": "Button turning the sync on."
+  },
+  "cloudStateNotAdmitted": "The server does not know this device in this vault: an owner may have deleted its data from the server. The notes on this device are safe.",
+  "@cloudStateNotAdmitted": {
+    "description": "Sync state: the server does not know this device in the vault."
+  },
+  "cloudDeleteServer": "Delete the data from the server",
+  "@cloudDeleteServer": {
+    "description": "Sync sheet: deletes the vault's data from the server."
+  },
+  "cloudDeleteServerTitle": "Delete the data from the server?",
+  "@cloudDeleteServerTitle": {
+    "description": "Title of the dialog confirming the deletion from the server."
+  },
+  "cloudDeleteServerBody": "The server forgets this vault for good: its encrypted notes, recordings and pictures, its members and codes. The notes stay on this device and the linked ones, but none of them will sync in this vault again.",
+  "@cloudDeleteServerBody": {
+    "description": "Body of the dialog confirming the deletion from the server."
+  },
+  "cloudDeleteServerConfirm": "Delete for good",
+  "@cloudDeleteServerConfirm": {
+    "description": "Confirms the deletion from the server."
+  },
+  "cloudDeleteServerOffline": "The server cannot be reached and nothing was deleted. Try again when you are online.",
+  "@cloudDeleteServerOffline": {
+    "description": "The deletion from the server failed for lack of network."
+  },
+  "cloudDeleteServerRefused": "The server did not accept the request and nothing was deleted. Sync the vault and try again.",
+  "@cloudDeleteServerRefused": {
+    "description": "The server refused the deletion."
+  },
+  "cloudServerDeleted": "You deleted this vault's data from the server. The notes stay on this device, which no longer syncs.",
+  "@cloudServerDeleted": {
+    "description": "Sync sheet after the vault's data was deleted from the server."
   }
 }
