@@ -161,8 +161,8 @@ pub fn decode_hex<const N: usize>(text: &str) -> Option<[u8; N]> {
         _ => None,
     };
     let mut out = [0; N];
-    for (i, pair) in digits.chunks_exact(2).enumerate() {
-        out[i] = value(pair[0])? << 4 | value(pair[1])?;
+    for (i, [high, low]) in digits.as_chunks::<2>().0.iter().enumerate() {
+        out[i] = value(*high)? << 4 | value(*low)?;
     }
     Some(out)
 }
