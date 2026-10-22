@@ -241,13 +241,18 @@ final class _DeviceServer implements SyncServer {
   );
 
   @override
-  Future<void> createWorkspace(MembershipRecord genesis) async {
-    final workspace = genesis.workspace;
+  Future<String> serverId() async => (await _server.info()).id;
+
+  @override
+  Future<void> createWorkspace(List<MembershipRecord> start) async {
+    final workspace = start.first.workspace;
     await _call(
       'POST',
       'w/${workspace.hex}',
       body: {
-        'record': base64.encode(genesis.toBytes()),
+        'records': [
+          for (final record in start) base64.encode(record.toBytes()),
+        ],
         'pow': await _server.proofOfWork(1, workspace.bytes),
       },
       // Another first record holds the id.

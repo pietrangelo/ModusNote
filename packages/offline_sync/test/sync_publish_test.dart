@@ -70,7 +70,8 @@ void main() {
       expect(report.pushed, 1);
       expect(server.createdWorkspaces, [vault.workspace]);
       expect(server.membershipLog, vault.engine.ledger.records);
-      expect(server.calls, ['workspace', 'push 1']);
+      // The founder's own grant goes too, as every bundle it keeps.
+      expect(server.calls, ['workspace 1', 'bundle', 'push 1']);
     },
   );
 
@@ -125,6 +126,52 @@ void main() {
       isEmpty,
     );
     expect(server.membershipLog, hasLength(1));
+  });
+
+  group('a new server', () {
+    Future<UnlockedVault> unlockAgain(UnlockedVault vault) async {
+      vault.lock();
+      final again = await keeper().unlock(
+        SodiumPasswordSecret.fromUtf8Bytes(
+          sodium,
+          Uint8List.fromList(utf8.encode('correct horse')),
+        ),
+      );
+      addTearDown(again.lock);
+      return again;
+    }
+
+    test('is met once: the next unlock syncs as usual', () async {
+      final vault = await newVault();
+      await write(vault, 'prima');
+      expect((await vault.engine.sync()).moved, isTrue);
+
+      final again = await unlockAgain(vault);
+      final report = await again.engine.sync();
+
+      expect(report.moved, isFalse);
+      expect(server.rows, hasLength(1));
+    });
+
+    test(
+      'gets the vault again, its log, keys and notes, after an unlock',
+      () async {
+        final vault = await newVault();
+        await write(vault, 'prima');
+        await vault.engine.sync();
+        server.replace();
+
+        final again = await unlockAgain(vault);
+        final report = await again.engine.sync();
+
+        expect(report.moved, isTrue);
+        expect(report.pushed, 1);
+        expect(server.membershipLog, again.engine.ledger.records);
+        expect(server.bundles, hasLength(1));
+        expect(server.live, hasLength(1));
+        expect((await again.engine.sync()).moved, isFalse);
+      },
+    );
   });
 
   group('adversary', () {

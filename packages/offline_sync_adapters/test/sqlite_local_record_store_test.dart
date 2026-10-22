@@ -180,6 +180,32 @@ void main() {
     });
   });
 
+  group('a new server', () {
+    test('forgets positions, of this workspace only, and keeps records and '
+        'outbox', () async {
+      await store.save(note, envelope(1));
+      await store.queue(row(note, 2, supersedes: 5));
+      await store.saveCursor(SyncStream.rows, 7);
+      await store.saveCursor(SyncStream.membership, 3);
+      await store.markUnreadable(note, 4);
+      final elsewhere = SqliteLocalRecordStore(
+        database,
+        workspace: otherWorkspace,
+      );
+      await elsewhere.saveCursor(SyncStream.rows, 9);
+
+      await store.forgetServer();
+
+      for (final stream in SyncStream.values) {
+        expect(await store.loadCursor(stream), 0);
+      }
+      expect(await store.loadUnreadable(note), isNull);
+      expect(await store.load(note), envelope(1));
+      expect((await store.loadOutbox()).pending, [row(note, 2, supersedes: 5)]);
+      expect(await elsewhere.loadCursor(SyncStream.rows), 9);
+    });
+  });
+
   group('schema', () {
     test('a version 4 database keeps its queued rows when upgraded', () async {
       await store.queue(row(note, 1));

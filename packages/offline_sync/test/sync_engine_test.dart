@@ -136,12 +136,10 @@ void main() {
     bob.dispose();
   });
 
-  test('only the founder registers the workspace on the server', () async {
-    expect(server.createdWorkspaces, isEmpty, reason: 'Bob synced first');
-
+  test('a workspace the server knows is not registered again', () async {
     await alice.engine.sync();
 
-    expect(server.createdWorkspaces, [workspaceId]);
+    expect(server.createdWorkspaces, isEmpty);
     expect(
       server.membershipLog,
       hasLength(2),
@@ -371,7 +369,10 @@ void main() {
     /// the server still holds.
     Future<Device> latecomer() async {
       final carol = Device(server, clock);
-      addTearDown(carol.dispose);
+      addTearDown(() {
+        carol.identity.dispose();
+        carol.localKey.dispose();
+      });
       publish(
         administration.invite(
           alice.engine.ledger,
@@ -537,6 +538,155 @@ void main() {
       expect(await bob.read(note), 'D');
       expect(await carol.read(note), 'D');
       expect(await late.read(note), 'D');
+    });
+  });
+
+  group('a new server', () {
+    /// The app updated: a new engine on the same database and keys.
+    void restart(Device device) =>
+        device.start(device.engine.ledger, device.keyring);
+
+    test('a member registers it with the log up to its own admission, and '
+        'publishes every record with what was still queued', () async {
+      await alice.engine.write(note, RevisionContents(text('Strofa')));
+      await alice.engine.sync();
+      await bob.engine.sync();
+      await bob.engine.write(note, RevisionContents(text('Strofa e coda')));
+      server.online = false;
+      await bob.engine.sync();
+      server
+        ..online = true
+        ..replace();
+
+      restart(bob);
+      final report = await bob.engine.sync();
+
+      expect(report.moved, isTrue);
+      expect(report.pushed, 1);
+      expect(server.calls, contains('workspace 2'));
+      expect(server.membershipLog, bob.engine.ledger.records);
+      expect(server.live, hasLength(1));
+      expect(bob.store.outbox.pending, isEmpty);
+
+      restart(alice);
+      final moved = await alice.engine.sync();
+
+      expect(moved.moved, isTrue);
+      expect(moved.pushed, 0, reason: 'the server already holds the winner');
+      expect(server.live, hasLength(1));
+      expect(await alice.read(note), 'Strofa e coda');
+    });
+
+    test('a move cut short starts over and publishes nothing twice', () async {
+      await alice.engine.write(note, RevisionContents(text('Strofa')));
+      await alice.engine.write(other, RevisionContents(text('Ponte')));
+      await alice.engine.sync();
+      server.replace();
+      restart(alice);
+      server.onPull = () async => server.online = false;
+
+      expect((await alice.engine.sync()).offline, isTrue);
+      server
+        ..onPull = null
+        ..online = true;
+      final report = await alice.engine.sync();
+
+      expect(report.moved, isTrue);
+      expect(server.live, hasLength(2));
+      restart(bob);
+      await bob.engine.sync();
+      expect(await bob.read(note), 'Strofa');
+      expect(await bob.read(other), 'Ponte');
+    });
+
+    test('an edit made during the move goes up once', () async {
+      await alice.engine.write(note, RevisionContents(text('Strofa')));
+      await alice.engine.sync();
+      server.replace();
+      restart(alice);
+      server.onPull = () async {
+        server.onPull = null;
+        await alice.engine.write(other, RevisionContents(text('Ponte')));
+      };
+
+      await alice.engine.sync();
+
+      expect(
+        server.live.map((row) => row.record),
+        unorderedEquals([note, other]),
+      );
+      expect(alice.store.outbox.pending, isEmpty);
+    });
+
+    test('a revision written before a rotation is sealed again under its own '
+        'epoch, so it still authenticates', () async {
+      final carol = Device(server, clock);
+      addTearDown(() {
+        carol.identity.dispose();
+        carol.localKey.dispose();
+      });
+      final invited = administration.invite(
+        alice.engine.ledger,
+        alice.keyring,
+        owner: alice.identity,
+        invitee: carol.identity.publicIdentity,
+        role: Role.editor,
+      );
+      publish(invited);
+      await bob.engine.write(note, RevisionContents(text('Prima')));
+      await bob.engine.sync();
+      final revoked = administration.revoke(
+        invited.ledger,
+        alice.keyring,
+        owner: alice.identity,
+        member: carol.id,
+      );
+      publish(revoked);
+      alice.start(revoked.ledger, alice.keyring);
+      await alice.engine.sync();
+      await bob.engine.sync();
+      server.replace();
+
+      restart(alice);
+      await alice.engine.sync();
+
+      expect(server.live.single.ciphertext.epoch, KeyEpoch.initial);
+      restart(bob);
+      final report = await bob.engine.sync();
+      expect(report.rejected, 0);
+      expect(await bob.read(note), 'Prima');
+    });
+
+    test('a viewer moves without writing rows', () async {
+      final viewer = Device(server, clock);
+      addTearDown(viewer.dispose);
+      final invited = administration.invite(
+        alice.engine.ledger,
+        alice.keyring,
+        owner: alice.identity,
+        invitee: viewer.identity.publicIdentity,
+        role: Role.viewer,
+      );
+      publish(invited);
+      alice.start(invited.ledger, alice.keyring);
+      await alice.engine.write(note, RevisionContents(text('Solo da leggere')));
+      await alice.engine.sync();
+      viewer.start(
+        ledgers.verify(server.membershipLog, invitation: invitation),
+        GroupKeyring(workspaceId),
+      );
+      await viewer.engine.sync();
+      server.replace();
+      restart(alice);
+      await alice.engine.sync();
+      server.calls.clear();
+
+      restart(viewer);
+      final report = await viewer.engine.sync();
+
+      expect(report.moved, isTrue);
+      expect(server.calls.where((call) => call.startsWith('push')), isEmpty);
+      expect(await viewer.read(note), 'Solo da leggere');
     });
   });
 

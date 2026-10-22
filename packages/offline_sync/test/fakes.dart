@@ -92,24 +92,44 @@ final class FakeSyncServer implements SyncServer {
     bundles.clear();
   }
 
-  /// Keeps [genesis] as the log's first record, as the real server does;
+  /// Which server this is; another id is a new server.
+  var id = 'server-1';
+
+  @override
+  Future<String> serverId() async {
+    _check();
+    return id;
+  }
+
+  /// Keeps [start] as the log's first records, as the real server does;
   /// another first record already held is a conflict.
   @override
-  Future<void> createWorkspace(MembershipRecord genesis) async {
+  Future<void> createWorkspace(List<MembershipRecord> start) async {
     _check();
     if (dropNextAppend) {
       dropNextAppend = false;
       throw const ServerUnavailableException();
     }
-    calls.add('workspace');
+    calls.add('workspace ${start.length}');
+    final genesis = start.first;
     if (!createdWorkspaces.contains(genesis.workspace)) {
       createdWorkspaces.add(genesis.workspace);
     }
     if (membershipLog.isEmpty) {
-      membershipLog.add(genesis);
+      membershipLog.addAll(start);
     } else if (membershipLog.first != genesis) {
       throw const LedgerRollbackException();
     }
+  }
+
+  /// Starts over, empty, as a new server with another id.
+  void replace() {
+    id = '$id+';
+    rows.clear();
+    compacted.clear();
+    membershipLog.clear();
+    bundles.clear();
+    createdWorkspaces.clear();
   }
 
   @override
@@ -147,6 +167,8 @@ final class FakeSyncServer implements SyncServer {
     required int from,
   }) async {
     _check();
+    // The real server does not know a workspace no one registered.
+    if (membershipLog.isEmpty) throw const NotAdmittedException();
     reads.add('membership');
     final visible = staleMembershipReads == null
         ? _visibleMembership
@@ -327,12 +349,22 @@ final class _Admitting implements SyncServer {
   }
 
   @override
-  Future<void> createWorkspace(MembershipRecord genesis) async {
-    await _sign('POST', '/api/w/${genesis.workspace.hex}');
-    if (genesis.author.signingKey != _signer.key) {
+  Future<String> serverId() => _backend.serverId();
+
+  @override
+  Future<void> createWorkspace(List<MembershipRecord> start) async {
+    await _sign('POST', '/api/w/${start.first.workspace.hex}');
+    // Only a member of the state the records reach registers them.
+    if (!start.any(
+      (record) => switch (record.change) {
+        WorkspaceFounded(:final founder) => founder.signingKey == _signer.key,
+        MemberInvited(:final identity) => identity.signingKey == _signer.key,
+        _ => false,
+      },
+    )) {
       throw const NotAdmittedException();
     }
-    await _backend.createWorkspace(genesis);
+    await _backend.createWorkspace(start);
   }
 
   @override
@@ -435,6 +467,12 @@ final class FakeLocalStore implements LocalRecordStore {
   Future<void> markUnreadable(RecordId id, int position) async {
     final known = unreadable[id];
     if (known == null || position < known) unreadable[id] = position;
+  }
+
+  @override
+  Future<void> forgetServer() async {
+    cursors.clear();
+    unreadable.clear();
   }
 }
 

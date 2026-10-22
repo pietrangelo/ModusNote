@@ -343,9 +343,13 @@ void main() {
             : json({}, 201),
       );
 
-      await server.createWorkspace(founded.ledger.records.first);
+      await server.createWorkspace(founded.ledger.records);
 
       final body = jsonDecode(sent.last.body) as Map;
+      expect(body['records'], [
+        base64.encode(founded.ledger.records.single.toBytes()),
+      ]);
+      expect(await server.serverId(), 'test');
       final pow = body['pow'] as Map;
       final day = pow['day'] as int;
       final message = Uint8List.fromList([
@@ -380,7 +384,7 @@ void main() {
       );
 
       await expectLater(
-        server.createWorkspace(founded.ledger.records.first),
+        server.createWorkspace(founded.ledger.records),
         throwsA(isA<LedgerRollbackException>()),
       );
     });

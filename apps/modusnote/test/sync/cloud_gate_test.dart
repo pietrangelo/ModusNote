@@ -164,7 +164,11 @@ void main() {
       final rows = database.select(
         "SELECT name FROM vault_settings WHERE name LIKE 'sync.%'",
       );
-      expect(rows.map((row) => row['name']), ['sync.enabled']);
+      // Where it synced now, next to the switch; the session is gone.
+      expect(
+        rows.map((row) => row['name']),
+        unorderedEquals(['sync.enabled', 'sync.server']),
+      );
     });
   });
 

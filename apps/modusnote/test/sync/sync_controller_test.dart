@@ -255,7 +255,7 @@ void main() {
 
   group('recordings', () {
     Future<(SyncController, MemorySyncServer)> withUploads(
-      Future<void> Function() afterSync,
+      Future<void> Function(SyncReport report) afterSync,
     ) async {
       final server = MemorySyncServer();
       final database = memoryDatabase();
@@ -278,7 +278,7 @@ void main() {
     test('go up after the notes reached the server', () async {
       late bool workspaceKnown;
       late MemorySyncServer shared;
-      final (sync, server) = await withUploads(() async {
+      final (sync, server) = await withUploads((_) async {
         workspaceKnown = shared.workspaces.isNotEmpty;
       });
       shared = server;
@@ -289,11 +289,23 @@ void main() {
       expect(sync.state, SyncState.synced);
     });
 
+    test('hear that the vault moved to a new server, once', () async {
+      final moves = <bool>[];
+      final (sync, server) = await withUploads(
+        (report) async => moves.add(report.moved),
+      );
+
+      await sync.syncNow();
+      await sync.syncNow();
+
+      expect(moves, [true, false]);
+    });
+
     test(
       'an unreachable blob storage leaves the sync offline, to retry',
       () async {
         final (sync, _) = await withUploads(
-          () => Future.error(const RemoteBlobUnavailableException()),
+          (_) => Future.error(const RemoteBlobUnavailableException()),
         );
 
         await sync.syncNow();
@@ -304,7 +316,7 @@ void main() {
 
     test('a blob storage that refuses the device is reported', () async {
       final (sync, _) = await withUploads(
-        () => Future.error(const RemoteBlobRejectedException(403)),
+        (_) => Future.error(const RemoteBlobRejectedException(403)),
       );
 
       await sync.syncNow();
@@ -315,7 +327,7 @@ void main() {
 
     test('a blob over the size limit is reported as no space', () async {
       final (sync, _) = await withUploads(
-        () => Future.error(const RemoteBlobRejectedException(413)),
+        (_) => Future.error(const RemoteBlobRejectedException(413)),
       );
 
       await sync.syncNow();

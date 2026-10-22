@@ -958,7 +958,10 @@ final class _OfflineServer implements SyncServer {
   Never _away() => throw const ServerUnavailableException();
 
   @override
-  Future<void> createWorkspace(MembershipRecord genesis) async => _away();
+  Future<String> serverId() async => _away();
+
+  @override
+  Future<void> createWorkspace(List<MembershipRecord> start) async => _away();
 
   @override
   Future<void> deleteWorkspace(WorkspaceId workspace) async => _away();
