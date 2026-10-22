@@ -984,9 +984,73 @@ void main() {
       );
 
       // Bob reads the log just before the removal and the bundles after it.
-      server.withholdMembershipAfter = before;
+      server.staleMembershipReads = before;
+      await bob.engine.sync();
+      server.staleMembershipReads = null;
+      await bob.engine.sync();
+
+      expect(bob.keyring.epochs, contains(KeyEpoch(1)));
+    });
+
+    test('a server without heads still waits for the record', () async {
+      final carol = identities.generateIdentity();
+      addTearDown(carol.dispose);
+      publish(
+        administration.invite(
+          alice.engine.ledger,
+          alice.keyring,
+          owner: alice.identity,
+          invitee: carol.publicIdentity,
+          role: Role.viewer,
+        ),
+      );
+      await alice.engine.sync();
+      await bob.engine.sync();
+      final before = server.membershipLog.length;
+      publish(
+        administration.revoke(
+          alice.engine.ledger,
+          alice.keyring,
+          owner: alice.identity,
+          member: MemberId.of(carol.publicIdentity),
+        ),
+      );
+
+      server
+        ..headless = true
+        ..withholdMembershipAfter = before;
       await bob.engine.sync();
       server.withholdMembershipAfter = null;
+      await bob.engine.sync();
+
+      expect(bob.keyring.epochs, contains(KeyEpoch(1)));
+    });
+
+    test('adversary: a bundle naming a record the server does not have does '
+        'not hold back the bundles after it', () async {
+      final carol = identities.generateIdentity();
+      addTearDown(carol.dispose);
+      publish(
+        administration.invite(
+          alice.engine.ledger,
+          alice.keyring,
+          owner: alice.identity,
+          invitee: carol.publicIdentity,
+          role: Role.viewer,
+        ),
+      );
+      await alice.engine.sync();
+      await bob.engine.sync();
+      server.bundles.add(forgedBundle(workspaceId, alice.id));
+      publish(
+        administration.revoke(
+          alice.engine.ledger,
+          alice.keyring,
+          owner: alice.identity,
+          member: MemberId.of(carol.publicIdentity),
+        ),
+      );
+
       await bob.engine.sync();
 
       expect(bob.keyring.epochs, contains(KeyEpoch(1)));

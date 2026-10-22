@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:collaboration_access_control/collaboration_access_control.dart';
 import 'package:identity_cryptography/identity_cryptography.dart';
 import 'package:offline_sync/offline_sync.dart';
@@ -22,6 +24,11 @@ final class FakeSyncServer implements SyncServer {
 
   /// How many membership records it admits to having (for rollback tests).
   int? withholdMembershipAfter;
+
+  /// How many membership records a read of the log returns, while [heads]
+  /// already counts them all: a read made just before an append that the
+  /// next reads see.
+  int? staleMembershipReads;
 
   final createdWorkspaces = <WorkspaceId>[];
 
@@ -115,7 +122,9 @@ final class FakeSyncServer implements SyncServer {
   }) async {
     _check();
     reads.add('membership');
-    final visible = _visibleMembership;
+    final visible = staleMembershipReads == null
+        ? _visibleMembership
+        : _visibleMembership.take(staleMembershipReads!).toList();
     return from >= visible.length ? const [] : visible.sublist(from);
   }
 
@@ -158,6 +167,16 @@ final class FakeSyncServer implements SyncServer {
     bundles.add(bundle);
   }
 }
+
+/// What an account allowed to append bundles can put on the server: well
+/// formed, signed by nobody, naming a membership record that never comes.
+KeyBundle forgedBundle(WorkspaceId workspace, MemberId issuer) => KeyBundle(
+  workspace: workspace,
+  atSequence: 0xffffffff,
+  issuer: issuer,
+  grants: const [],
+  signature: Signature.fromBytes(Uint8List(Signature.length)),
+);
 
 /// Where two devices of one account meet: whatever they post, it relays.
 final class FakeLinkChannel implements DeviceLinkChannel {

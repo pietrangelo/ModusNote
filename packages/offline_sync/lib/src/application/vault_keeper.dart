@@ -8,8 +8,10 @@ import '../core/device_link.dart';
 import '../core/passkey_slot.dart';
 import '../core/record_revision.dart';
 import '../core/sync_exception.dart';
+import '../core/sync_row.dart';
 import '../core/vault_backup.dart';
 import '../core/vault_header.dart';
+import 'bundle_order.dart';
 import 'ports.dart';
 import 'sync_engine.dart';
 
@@ -957,9 +959,20 @@ final class LinkRequest {
     final keyring = GroupKeyring(workspace);
     final granted = <KeyBundle>[];
     var cursor = 0;
+    Future<SyncHeads?>? heads;
     for (final (position, bundle) in bundles) {
-      // Read again after the record it names, which the engine will fetch.
-      if (bundle.atSequence >= ledger.records.length) break;
+      if (bundle.atSequence >= ledger.records.length) {
+        // Read again after the record it names, which the engine will
+        // fetch, unless the server does not hold that record.
+        if (await recordWillCome(
+          bundle,
+          heads ??= keeper._server.heads(workspace),
+        )) {
+          break;
+        }
+        cursor = position;
+        continue;
+      }
       cursor = position;
       if (!bundle.grants.any((grant) => grant.recipient == me)) continue;
       try {

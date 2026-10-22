@@ -1,0 +1,19 @@
+Modus Notes
+Copyright (C) 2026 Pietrangelo Masala
+
+This program is free software: you can redistribute it and/or modify it
+under the terms of the GNU Affero General Public License as published by the
+Free Software Foundation, version 3 (see LICENSE). It comes with ABSOLUTELY
+NO WARRANTY.
+
+Name and logo. The license covers the code, not the brand. "Modus Notes",
+the tagline "Modo · Misura · Ritmo" and the logo and app icon in
+apps/modusnote/assets/brand/ identify the official app published by the
+copyright holder (modus.serv.run, Google Play id run.serv.modus). A modified
+or redistributed version must use another name, another icon and another
+application id, and must not present itself as the official app.
+
+Third-party components keep their own licenses: the fonts in
+apps/modusnote/assets/fonts/ (SIL Open Font License, with their license
+files), libsodium (ISC), libopus (BSD), SQLite (public domain), and the Dart
+and Flutter packages listed in pubspec.lock, each under its own license.
