@@ -184,6 +184,11 @@ def main():
     expect(call("GET", f"/api/codes/{lookup}"), 404, "the closed code is gone")
 
     expect(call("PUT", target, bob, raw=blob, signed_body=b""), 201, "upload again before deleting the workspace")
+    revoke_carol = record(ws, 3, alice, invite_carol[-64:], ("revoke", carol.key))
+    expect(call("POST", f"{w}/membership", alice, {"record": b64(revoke_carol)}), 201, "remove the viewer")
+    expect(call("GET", f"{w}/heads", carol), 403, "a removed member reads nothing else")
+    told = expect(call("GET", f"{w}/membership?from=3", carol), 200, "but learns from the log why")
+    assert [base64.b64decode(r) for r in told["records"]] == [revoke_carol], told
     expect(call("DELETE", w, bob), 403, "an editor cannot delete the workspace")
     expect(call("DELETE", w, alice), 200, "an owner deletes the workspace")
     expect(call("GET", f"{w}/heads", alice), 404, "the workspace is gone")

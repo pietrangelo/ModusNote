@@ -176,6 +176,18 @@ mod who_may_call {
 
         forbidden(space.push(&call(&bob, "POST", &path("/rows"), b"r").request(), &[row(1, 10, 0)]));
         forbidden(space.pull(&call(&bob, "GET", &path("/rows?after=0"), b"").request(), 0));
+        forbidden(space.heads(&call(&bob, "GET", &path("/heads"), b"").request()));
+        // The log alone stays readable, so the device learns why.
+        let log = space.membership(&call(&bob, "GET", &path("/membership?from=2"), b"").request(), 2).unwrap();
+        assert_eq!(log, vec![revoke]);
+    }
+
+    #[test]
+    fn a_stranger_reads_not_even_the_log() {
+        let (mut space, _, _, _) = with_bob(EDITOR, Limits::default());
+        let mallory = Device::new(9);
+
+        forbidden(space.membership(&call(&mallory, "GET", &path("/membership?from=0"), b"").request(), 0));
     }
 
     #[test]

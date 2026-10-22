@@ -72,6 +72,16 @@ final class InvalidShelfLabelException extends SyncException {
   String get message => 'invalid vault name';
 }
 
+/// The server does not admit this device: it is not a member of the log
+/// the server holds (not yet admitted, or removed). The server says so on
+/// its own word; only the log, once readable, proves it.
+final class NotAdmittedException extends SyncException {
+  const NotAdmittedException();
+
+  @override
+  String get message => 'the server does not admit this device';
+}
+
 /// The sync server could not be reached; queued work stays queued.
 final class ServerUnavailableException extends SyncException {
   const ServerUnavailableException();
@@ -135,13 +145,22 @@ final class PasskeyRejectedException extends VaultException {
   String get message => 'passkey does not open this vault';
 }
 
-/// No offer of this account opens with the code: mistyped, or expired, or
-/// another offer was made since. Indistinguishable by design.
+/// No offer under the code's lookup opens with the code: mistyped, or
+/// expired, or closed. Indistinguishable by design.
 final class LinkCodeRejectedException extends VaultException {
   const LinkCodeRejectedException();
 
   @override
   String get message => 'no link offer opens with this code';
+}
+
+/// Another offer holds the code's lookup on the server; a new code (with
+/// another lookup) is needed.
+final class LookupTakenException extends VaultException {
+  const LookupTakenException();
+
+  @override
+  String get message => 'another offer holds this lookup';
 }
 
 /// The link was not completed in time; a new code is needed.

@@ -36,7 +36,8 @@ void main() {
   VaultKeeper keeper() => VaultKeeper(
     vaults: vaults,
     records: (workspace) => records.putIfAbsent(workspace, FakeLocalStore.new),
-    server: server,
+    hasher: SodiumContentHasher(sodium),
+    gateway: FakeGateway(server),
     identities: SodiumIdentityService(sodium),
     keys: SodiumKeyDerivationService(sodium),
     subkeys: SodiumSubkeyDerivationService(sodium),
