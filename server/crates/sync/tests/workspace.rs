@@ -268,7 +268,23 @@ mod key_bundles {
         assert_eq!(space.append_bundle(&call(&alice, "POST", &path("/bundles"), &first).request(), &first), Ok(1));
         assert_eq!(space.append_bundle(&call(&alice, "POST", &path("/bundles"), &second).request(), &second), Ok(2));
         let listed = space.bundles(&call(&bob, "GET", &path("/bundles?after=1"), b"").request(), 1).unwrap();
-        assert_eq!(listed, vec![(2, second)]);
+        assert_eq!(listed, (vec![(2, second)], false));
+    }
+
+    #[test]
+    fn bundles_come_a_page_at_a_time() {
+        let limits = Limits { pull_rows: 2, ..Limits::default() };
+        let (mut space, alice, _, _) = with_bob(EDITOR, limits);
+        for _ in 0..3 {
+            let wire = bundle(WS, 1, &alice, &[(0, &alice)]);
+            space.append_bundle(&call(&alice, "POST", &path("/bundles"), &wire).request(), &wire).unwrap();
+        }
+
+        let get = |after: u64| call(&alice, "GET", &path(&format!("/bundles?after={after}")), b"");
+        let (first, more) = space.bundles(&get(0).request(), 0).unwrap();
+        assert_eq!((first.iter().map(|(p, _)| *p).collect::<Vec<_>>(), more), (vec![1, 2], true));
+        let (rest, more) = space.bundles(&get(2).request(), 2).unwrap();
+        assert_eq!((rest.iter().map(|(p, _)| *p).collect::<Vec<_>>(), more), (vec![3], false));
     }
 
     #[test]

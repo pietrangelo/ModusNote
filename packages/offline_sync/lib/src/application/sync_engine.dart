@@ -295,6 +295,17 @@ final class SyncEngine {
     await _publishPendingBundle();
   }
 
+  /// Deletes this workspace from the server: rows, log, bundles and blobs.
+  /// Only an owner may; the notes stay on every device that has them.
+  /// Throws [NotAuthorizedException] for a member who is not an owner, and
+  /// [ServerUnavailableException] offline.
+  Future<void> deleteFromServer() async {
+    if (!(_ledger.workspace.member(_myId)?.role.managesMembers ?? false)) {
+      throw const NotAuthorizedException();
+    }
+    await _server.deleteWorkspace(_workspace);
+  }
+
   /// A rotation's bundle waits here until the server holds it: until then
   /// the other members cannot write under the new epoch.
   static const _pendingBundle = 'sync.pending-bundle';

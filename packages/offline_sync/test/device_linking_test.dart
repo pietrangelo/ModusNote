@@ -400,6 +400,40 @@ void main() {
       expect(joined.engine.removed, isFalse);
     });
 
+    test('an owner deletes the workspace from the server, '
+        'and every device keeps its notes', () async {
+      final joined = await link(browser);
+      await joined.engine.sync();
+
+      await founder.engine.deleteFromServer();
+
+      expect(server.deleted, isTrue);
+      expect(await read(founder, note), 'dal telefono');
+      expect(await read(joined, note), 'dal telefono');
+    });
+
+    test('only an owner deletes the workspace from the server', () async {
+      final viewer = await (() async {
+        final offering = await phone.keeper.offerInvite(
+          founder,
+          secret(code.toBytes()),
+          lookup: code.lookup,
+          role: Role.viewer,
+        );
+        final request = await join(browser);
+        expect(await offering.poll(), isNotNull);
+        final vault = (await request.poll())!;
+        addTearDown(vault.lock);
+        return vault;
+      })();
+
+      await expectLater(
+        viewer.engine.deleteFromServer(),
+        throwsA(isA<NotAuthorizedException>()),
+      );
+      expect(server.deleted, isFalse);
+    });
+
     test('this device cannot remove itself', () async {
       await link(browser);
 

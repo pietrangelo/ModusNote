@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # The Worker end to end: builds it, serves it with `wrangler dev` (workerd,
 # Durable Objects and R2 on this machine, nothing on Cloudflare) and runs
-# e2e.py against it. Wrangler comes from tool/deploy's lockfile.
+# e2e.py against it, then the Dart adapter's own end-to-end test. Wrangler
+# comes from tool/deploy's lockfile.
 set -euo pipefail
 
 root=$(cd "$(dirname "$0")/../.." && pwd)
@@ -33,4 +34,12 @@ for _ in $(seq 1 300); do
 done
 grep -q 'Ready on' "$log" || { cat "$log"; exit 1; }
 
-NO_PROXY=127.0.0.1 no_proxy=127.0.0.1 python3 -I "$root/server/e2e/e2e.py" "http://127.0.0.1:$port"
+export NO_PROXY=127.0.0.1 no_proxy=127.0.0.1
+python3 -I "$root/server/e2e/e2e.py" "http://127.0.0.1:$port"
+
+# The app's own domain and adapter against the same Worker, where Dart is
+# installed (the CI job installs it).
+if command -v dart > /dev/null; then
+  (cd "$root/packages/offline_sync_adapters" &&
+    MODUSNOTE_SERVER="http://127.0.0.1:$port" dart test test/modus_e2e_test.dart)
+fi

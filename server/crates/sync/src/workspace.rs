@@ -273,10 +273,13 @@ impl<S: Store, C: SignatureCheck> Workspace<S, C> {
     }
 
     /// Bundles after position `after`, with their positions.
-    pub fn bundles(&mut self, request: &Request<'_>, after: u64) -> Result<Vec<(u64, Vec<u8>)>, SyncError> {
+    pub fn bundles(&mut self, request: &Request<'_>, after: u64) -> Result<(Vec<(u64, Vec<u8>)>, bool), SyncError> {
         self.member(request, |_| true)?;
-        let listed = self.store.list(BUNDLES, Some(&position_key(BUNDLES, after)), self.limits.pull_rows)?;
-        Ok(listed.into_iter().map(|(key, wire)| (position_of(&key), wire)).collect())
+        let page = self.limits.pull_rows;
+        let mut listed = self.store.list(BUNDLES, Some(&position_key(BUNDLES, after)), page + 1)?;
+        let more = listed.len() > page;
+        listed.truncate(page);
+        Ok((listed.into_iter().map(|(key, wire)| (position_of(&key), wire)).collect(), more))
     }
 
     /// Stores a bundle that the verified log allows, and returns its position.
