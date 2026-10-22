@@ -133,12 +133,12 @@ pub fn workspace<S: Store, C: SignatureCheck>(
             json(201, &PositionsReply { positions: space.push(&request, &rows)? })
         }
         Route::ListBlobs(_, after) => {
-            let blobs = space
-                .blobs(&request, after.as_deref())?
+            let (blobs, more) = space.blobs(&request, after.as_deref())?;
+            let blobs = blobs
                 .into_iter()
                 .map(|blob| BlobReply { id: blob.id, size: blob.size, uploaded: blob.uploaded_ms })
                 .collect();
-            json(200, &BlobsReply { blobs })
+            json(200, &BlobsReply { blobs, more })
         }
         Route::PutBlob(_, id) => {
             let size = incoming.blob_size.and_then(|v| v.parse().ok()).ok_or(ApiError::LengthRequired)?;
