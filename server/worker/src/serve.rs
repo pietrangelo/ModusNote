@@ -96,8 +96,12 @@ pub fn workspace<S: Store, C: SignatureCheck>(
     let body = incoming.body;
     match route {
         Route::Found(ws) => {
-            let record = decode(&parse_json::<FoundBody>(body)?.record)?;
-            let created = space.found(&request, ws, &record)?;
+            let records = parse_json::<FoundBody>(body)?
+                .records
+                .iter()
+                .map(|text| decode(text))
+                .collect::<Result<Vec<_>, _>>()?;
+            let created = space.found(&request, ws, &records)?;
             Ok(Done::Json(if created { 201 } else { 200 }, format!(r#"{{"created":{created}}}"#)))
         }
         Route::DeleteWorkspace(_) => {

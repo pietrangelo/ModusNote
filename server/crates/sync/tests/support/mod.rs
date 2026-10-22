@@ -169,7 +169,9 @@ pub fn founded(founder: &Device, limits: Limits) -> (Space, Vec<u8>) {
     let mut space = space(limits);
     let genesis = record(WS, 0, founder, None, Change::Founded(founder));
     let path = format!("/api/w/{}", WS.to_hex());
-    assert!(space.found(&call(founder, "POST", &path, &genesis).request(), WS, &genesis).unwrap());
+    assert!(
+        space.found(&call(founder, "POST", &path, &genesis).request(), WS, std::slice::from_ref(&genesis)).unwrap()
+    );
     (space, genesis)
 }
 

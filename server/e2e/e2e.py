@@ -115,8 +115,8 @@ def main():
     w = f"/api/w/{ws.hex()}"
 
     genesis = record(ws, 0, alice, None, ("found", alice.identity()))
-    found = {"record": b64(genesis), "pow": pow_nonce(1, ws, bits)}
-    expect(call("POST", w, alice, {"record": b64(genesis), "pow": {"day": found["pow"]["day"], "nonce": b64(bytes(16))}}), 403, "founding without work")
+    found = {"records": [b64(genesis)], "pow": pow_nonce(1, ws, bits)}
+    expect(call("POST", w, alice, {"records": [b64(genesis)], "pow": {"day": found["pow"]["day"], "nonce": b64(bytes(16))}}), 403, "founding without work")
     expect(call("POST", w, alice, found), 201, "founding")
     expect(call("POST", w, alice, found), 200, "founding again is fine")
     expect(call("GET", f"{w}/heads"), 401, "unsigned read")
@@ -192,7 +192,7 @@ def main():
     expect(call("DELETE", w, bob), 403, "an editor cannot delete the workspace")
     expect(call("DELETE", w, alice), 200, "an owner deletes the workspace")
     expect(call("GET", f"{w}/heads", alice), 404, "the workspace is gone")
-    expect(call("POST", w, alice, {"record": b64(genesis), "pow": pow_nonce(1, ws, bits)}), 201, "the id can be founded again")
+    expect(call("POST", w, alice, {"records": [b64(genesis)], "pow": pow_nonce(1, ws, bits)}), 201, "the id can be founded again")
     expect(call("GET", target, alice), 404, "and its old blobs are gone")
     print("all good")
 

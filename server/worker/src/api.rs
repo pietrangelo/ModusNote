@@ -96,7 +96,7 @@ impl Route {
     /// The largest body the route reads, refused before it is read.
     pub fn max_body(&self) -> u64 {
         match self {
-            Self::Push(_) | Self::AppendBundle(_) => MAX_BULK_BODY,
+            Self::Push(_) | Self::AppendBundle(_) | Self::Found(_) => MAX_BULK_BODY,
             _ => MAX_SMALL_BODY,
         }
     }
@@ -428,7 +428,7 @@ impl Pow {
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct FoundBody {
-    pub record: String,
+    pub records: Vec<String>,
     pub pow: Pow,
 }
 

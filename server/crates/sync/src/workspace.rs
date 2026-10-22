@@ -191,27 +191,53 @@ impl<S: Store, C: SignatureCheck> Workspace<S, C> {
         Ok(())
     }
 
-    /// Registers the workspace with its first record, signed by its founder,
-    /// who also signs the request. The same first record again is fine;
-    /// another is a conflict: the first registered keeps the id.
-    pub fn found(&mut self, request: &Request<'_>, id: WorkspaceId, genesis: &[u8]) -> Result<bool, SyncError> {
+    /// Registers the workspace with the start of its log: its first record,
+    /// then the records up to the one that admits the caller, who signs the
+    /// request (the founder sends only the first). They are verified as
+    /// appends would be, and the caller must still be a member where they
+    /// end. The same first record again is fine; another is a conflict: the
+    /// first registered keeps the id.
+    pub fn found(&mut self, request: &Request<'_>, id: WorkspaceId, start: &[Vec<u8>]) -> Result<bool, SyncError> {
         let Caller { key } = authenticate(&mut self.store, &self.check, request)?;
-        let record = Record::parse(genesis).map_err(Refused::from)?;
-        if record.workspace != id {
-            return Err(SyncError::Malformed("record of another workspace"));
+        let Some(genesis) = start.first() else {
+            return Err(SyncError::Malformed("no first record"));
+        };
+        let mut records = Vec::with_capacity(start.len());
+        for wire in start {
+            let record = Record::parse(wire).map_err(Refused::from)?;
+            if record.workspace != id {
+                return Err(SyncError::Malformed("record of another workspace"));
+            }
+            records.push(record);
         }
-        if record.author != key {
+        if !records.iter().any(|record| admits(record, &key)) {
             return Err(SyncError::Denied(Denied::Forbidden));
         }
         if let Some(ledger) = self.ledger()? {
-            return if ledger.records()[0].wire() == genesis { Ok(false) } else { Err(SyncError::Conflict) };
+            return if ledger.records()[0].wire() == genesis.as_slice() { Ok(false) } else { Err(SyncError::Conflict) };
         }
-        let ledger = VerifiedLedger::found(record, &self.check)?;
+        let mut records = records.into_iter();
+        let first = records.next().ok_or(SyncError::Malformed("no first record"))?;
+        let mut ledger = VerifiedLedger::found(first, &self.check)?;
+        for record in records {
+            ledger.extend(record, &self.check)?;
+        }
+        if ledger.workspace().role(&key).is_none() {
+            return Err(SyncError::Denied(Denied::Forbidden));
+        }
+        if ledger.workspace().members.len() > self.limits.members {
+            return Err(SyncError::Full);
+        }
         let mut meta = Meta::load(&self.store)?;
-        meta.bytes = genesis.len() as u64;
+        meta.bytes = start.iter().map(|wire| wire.len() as u64).sum();
+        if meta.bytes > self.limits.workspace_bytes {
+            return Err(SyncError::Full);
+        }
         meta.last_seen_ms = request.now_ms;
         self.store.transaction(|store| -> Result<(), SyncError> {
-            store.put(&log_key(0), genesis)?;
+            for (sequence, wire) in start.iter().enumerate() {
+                store.put(&log_key(sequence as u32), wire)?;
+            }
             meta.save(store)?;
             Ok(())
         })?;

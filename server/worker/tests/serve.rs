@@ -49,7 +49,7 @@ fn b64(bytes: &[u8]) -> String {
 fn founded_by(alice: &Device) -> Space {
     let mut space = space(Limits::default());
     let genesis = record(WS, 0, alice, None, Change::Founded(alice));
-    let found = json!({"record": b64(&genesis), "pow": {"day": 0, "nonce": b64(&[0; 16])}});
+    let found = json!({"records": [b64(&genesis)], "pow": {"day": 0, "nonce": b64(&[0; 16])}});
     assert_eq!(parsed(serve_json(&mut space, alice, "POST", &path(""), found.clone()).unwrap()).0, 201);
     let (status, body) = parsed(serve_json(&mut space, alice, "POST", &path(""), found).unwrap());
     assert_eq!((status, body), (200, json!({"created": false})));
