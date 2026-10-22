@@ -35,7 +35,7 @@ mod founding {
         let (mut space, genesis) = founded(&alice, Limits::default());
         let again = call(&alice, "POST", &path(""), &genesis);
 
-        assert_eq!(space.found(&again.request(), WS, &genesis), Ok(false));
+        assert_eq!(space.found(&again.request(), WS, std::slice::from_ref(&genesis)), Ok(false));
         let heads = space.heads(&call(&alice, "GET", &path("/heads"), b"").request()).unwrap();
         assert_eq!(heads, Heads { rows: 0, bundles: 0, membership: 1 });
     }
@@ -48,7 +48,7 @@ mod founding {
         let theirs = record(WS, 0, &mallory, None, Change::Founded(&mallory));
 
         assert_eq!(
-            space.found(&call(&mallory, "POST", &path(""), &theirs).request(), WS, &theirs),
+            space.found(&call(&mallory, "POST", &path(""), &theirs).request(), WS, std::slice::from_ref(&theirs)),
             Err(SyncError::Conflict)
         );
     }
@@ -60,10 +60,14 @@ mod founding {
         let genesis = record(WS, 0, &alice, None, Change::Founded(&alice));
         let mut space = space(Limits::default());
 
-        forbidden(space.found(&call(&mallory, "POST", &path(""), &genesis).request(), WS, &genesis));
+        forbidden(space.found(
+            &call(&mallory, "POST", &path(""), &genesis).request(),
+            WS,
+            std::slice::from_ref(&genesis),
+        ));
         let other = WorkspaceId([7; 16]);
         assert_eq!(
-            space.found(&call(&alice, "POST", &path(""), &genesis).request(), other, &genesis),
+            space.found(&call(&alice, "POST", &path(""), &genesis).request(), other, std::slice::from_ref(&genesis)),
             Err(SyncError::Malformed("record of another workspace"))
         );
     }
@@ -76,9 +80,73 @@ mod founding {
         let mut space = space(Limits::default());
 
         assert!(matches!(
-            space.found(&call(&alice, "POST", &path(""), &genesis).request(), WS, &genesis),
+            space.found(&call(&bob, "POST", &path(""), &genesis).request(), WS, std::slice::from_ref(&genesis)),
             Err(SyncError::Refused(Refused::Tampered(_)))
         ));
+        forbidden(space.found(
+            &call(&alice, "POST", &path(""), &genesis).request(),
+            WS,
+            std::slice::from_ref(&genesis),
+        ));
+    }
+}
+
+mod founding_from_another_device {
+    use super::*;
+
+    /// Alice's log with Bob invited as `role`, as Bob's device holds it.
+    fn start(alice: &Device, bob: &Device, role: u8) -> Vec<Vec<u8>> {
+        let genesis = record(WS, 0, alice, None, Change::Founded(alice));
+        let invite = record(WS, 1, alice, Some(signature_of(&genesis)), Change::Invited(bob, role));
+        vec![genesis, invite]
+    }
+
+    #[test]
+    fn a_member_registers_it_with_the_log_up_to_its_admission() {
+        let alice = Device::new(1);
+        let bob = Device::new(2);
+        let records = start(&alice, &bob, EDITOR);
+        let mut space = space(Limits::default());
+
+        let registered = call(&bob, "POST", &path(""), b"");
+        assert_eq!(space.found(&registered.request(), WS, &records), Ok(true));
+        let heads = space.heads(&call(&alice, "GET", &path("/heads"), b"").request()).unwrap();
+        assert_eq!(heads, Heads { rows: 0, bundles: 0, membership: 2 });
+        let again = call(&alice, "POST", &path(""), b"");
+        assert_eq!(space.found(&again.request(), WS, &records[..1]), Ok(false));
+    }
+
+    #[test]
+    fn a_log_that_does_not_admit_the_caller_is_refused() {
+        let alice = Device::new(1);
+        let bob = Device::new(2);
+        let mallory = Device::new(9);
+        let mut space = space(Limits::default());
+
+        forbidden(space.found(&call(&mallory, "POST", &path(""), b"").request(), WS, &start(&alice, &bob, OWNER)));
+        let mut records = start(&alice, &bob, OWNER);
+        let revoke = record(WS, 2, &alice, Some(signature_of(&records[1])), Change::Revoked(&bob));
+        records.push(revoke);
+        forbidden(space.found(&call(&bob, "POST", &path(""), b"").request(), WS, &records));
+        assert_eq!(space.heads(&call(&alice, "GET", &path("/heads"), b"").request()), Err(SyncError::NotFound));
+    }
+
+    #[test]
+    fn a_broken_chain_is_refused() {
+        let alice = Device::new(1);
+        let bob = Device::new(2);
+        let genesis = record(WS, 0, &alice, None, Change::Founded(&alice));
+        let forged = record(WS, 1, &bob, Some(signature_of(&genesis)), Change::Invited(&bob, OWNER));
+        let mut space = space(Limits::default());
+
+        assert!(matches!(
+            space.found(&call(&bob, "POST", &path(""), b"").request(), WS, &[genesis, forged]),
+            Err(SyncError::Refused(_))
+        ));
+        assert_eq!(
+            space.found(&call(&bob, "POST", &path(""), b"").request(), WS, &[]),
+            Err(SyncError::Malformed("no first record"))
+        );
     }
 }
 
