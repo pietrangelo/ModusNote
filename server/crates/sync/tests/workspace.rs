@@ -447,7 +447,8 @@ mod blobs {
             .unwrap();
 
         assert_eq!(space.reserve_blob(&call(&alice, "POST", &path("/blobs"), b"").request(), "b", 100), Ok(true));
-        let listed = space.blobs(&call(&alice, "GET", &path("/blobs"), b"").request(), None).unwrap();
+        let (listed, more) = space.blobs(&call(&alice, "GET", &path("/blobs"), b"").request(), None).unwrap();
+        assert!(!more);
         assert_eq!(listed.iter().map(|b| b.id.as_str()).collect::<Vec<_>>(), vec!["b"]);
         assert_eq!((listed[0].size, listed[0].uploaded_ms), (100, NOW));
     }

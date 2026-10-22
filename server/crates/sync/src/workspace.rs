@@ -273,7 +273,7 @@ impl<S: Store, C: SignatureCheck> Workspace<S, C> {
     }
 
     /// Bundles after position `after`, with their positions.
-    pub fn bundles(&mut self, request: &Request<'_>, after: u64) -> Result<(Vec<(u64, Vec<u8>)>, bool), SyncError> {
+    pub fn bundles(&mut self, request: &Request<'_>, after: u64) -> Result<(Vec<Positioned>, bool), SyncError> {
         self.member(request, |_| true)?;
         let page = self.limits.pull_rows;
         let mut listed = self.store.list(BUNDLES, Some(&position_key(BUNDLES, after)), page + 1)?;
@@ -410,19 +410,24 @@ impl<S: Store, C: SignatureCheck> Workspace<S, C> {
         self.member(request, |_| true).map(|_| ())
     }
 
-    /// The blobs reserved after `after`, in id order, a page at a time.
-    pub fn blobs(&mut self, request: &Request<'_>, after: Option<&str>) -> Result<Vec<BlobEntry>, SyncError> {
+    /// The blobs reserved after `after`, in id order, a page at a time, and
+    /// whether more follow.
+    pub fn blobs(&mut self, request: &Request<'_>, after: Option<&str>) -> Result<(Vec<BlobEntry>, bool), SyncError> {
+        const PAGE: usize = 1000;
         self.member(request, |_| true)?;
         let start = after.map(|id| format!("{BLOBS}{id}"));
-        let listed = self.store.list(BLOBS, start.as_deref(), 1000)?;
-        Ok(listed
+        let mut listed = self.store.list(BLOBS, start.as_deref(), PAGE + 1)?;
+        let more = listed.len() > PAGE;
+        listed.truncate(PAGE);
+        let blobs = listed
             .into_iter()
             .map(|(key, entry)| BlobEntry {
                 id: key[BLOBS.len()..].to_owned(),
                 size: entry.get(..8).map_or(0, decode_u64),
                 uploaded_ms: entry.get(8..16).map_or(0, decode_u64),
             })
-            .collect())
+            .collect();
+        Ok((blobs, more))
     }
 
     /// Forgets blobs a writer deleted, returning the space; the caller then
@@ -525,6 +530,9 @@ fn index_key(record: &[u8; 16], position: u64) -> String {
 fn position_of(key: &str) -> u64 {
     key.rsplit('/').next().and_then(|hex| u64::from_str_radix(hex, 16).ok()).unwrap_or(0)
 }
+
+/// A stored entry and its position.
+pub type Positioned = (u64, Vec<u8>);
 
 /// Whether `record` founded the workspace as `key` or invited `key`.
 fn admits(record: &Record, key: &MemberKey) -> bool {

@@ -100,7 +100,7 @@ fn a_blob_is_reserved_with_its_size_listed_and_released() {
     let again = call(&alice, "PUT", &path("/blobs/b1"), b"");
     assert_eq!(serve::workspace(&mut space, &Blake2b, &send(&again, b"", Some("40"))).map(parsed).unwrap().0, 200);
     let (_, listed) = parsed(serve_json(&mut space, &alice, "GET", &path("/blobs"), Value::Null).unwrap());
-    assert_eq!(listed, json!({"blobs": [{"id": "b1", "size": 40, "uploaded": NOW}]}));
+    assert_eq!(listed, json!({"blobs": [{"id": "b1", "size": 40, "uploaded": NOW}], "more": false}));
     let read = call(&alice, "GET", &path("/blobs/b1"), b"");
     assert!(serve::workspace(&mut space, &Blake2b, &send(&read, b"", None)).is_ok());
     let released = serve_json(&mut space, &alice, "POST", &path("/blobs/delete"), json!({"ids": ["b1"]}));

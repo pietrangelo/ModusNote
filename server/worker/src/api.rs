@@ -546,6 +546,7 @@ pub struct BlobReply {
 #[derive(Debug, Serialize)]
 pub struct BlobsReply {
     pub blobs: Vec<BlobReply>,
+    pub more: bool,
 }
 
 #[derive(Debug, Serialize)]
