@@ -22,10 +22,16 @@ import 'request_signer.dart';
 /// removal is the writer's: a pushed row may name the rows of its record it
 /// supersedes ([SealedRow.supersedes]), and the server drops them.
 abstract interface class SyncServer {
-  /// Registers a workspace with its first record, signed by its founder,
-  /// this device. Idempotent: the same record again is not an error; another
-  /// founder already holding the id is a [LedgerRollbackException].
-  Future<void> createWorkspace(MembershipRecord genesis);
+  /// Which server this is. A server with another id starts empty: a vault
+  /// that synced elsewhere publishes itself there again.
+  Future<String> serverId();
+
+  /// Registers a workspace with the start of its log: its first records,
+  /// up to the one that admits this device (the founder sends only the
+  /// first), which the server verifies as it would one by one. Idempotent:
+  /// the same first record again is not an error; another first record
+  /// already holding the id is a [LedgerRollbackException].
+  Future<void> createWorkspace(List<MembershipRecord> start);
 
   /// Deletes the workspace from the server, with its rows, log, bundles
   /// and blobs; an owner's call. Nothing on any device changes. A
@@ -137,6 +143,10 @@ abstract interface class LocalRecordStore {
   /// Remembers that the row of [id] at [position] could not be opened;
   /// only the lowest such position is kept.
   Future<void> markUnreadable(RecordId id, int position);
+
+  /// Forgets every position learned from a server (cursors and unreadable
+  /// rows), before syncing with a new one. Records and outbox stay.
+  Future<void> forgetServer();
 }
 
 /// Port: where the device keeps its vault header and the signed log of its

@@ -70,7 +70,7 @@ final class SyncController extends ChangeNotifier {
   final Future<void> Function()? _turnOn;
 
   /// Runs after each sync that reached the server: uploads recordings.
-  final Future<void> Function()? _afterSync;
+  final Future<void> Function(SyncReport report)? _afterSync;
 
   /// Remembers in the vault that its data was deleted from the server.
   final Future<void> Function()? _retire;
@@ -216,7 +216,7 @@ final class SyncController extends ChangeNotifier {
       }
       if (report.pulled > 0) await _onPulled();
       if (_disposed) return;
-      await _afterSync?.call();
+      await _afterSync?.call(report);
       if (_disposed) return;
       _lastSynced = _clock();
       _set(SyncState.synced);

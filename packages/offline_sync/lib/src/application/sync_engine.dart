@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:collaboration_access_control/collaboration_access_control.dart';
 import 'package:identity_cryptography/identity_cryptography.dart';
 
@@ -20,6 +23,7 @@ final class SyncReport {
     this.conflicts = 0,
     this.rejected = 0,
     this.undecryptable = 0,
+    this.moved = false,
   });
 
   /// The server was unreachable; queued edits are still queued.
@@ -38,6 +42,23 @@ final class SyncReport {
 
   /// Rows under an epoch this device holds no key for.
   final int undecryptable;
+
+  /// The vault met a new server and published itself there again: what
+  /// the device knew about the old server (which blobs it held) no longer
+  /// holds.
+  final bool moved;
+
+  /// This report after [move], the part of the same sync that published
+  /// the vault on a new server.
+  SyncReport _after(SyncReport move) => SyncReport(
+    offline: offline,
+    pushed: move.pushed + pushed,
+    pulled: move.pulled + pulled,
+    conflicts: move.conflicts + conflicts,
+    rejected: move.rejected + rejected,
+    undecryptable: move.undecryptable + undecryptable,
+    moved: true,
+  );
 }
 
 /// Use case: offline-first editing and sync of one workspace's records.
@@ -208,27 +229,218 @@ final class SyncEngine {
 
   Future<SyncReport> _sync() async {
     try {
-      await _publishMembership();
-      await _publishPendingBundle();
-      final pushed = await _push();
-      final heads = await _server.heads(_workspace);
-      if (heads == null || heads.membership > _ledger.records.length) {
-        await _catchUpMembership();
-        if (removed) throw const RemovedFromWorkspaceException();
-      }
-      if (heads == null ||
-          heads.keyBundles > await _store.loadCursor(SyncStream.keyBundles)) {
-        await _acceptKeyBundles();
-      }
-      if (heads == null ||
-          heads.rows > await _store.loadCursor(SyncStream.rows)) {
-        return await _pull(pushed);
-      }
-      return SyncReport(pushed: pushed);
+      final moved = await _settleServer();
+      final report = await _exchange();
+      return moved == null ? report : report._after(moved);
     } on ServerUnavailableException {
       return const SyncReport(offline: true);
     }
   }
+
+  Future<SyncReport> _exchange() async {
+    await _publishMembership();
+    await _publishPendingBundle();
+    final pushed = await _push();
+    final heads = await _server.heads(_workspace);
+    if (heads == null || heads.membership > _ledger.records.length) {
+      await _catchUpMembership();
+      if (removed) throw const RemovedFromWorkspaceException();
+    }
+    if (heads == null ||
+        heads.keyBundles > await _store.loadCursor(SyncStream.keyBundles)) {
+      await _acceptKeyBundles();
+    }
+    if (heads == null ||
+        heads.rows > await _store.loadCursor(SyncStream.rows)) {
+      return await _pull(pushed);
+    }
+    return SyncReport(pushed: pushed);
+  }
+
+  /// The server this vault last synced with, sealed: another id means a
+  /// new server, which starts empty.
+  static const _serverSetting = 'sync.server';
+
+  /// Whether this unlock already checked which server it talks to.
+  var _serverChecked = false;
+
+  /// Where there is no journal (tests), the server's id lives here.
+  String? _unsavedServer;
+
+  /// Asks the server who it is, once per unlock; a server this vault has
+  /// not synced with gets the vault published again ([_move]), and only
+  /// then is its id kept, so a move cut short starts over.
+  /// Null when nothing moved, or what the move did.
+  Future<SyncReport?> _settleServer() async {
+    if (_serverChecked) return null;
+    final id = await _server.serverId();
+    if (await _loadServer() == id) {
+      _serverChecked = true;
+      return null;
+    }
+    final moved = await _move();
+    await _saveServer(id);
+    _serverChecked = true;
+    return moved;
+  }
+
+  /// Publishes this vault on a server that does not know it, or knows only
+  /// what other devices brought: the log (registering the workspace if
+  /// needed), the key bundles this device holds, and the winning revision
+  /// of every record the server lacks, each sealed again under the epoch
+  /// it was written in, so it authenticates on every device as before.
+  ///
+  /// Positions learned from the old server mean nothing here, so they are
+  /// forgotten first; the outbox is not pushed, because its rows name old
+  /// positions as superseded, and what it holds is in the local records.
+  Future<SyncReport> _move() async {
+    final queued = (await _store.loadOutbox()).pending;
+    await _store.forgetServer();
+    await _publishMembership();
+    await _catchUpMembership();
+    if (removed) throw const RemovedFromWorkspaceException();
+    await _forwardKeyBundles();
+    await _acceptKeyBundles();
+    final held = <SignedRevision>{};
+    final report = await _pull(0, held: held);
+    final pushed = _ledger.workspace.member(_myId)?.role.writesContent ?? false
+        ? await _republish(held)
+        : 0;
+    // What was queued before is in the local records, and so are edits
+    // made meanwhile that the server now holds; the others were queued
+    // under the new positions and go with the next push.
+    await _store.unqueue([
+      ...queued,
+      for (final row in (await _store.loadOutbox()).pending)
+        if (_carries(row, held)) row,
+    ]);
+    return SyncReport(
+      pushed: pushed,
+      pulled: report.pulled,
+      conflicts: report.conflicts,
+      rejected: report.rejected,
+      undecryptable: report.undecryptable,
+    );
+  }
+
+  /// Bundles the server lacks, from those this device verified and keeps.
+  /// Any member may relay one; the server takes only those its log allows.
+  Future<void> _forwardKeyBundles() async {
+    final journal = _journal;
+    if (journal == null) return;
+    final held = {
+      for (final (_, bundle) in await _server.keyBundles(_workspace, after: 0))
+        bundle,
+    };
+    for (final bundle in await journal.loadKeyBundles()) {
+      if (bundle.atSequence >= _ledger.records.length || !held.add(bundle)) {
+        continue;
+      }
+      await _server.appendKeyBundle(bundle);
+    }
+  }
+
+  /// Whether [row] seals one of [revisions].
+  bool _carries(SealedRow row, Set<SignedRevision> revisions) {
+    try {
+      return revisions.contains(
+        SignedRevision.parse(
+          _contents.open(
+            row.ciphertext,
+            keyring: _keyring,
+            recordId: row.record.hex,
+          ),
+        ),
+      );
+    } on CryptographyException {
+      return false;
+    } on CollaborationException {
+      return false;
+    } on MalformedSyncDataException {
+      return false;
+    }
+  }
+
+  /// Pushes the winning revision of every record [held] lacks, and adds
+  /// them to it.
+  Future<int> _republish(Set<SignedRevision> held) async {
+    final pulled = await _store.loadCursor(SyncStream.rows);
+    final rows = <SealedRow>[];
+    for (final MapEntry(key: id, value: sealed)
+        in (await _store.loadAll()).entries) {
+      final current = _openLocal(id, sealed).current;
+      final revision = current.revision;
+      final head = revision.ledgerHead.sequence;
+      // Already there, or a revision every device now drops.
+      if (held.contains(current) ||
+          head >= _ledger.records.length ||
+          !(_ledger.workspace.member(revision.author)?.role.writesContent ??
+              false)) {
+        continue;
+      }
+      final WorkspaceCiphertext ciphertext;
+      try {
+        ciphertext = _contents.sealAt(
+          current.toBytes(),
+          epoch: _ledger.at(head).epoch,
+          keyring: _keyring,
+          recordId: id.hex,
+        );
+      } on MissingGroupKeyException {
+        // Another device holding that key publishes it.
+        continue;
+      }
+      final unreadable = await _store.loadUnreadable(id);
+      held.add(current);
+      rows.add(
+        SealedRow(
+          record: id,
+          ciphertext: ciphertext,
+          // It won over every row of its record just pulled.
+          supersedes: unreadable == null || unreadable > pulled
+              ? pulled
+              : unreadable - 1,
+        ),
+      );
+    }
+    if (rows.isNotEmpty) await _server.push(_workspace, rows);
+    return rows.length;
+  }
+
+  Future<String?> _loadServer() async {
+    final journal = _journal;
+    if (journal == null) return _unsavedServer;
+    final sealed = await journal.loadSetting(_serverSetting);
+    if (sealed == null) return null;
+    try {
+      return utf8.decode(
+        _envelopes.open(sealed, key: _localKey, associatedData: _serverSlot),
+      );
+    } on CryptographyException {
+      return null;
+    } on FormatException {
+      return null;
+    }
+  }
+
+  Future<void> _saveServer(String id) async {
+    final journal = _journal;
+    if (journal == null) {
+      _unsavedServer = id;
+      return;
+    }
+    await journal.saveSetting(
+      _serverSetting,
+      _envelopes.seal(
+        Uint8List.fromList(utf8.encode(id)),
+        key: _localKey,
+        associatedData: _serverSlot,
+      ),
+    );
+  }
+
+  AssociatedData get _serverSlot =>
+      AssociatedData.forContext('modusnote.sync-server.v1', _workspace.hex);
 
   /// Admits [device] with [role]: appends it to the membership log,
   /// publishes the record and grants it every GroupKey this device holds.
@@ -377,10 +589,16 @@ final class SyncEngine {
     final local = _ledger.records;
     var published = await _store.loadCursor(SyncStream.membership);
     if (published >= local.length) return;
-    if (published == 0 && local.first.author == _myId) {
-      await _server.createWorkspace(local.first);
+    List<MembershipRecord> held;
+    try {
+      held = await _server.membership(_workspace, from: published);
+    } on NotAdmittedException {
+      if (published > 0) rethrow;
+      // A server that does not know the workspace: a new one, or a server
+      // this vault has not synced with. Any member may register it.
+      await _server.createWorkspace(_startOfLog());
+      held = await _server.membership(_workspace, from: 0);
     }
-    final held = await _server.membership(_workspace, from: published);
     for (final record in held) {
       if (record.sequence >= local.length) break;
       if (record != local[record.sequence]) {
@@ -393,6 +611,22 @@ final class SyncEngine {
       await _store.saveCursor(SyncStream.membership, record.sequence + 1);
     }
     await _store.saveCursor(SyncStream.membership, local.length);
+  }
+
+  /// The log up to the record that admits this device: what the server
+  /// needs to let it in.
+  List<MembershipRecord> _startOfLog() {
+    final records = _ledger.records;
+    for (final (index, record) in records.indexed) {
+      if (switch (record.change) {
+        WorkspaceFounded(:final founder) => MemberId.of(founder) == _myId,
+        MemberInvited(:final identity) => MemberId.of(identity) == _myId,
+        _ => false,
+      }) {
+        return records.sublist(0, index + 1);
+      }
+    }
+    return records;
   }
 
   Future<void> _catchUpMembership() async {
@@ -445,7 +679,9 @@ final class SyncEngine {
     await _store.saveCursor(SyncStream.keyBundles, cursor);
   }
 
-  Future<SyncReport> _pull(int pushed) async {
+  /// Pulls and merges new rows. [held] collects the revisions they carry,
+  /// for a move to know what the server already has.
+  Future<SyncReport> _pull(int pushed, {Set<SignedRevision>? held}) async {
     var cursor = await _store.loadCursor(SyncStream.rows);
     var pulled = 0;
     var conflicts = 0;
@@ -456,7 +692,7 @@ final class SyncEngine {
         _workspace,
         after: cursor,
       )) {
-        switch (await _merge(row, position)) {
+        switch (await _merge(row, position, held)) {
           case _Merged.applied:
             pulled++;
           case _Merged.conflict:
@@ -483,7 +719,11 @@ final class SyncEngine {
     );
   }
 
-  Future<_Merged> _merge(SealedRow row, int position) async {
+  Future<_Merged> _merge(
+    SealedRow row,
+    int position,
+    Set<SignedRevision>? held,
+  ) async {
     final SignedRevision incoming;
     try {
       incoming = SignedRevision.parse(
@@ -494,6 +734,7 @@ final class SyncEngine {
         ),
       );
       await _authenticate(incoming, row);
+      held?.add(incoming);
     } on MissingGroupKeyException {
       // Another device may read it: no edit here may claim to supersede it.
       await _store.markUnreadable(row.record, position);

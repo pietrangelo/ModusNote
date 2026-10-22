@@ -60,8 +60,16 @@ final class BlobSync {
   /// down through [ensureLocal], so they are not looked for every minute.
   final _remoteOnly = <String>{};
 
-  /// Runs after each sync that reached the server.
-  Future<void> afterSync() async {
+  /// Runs after each sync that reached the server. After one that [moved]
+  /// the vault to a new server, which holds none of the old one's blobs,
+  /// every blob here goes up again and the sweep starts over.
+  Future<void> afterSync({bool moved = false}) async {
+    if (moved) {
+      _sent = Future.value(<String>{});
+      _remoteOnly.clear();
+      await _save(sentSetting, null);
+      await _save(sweptSetting, null);
+    }
     await uploadPending();
     await prune();
   }

@@ -191,6 +191,17 @@ void main() {
     expect(remote.uploads, hasLength(1));
   });
 
+  test('a new server gets every recording again, once', () async {
+    await phone.sync(store).afterSync();
+    remote.objects.clear();
+
+    await phone.sync(store).afterSync(moved: true);
+    await phone.sync(store).afterSync();
+
+    expect(remote.uploads, [take.id, take.id]);
+    expect(remote.objects.keys, [take.id]);
+  });
+
   test('offline, the recording waits for the next sync', () async {
     remote.online = false;
     final sync = phone.sync(store);

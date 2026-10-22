@@ -19,6 +19,9 @@ final class MemorySyncServer implements SyncGateway {
   Future<void>? hold;
 
   final workspaces = <WorkspaceId>{};
+
+  /// Which server this is; another id is a new server.
+  var id = 'modus-1';
   final deleted = <WorkspaceId>{};
   final rows = <SealedRow>[];
   final membershipLog = <MembershipRecord>[];
@@ -93,10 +96,23 @@ final class _DeviceServer implements SyncServer {
   }
 
   @override
-  Future<void> createWorkspace(MembershipRecord genesis) async {
+  Future<String> serverId() async {
+    await _backend._check();
+    return _backend.id;
+  }
+
+  @override
+  Future<void> createWorkspace(List<MembershipRecord> start) async {
+    final genesis = start.first;
     await _sign('POST', 'workspace');
-    if (genesis.author.signingKey != _signer.key ||
-        _backend.deleted.contains(genesis.workspace)) {
+    final admitted = start.any(
+      (record) => switch (record.change) {
+        WorkspaceFounded(:final founder) => founder.signingKey == _signer.key,
+        MemberInvited(:final identity) => identity.signingKey == _signer.key,
+        _ => false,
+      },
+    );
+    if (!admitted || _backend.deleted.contains(genesis.workspace)) {
       throw const NotAdmittedException();
     }
     if (_backend.membershipLog.firstOrNull case final held?) {
@@ -104,7 +120,7 @@ final class _DeviceServer implements SyncServer {
       return;
     }
     _backend.workspaces.add(genesis.workspace);
-    _backend.membershipLog.add(genesis);
+    _backend.membershipLog.addAll(start);
   }
 
   @override

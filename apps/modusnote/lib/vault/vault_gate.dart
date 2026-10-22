@@ -448,7 +448,9 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
     final sync = SyncController(
       engine: vault.engine,
       onPulled: store.reload,
-      afterSync: blobs?.afterSync,
+      afterSync: blobs == null
+          ? null
+          : (report) => blobs.afterSync(moved: report.moved),
       enabled: await _isEnabled(vault),
       turnOn: () => keeper.saveSetting(vault, _enabledSetting, _present),
       retired: await _isRetired(vault),

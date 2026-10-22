@@ -254,6 +254,43 @@ void main() {
       expect(read(alice, write(alice, 'ok', 'n1'), 'n1'), utf8Bytes('ok'));
     });
 
+    test('a payload sealed again under its first epoch opens as before, '
+        'for those who held that key', () {
+      invite(carol, Role.editor);
+      final first = write(carol, 'Prima della rotazione', 'n1');
+      final update = administration.revoke(
+        alice.ledger,
+        alice.keyring,
+        owner: alice.identity,
+        member: carol.id,
+      );
+      alice.ledger = update.ledger;
+
+      final again = contents.sealAt(
+        read(alice, first, 'n1'),
+        epoch: KeyEpoch.initial,
+        keyring: alice.keyring,
+        recordId: 'n1',
+      );
+
+      expect(again.epoch, KeyEpoch.initial);
+      expect(read(carol, again, 'n1'), utf8Bytes('Prima della rotazione'));
+      expect(
+        () => read(carol, again, 'n2'),
+        throwsA(isA<CryptographyException>()),
+        reason: 'still bound to its record',
+      );
+      expect(
+        () => contents.sealAt(
+          utf8Bytes('x'),
+          epoch: KeyEpoch(7),
+          keyring: alice.keyring,
+          recordId: 'n1',
+        ),
+        throwsA(isA<MissingGroupKeyException>()),
+      );
+    });
+
     test('rotating twice for the same epoch is refused', () {
       expect(
         () => administration.rotate(
