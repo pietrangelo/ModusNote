@@ -9,7 +9,7 @@
 <body>
 <main>
   <h1>Informativa sulla privacy</h1>
-  <p class="muted">Modus Notes · Modo · Misura · Ritmo · aggiornata il 15 ottobre 2026 · <a href="terms.html">Termini di servizio</a></p>
+  <p class="muted">Modus Notes · Modo · Misura · Ritmo · aggiornata il 22 ottobre 2026 · <a href="terms.html">Termini di servizio</a></p>
 
   <p>Questa informativa è resa ai sensi degli artt. 13 e 14 del Regolamento (UE) 2016/679 (GDPR) e del D.Lgs. 196/2003 (Codice in materia di protezione dei dati personali), come modificato dal D.Lgs. 101/2018.</p>
 
@@ -18,48 +18,45 @@
   <h2>Titolare del trattamento</h2>
   <p>Pietrangelo Masala, contattabile all'indirizzo <a href="mailto:gplay.suave928@passmail.net">gplay.suave928@passmail.net</a>.</p>
 
-  <h2>Senza account</h2>
-  <p>L'app funziona senza account. In questo caso tutto resta sul dispositivo, cifrato con la tua passphrase, nulla viene inviato in rete e il titolare non tratta alcun tuo dato personale.</p>
+  <h2>Senza sincronizzazione</h2>
+  <p>L'app funziona senza sincronizzazione, che resta spenta finché non la attivi. In questo caso tutto resta sul dispositivo, cifrato con la tua passphrase, nulla viene inviato in rete e il titolare non tratta alcun tuo dato personale.</p>
 
   <h2>Con la sincronizzazione: quali dati e perché</h2>
-  <p>Se attivi la sincronizzazione, accedi con la tua email e un codice. Allora vengono trattati:</p>
+  <p>La sincronizzazione non usa account: nessuna email, nome o password. Ogni dispositivo firma le proprie richieste con una chiave creata sul dispositivo. Se la attivi vengono trattati:</p>
   <ul>
-    <li>l'<strong>indirizzo email</strong> dell'account, per l'accesso;</li>
-    <li>i <strong>dati cifrati</strong> delle note e delle registrazioni, che il server non può leggere, con identificativi casuali, dimensione e orari di sincronizzazione;</li>
-    <li>la <strong>chiave pubblica</strong> di ogni dispositivo collegato, che identifica l'installazione ma non il telefono né la persona;</li>
-    <li>i <strong>dati tecnici</strong> di ogni connessione (indirizzo IP, ora, richiesta), che i fornitori registrano per sicurezza e per far funzionare il servizio.</li>
+    <li>i <strong>dati cifrati</strong> delle note, delle registrazioni e delle immagini, che il server non può leggere, con identificativi casuali, dimensione e orari di sincronizzazione;</li>
+    <li>la <strong>chiave pubblica</strong> di ogni dispositivo del vault e il registro firmato di chi ne fa parte, che identificano l'installazione ma non il telefono né la persona;</li>
+    <li>l'<strong>indirizzo IP</strong> di ogni richiesta, usato al momento solo per limitare gli abusi e mai salvato da noi, e i <strong>dati tecnici</strong> che Cloudflare registra per sicurezza e per far funzionare il servizio.</li>
   </ul>
-  <p><strong>Finalità e base giuridica:</strong> fornirti l'account e la sincronizzazione tra i tuoi dispositivi che hai chiesto, cioè l'esecuzione di un contratto di cui sei parte (art. 6, par. 1, lett. b GDPR); per i dati tecnici, anche il legittimo interesse a proteggere il servizio da abusi (art. 6, par. 1, lett. f).</p>
-  <p><strong>Natura del conferimento:</strong> facoltativa. Senza email non si può attivare la sincronizzazione, ma l'app resta del tutto utilizzabile sul singolo dispositivo.</p>
+  <p><strong>Finalità e base giuridica:</strong> fornirti la sincronizzazione tra i tuoi dispositivi e la condivisione che hai chiesto, cioè l'esecuzione di un contratto di cui sei parte (art. 6, par. 1, lett. b GDPR); per i dati tecnici, anche il legittimo interesse a proteggere il servizio da abusi (art. 6, par. 1, lett. f).</p>
+  <p><strong>Natura del conferimento:</strong> facoltativa. Senza sincronizzazione l'app resta del tutto utilizzabile sul singolo dispositivo.</p>
   <p>La passphrase del vault non viene mai inviata. Non ci sono analytics, pubblicità, profilazione, tracciamento né SDK di terzi che raccolgano dati, nessuna decisione automatizzata ai sensi dell'art. 22 GDPR, e nessun dato viene venduto o ceduto.</p>
 
   <h2>Conservazione</h2>
-  <p>Email, dati cifrati e chiavi pubbliche si conservano finché l'account esiste, e si cancellano quando lo elimini (vedi sotto). I dati cifrati di un workspace condiviso con un altro account restano finché ne fa parte quell'account, perché sono anche suoi. I codici per collegare un dispositivo scadono dopo 15 minuti. I log tecnici dei fornitori si conservano per periodi brevi, secondo le loro politiche.</p>
+  <p>I dati cifrati, il registro e le chiavi pubbliche di un vault si conservano finché un suo proprietario non li elimina dal server (vedi sotto). Un vault che non riceve richieste per 13 mesi si cancella da solo, perché il server non sa di chi sia e chi ha perso tutti i dispositivi non potrebbe chiederlo. I codici per collegare un dispositivo o invitare una persona scadono dopo 15 minuti. Gli indirizzi IP non vengono salvati; i log tecnici di Cloudflare si conservano per periodi brevi, secondo le sue politiche.</p>
 
   <h2>Fornitori e trasferimenti fuori dall'UE</h2>
   <p>I dati sono trattati da fornitori nominati responsabili del trattamento (art. 28 GDPR), che li usano solo per conto del titolare:</p>
   <ul>
-    <li><strong>Supabase</strong> (database e accesso): server nell'Unione europea (Francoforte). Email e righe cifrate.</li>
-    <li><strong>Cloudflare R2</strong>: registrazioni e immagini cifrate, conservate negli Stati Uniti.</li>
-    <li><strong>Cloudflare Pages</strong>: distribuisce l'app web dalla rete globale di Cloudflare.</li>
+    <li><strong>Cloudflare</strong> (Workers, Durable Objects e R2): distribuisce l'app web dalla sua rete globale e conserva i dati cifrati, le chiavi pubbliche e le registrazioni e immagini cifrate in data center nell'Unione europea.</li>
   </ul>
-  <p>Il trasferimento verso gli Stati Uniti avviene sulla base della decisione di adeguatezza della Commissione europea sull'EU-U.S. Data Privacy Framework, a cui Cloudflare aderisce, e delle clausole contrattuali standard del suo accordo sul trattamento dei dati (art. 45 e 46 GDPR). Quello che arriva negli Stati Uniti è solo contenuto cifrato che nessuno, fuori dai tuoi dispositivi, può aprire. Tutte le connessioni usano HTTPS.</p>
+  <p>Le richieste attraversano la rete globale di Cloudflare e possono passare da data center fuori dall'UE, anche negli Stati Uniti. Questo trasferimento avviene sulla base della decisione di adeguatezza della Commissione europea sull'EU-U.S. Data Privacy Framework, a cui Cloudflare aderisce, e delle clausole contrattuali standard del suo accordo sul trattamento dei dati (art. 45 e 46 GDPR). Quello che attraversa la rete è solo contenuto cifrato che nessuno, fuori dai tuoi dispositivi, può aprire. Tutte le connessioni usano HTTPS.</p>
 
   <h2>Permessi e dati sul dispositivo</h2>
   <p>Il microfono serve solo per registrare quando lo chiedi; le foto solo per allegare l'immagine che scegli; le notifiche solo per ricordarti, sul telefono, che una password sta per scadere (le prepara l'app sul dispositivo, senza server, e non dicono di quale nota si tratta). L'app non accede a posizione, contatti né altri dati del dispositivo.</p>
   <p>L'app web non usa cookie. Salva nel browser (IndexedDB) solo il vault già cifrato, perché è indispensabile al servizio che chiedi (art. 122 del Codice).</p>
 
   <h2>Minori</h2>
-  <p>Il servizio con account non è rivolto a chi ha meno di 14 anni (art. 2-quinquies del Codice).</p>
+  <p>La sincronizzazione non è rivolta a chi ha meno di 14 anni (art. 2-quinquies del Codice).</p>
 
   <h2>I tuoi diritti</h2>
   <p>Puoi chiedere in ogni momento l'accesso ai tuoi dati, la rettifica, la cancellazione, la limitazione del trattamento, la portabilità e opporti al trattamento basato sul legittimo interesse (artt. 15–21 GDPR), scrivendo a <a href="mailto:gplay.suave928@passmail.net">gplay.suave928@passmail.net</a>. Rispondiamo entro un mese. Le note le hai già tutte sul dispositivo: dall'app web puoi esportarle in Markdown o in un backup cifrato.</p>
   <p>Se ritieni che il trattamento violi il GDPR puoi proporre reclamo al <strong>Garante per la protezione dei dati personali</strong> (<a href="https://www.garanteprivacy.it">www.garanteprivacy.it</a>) o all'autorità del Paese in cui vivi o lavori (art. 77 GDPR).</p>
 
   <section id="elimina-account">
-    <h2>Eliminare l'account</h2>
-    <p>Dall'app: apri il foglio <strong>Sincronizzazione</strong> (l'icona della nuvola nella libreria) e tocca <strong>Elimina account</strong>. Vengono cancellati subito l'account e l'email, e i dati cifrati di ogni workspace di cui sei l'unico membro, registrazioni comprese. Le note restano sul tuo dispositivo.</p>
-    <p>Se non hai più l'app, scrivi a <a href="mailto:gplay.suave928@passmail.net?subject=Eliminazione%20account%20Modus%20Notes">gplay.suave928@passmail.net</a> dall'indirizzo dell'account: eliminiamo gli stessi dati entro 30 giorni. Non conserviamo copie dopo l'eliminazione.</p>
+    <h2>Eliminare i dati dal server</h2>
+    <p>Non c'è un account da eliminare. Dall'app, un proprietario del vault apre il foglio <strong>Sincronizzazione</strong> (l'icona della nuvola nella libreria) e tocca <strong>Elimina i dati dal server</strong>: vengono cancellati subito i dati cifrati del vault, il registro, le chiavi pubbliche e le registrazioni e immagini cifrate, per tutti i suoi dispositivi. Le note restano sui dispositivi. Chi non è proprietario può essere rimosso da un proprietario.</p>
+    <p>Se non hai più nessun dispositivo del vault, il vault si cancella da solo dopo 13 mesi senza richieste. Per qualunque domanda scrivi a <a href="mailto:gplay.suave928@passmail.net?subject=Dati%20sul%20server%20Modus%20Notes">gplay.suave928@passmail.net</a>: il server non sa di chi sia un vault, quindi per cancellarlo prima serve la richiesta di un suo dispositivo.</p>
   </section>
 
   <h2>Modifiche</h2>
@@ -74,47 +71,44 @@
     <h3>Data controller</h3>
     <p>Pietrangelo Masala, reachable at <a href="mailto:gplay.suave928@passmail.net">gplay.suave928@passmail.net</a>.</p>
 
-    <h3>Without an account</h3>
-    <p>The app works without an account. Everything then stays on the device, encrypted with your passphrase, nothing is sent over the network and the controller processes no personal data of yours.</p>
+    <h3>Without sync</h3>
+    <p>The app works without sync, which stays off until you turn it on. Everything then stays on the device, encrypted with your passphrase, nothing is sent over the network and the controller processes no personal data of yours.</p>
 
     <h3>With sync: what data and why</h3>
-    <p>If you turn on sync, you sign in with your email address and a code. The following is then processed:</p>
+    <p>Sync uses no account: no email address, name or password. Each device signs its own requests with a key created on the device. If you turn it on, the following is processed:</p>
     <ul>
-      <li>the account's <strong>email address</strong>, to sign you in;</li>
-      <li>the <strong>encrypted data</strong> of your notes and recordings, which the server cannot read, with random identifiers, size and sync times;</li>
-      <li>the <strong>public key</strong> of each linked device, which identifies the installation but not the phone or the person;</li>
-      <li>the <strong>technical data</strong> of each connection (IP address, time, request), which the providers log for security and to run the service.</li>
+      <li>the <strong>encrypted data</strong> of your notes, recordings and images, which the server cannot read, with random identifiers, size and sync times;</li>
+      <li>the <strong>public key</strong> of each device of the vault and the signed log of who belongs to it, which identify the installation but not the phone or the person;</li>
+      <li>the <strong>IP address</strong> of each request, used on the spot only to limit abuse and never stored by us, and the <strong>technical data</strong> Cloudflare logs for security and to run the service.</li>
     </ul>
-    <p><strong>Purpose and legal basis:</strong> providing the account and the sync between your devices that you asked for, that is the performance of a contract you are party to (GDPR Art. 6(1)(b)); for technical data, also the legitimate interest in protecting the service from abuse (Art. 6(1)(f)).</p>
-    <p><strong>Whether you must provide data:</strong> it is optional. Without an email address sync cannot be turned on, but the app remains fully usable on a single device.</p>
+    <p><strong>Purpose and legal basis:</strong> providing the sync between your devices and the sharing you asked for, that is the performance of a contract you are party to (GDPR Art. 6(1)(b)); for technical data, also the legitimate interest in protecting the service from abuse (Art. 6(1)(f)).</p>
+    <p><strong>Whether you must provide data:</strong> it is optional. Without sync the app remains fully usable on a single device.</p>
     <p>The vault passphrase is never sent. There are no analytics, ads, profiling, tracking or third-party SDKs collecting data, no automated decision-making under GDPR Art. 22, and no data is sold or shared.</p>
 
     <h3>Retention</h3>
-    <p>Email, encrypted data and public keys are kept while the account exists and are erased when you delete it (see below). The encrypted data of a workspace shared with another account stays as long as that account belongs to it, because it is that account's data too. Device-linking codes expire after 15 minutes. The providers' technical logs are kept for short periods, under their own policies.</p>
+    <p>A vault's encrypted data, log and public keys are kept until one of its owners deletes them from the server (see below). A vault that receives no request for 13 months deletes itself, because the server does not know whose it is and someone who lost every device could not ask. Codes to link a device or invite a person expire after 15 minutes. IP addresses are not stored; Cloudflare's technical logs are kept for short periods, under its own policies.</p>
 
     <h3>Providers and transfers outside the EU</h3>
     <p>Data is processed by providers appointed as processors (GDPR Art. 28), who use it only on the controller's behalf:</p>
     <ul>
-      <li><strong>Supabase</strong> (database and sign-in): servers in the European Union (Frankfurt). Email and encrypted rows.</li>
-      <li><strong>Cloudflare R2</strong>: encrypted recordings and images, stored in the United States.</li>
-      <li><strong>Cloudflare Pages</strong>: serves the web app from Cloudflare's global network.</li>
+      <li><strong>Cloudflare</strong> (Workers, Durable Objects and R2): serves the web app from its global network and keeps the encrypted data, the public keys and the encrypted recordings and images in data centres in the European Union.</li>
     </ul>
-    <p>The transfer to the United States relies on the European Commission's adequacy decision on the EU-U.S. Data Privacy Framework, in which Cloudflare participates, and on the standard contractual clauses of its data processing agreement (GDPR Arts. 45 and 46). Only encrypted content that nobody outside your devices can open reaches the United States. All connections use HTTPS.</p>
+    <p>Requests cross Cloudflare's global network and may pass through data centres outside the EU, including in the United States. This transfer relies on the European Commission's adequacy decision on the EU-U.S. Data Privacy Framework, in which Cloudflare participates, and on the standard contractual clauses of its data processing agreement (GDPR Arts. 45 and 46). Only encrypted content that nobody outside your devices can open crosses the network. All connections use HTTPS.</p>
 
     <h3>Permissions and data on the device</h3>
     <p>The microphone is used only to record when you ask; photos only to attach the image you choose; notifications only to remind you, on the phone, that a password is about to expire (the app prepares them on the device, with no server, and they do not say which note it is). The app does not access location, contacts or other device data.</p>
     <p>The web app uses no cookies. It stores in the browser (IndexedDB) only the already encrypted vault, because it is essential to the service you ask for (Art. 122 of the Italian Code).</p>
 
     <h3>Children</h3>
-    <p>The service with an account is not intended for anyone under 14 (Art. 2-quinquies of the Italian Code).</p>
+    <p>Sync is not intended for anyone under 14 (Art. 2-quinquies of the Italian Code).</p>
 
     <h3>Your rights</h3>
     <p>You can ask at any time for access to your data, rectification, erasure, restriction of processing, portability, and object to processing based on legitimate interest (GDPR Arts. 15–21), by writing to <a href="mailto:gplay.suave928@passmail.net">gplay.suave928@passmail.net</a>. We reply within one month. You already have all your notes on your device: from the web app you can export them as Markdown or as an encrypted backup.</p>
     <p>If you believe the processing breaches the GDPR you can lodge a complaint with the Italian <strong>Garante per la protezione dei dati personali</strong> (<a href="https://www.garanteprivacy.it">www.garanteprivacy.it</a>) or with the authority of the country where you live or work (GDPR Art. 77).</p>
 
-    <h3 id="delete-account">Deleting your account</h3>
-    <p>In the app: open the <strong>Sync</strong> sheet (the cloud icon in the library) and tap <strong>Delete account</strong>. The account and the email address are erased at once, together with the encrypted data of every workspace you are the only member of, recordings included. Your notes stay on your device.</p>
-    <p>If you no longer have the app, write to <a href="mailto:gplay.suave928@passmail.net?subject=Modus%20Notes%20account%20deletion">gplay.suave928@passmail.net</a> from the account's address: we erase the same data within 30 days. We keep no copies after deletion.</p>
+    <h3 id="delete-account">Deleting your data from the server</h3>
+    <p>There is no account to delete. In the app, an owner of the vault opens the <strong>Sync</strong> sheet (the cloud icon in the library) and taps <strong>Delete data from the server</strong>: the vault's encrypted data, log, public keys and encrypted recordings and images are erased at once, for all its devices. Your notes stay on your devices. Someone who is not an owner can be removed by an owner.</p>
+    <p>If you no longer have any device of the vault, the vault deletes itself after 13 months without requests. For any question write to <a href="mailto:gplay.suave928@passmail.net?subject=Modus%20Notes%20server%20data">gplay.suave928@passmail.net</a>: the server does not know whose a vault is, so deleting it sooner takes a request from one of its devices.</p>
 
     <h3>Changes</h3>
     <p>If this policy changes, the new version is published on this page with its date; important changes are also pointed out in the app.</p>
