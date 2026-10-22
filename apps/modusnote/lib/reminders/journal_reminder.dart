@@ -67,3 +67,35 @@ final class JournalReminderSetting extends ValueNotifier<JournalReminder> {
     unawaited(persist(reminder.toBytes()));
   }
 }
+
+/// The [reminder] while [journalOn] says the journal is offered on this
+/// device: turning the journal's type off silences it, and turning it back
+/// on brings the reminder back as it was set.
+final class OfferedJournalReminder extends ChangeNotifier
+    implements ValueListenable<JournalReminder> {
+  OfferedJournalReminder(
+    this.reminder, {
+    required this.types,
+    required this.journalOn,
+  }) {
+    reminder.addListener(notifyListeners);
+    types.addListener(notifyListeners);
+  }
+
+  final ValueListenable<JournalReminder> reminder;
+
+  /// Tells when the types offered change.
+  final Listenable types;
+  final bool Function() journalOn;
+
+  @override
+  JournalReminder get value =>
+      journalOn() ? reminder.value : reminder.value.copyWith(enabled: false);
+
+  @override
+  void dispose() {
+    reminder.removeListener(notifyListeners);
+    types.removeListener(notifyListeners);
+    super.dispose();
+  }
+}

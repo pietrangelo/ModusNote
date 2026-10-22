@@ -237,6 +237,29 @@ void main() {
     expect(restarted.page.textSize, 26);
   });
 
+  testWidgets('the note types turned off are sealed in the vault', (
+    tester,
+  ) async {
+    final song = find.widgetWithText(ChoiceChip, 'Canzone');
+    await pumpApp(tester, gateOn(database));
+    await create(tester, 'frase lunga', 'frase lunga');
+    expect(song, findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('note-types-settings')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('note-type-song_sketch')));
+    await tester.pumpAndSettle();
+    await tester.tapAt(const Offset(180, 100));
+    await tester.pumpAndSettle();
+    expect(song, findsNothing);
+
+    await tester.tap(find.byTooltip('Blocca'));
+    await tester.pumpAndSettle();
+    await pumpApp(tester, gateOn(database));
+    await unlock(tester, 'frase lunga');
+    expect(song, findsNothing);
+    expect(find.widgetWithText(ChoiceChip, 'Sogno'), findsOneWidget);
+  });
+
   group('auto-lock', () {
     final unlockPrompt = find.text('Sblocca le tue note');
 

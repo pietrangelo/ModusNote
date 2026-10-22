@@ -17,6 +17,7 @@ export 'src/core/inline_images.dart';
 export 'src/core/journal.dart';
 export 'src/core/label.dart';
 export 'src/core/note_links.dart';
+export 'src/core/note_type_choice.dart';
 export 'src/core/password_expiry.dart';
 export 'src/core/password_generator.dart';
 export 'src/core/schema_catalog.dart';

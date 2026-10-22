@@ -524,5 +524,7 @@
   "cloudResendCode": "Invia un nuovo codice",
   "cloudTooltip": "{state, select, signedOut{Sincronizzazione: accesso non effettuato} syncing{Sincronizzazione in corso} synced{Sincronizzazione: aggiornato} offline{Sincronizzazione: offline} other{Sincronizzazione: serve attenzione}}",
   "cloudNeedsSync": "Disponibile quando il vault è sincronizzato.",
-  "playbackSeek": "Posizione di riproduzione"
+  "playbackSeek": "Posizione di riproduzione",
+  "noteTypesSettings": "Tipi di nota",
+  "noteTypesSettingsHint": "Un tipo spento non viene più proposto per le note nuove, nei filtri e nella palette, e il promemoria del diario si ferma con il diario. Le note che hai già restano dove sono. È un'impostazione di questo dispositivo."
 }

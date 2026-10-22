@@ -17,7 +17,7 @@ class PageIndexSection extends StatelessWidget {
     required this.current,
     required this.schemaOf,
     required this.onOpen,
-    required this.onAdd,
+    this.onAdd,
     super.key,
   });
 
@@ -29,8 +29,9 @@ class PageIndexSection extends StatelessWidget {
   final SchemaDefinition? Function(DynamicEntry) schemaOf;
   final ValueChanged<DynamicEntry> onOpen;
 
-  /// Writes a new page in the open page's category.
-  final VoidCallback onAdd;
+  /// Writes a new page in the open page's category; null while the
+  /// document type is turned off on this device.
+  final VoidCallback? onAdd;
 
   @override
   Widget build(BuildContext context) {
@@ -87,14 +88,15 @@ class PageIndexSection extends StatelessWidget {
           for (final page in section.pages)
             _row(context, page, indent(section.level)),
         ],
-        Align(
-          alignment: AlignmentDirectional.centerStart,
-          child: TextButton.icon(
-            icon: const Icon(Icons.add, size: IconSizes.inline),
-            label: Text(l10n.addPage),
-            onPressed: onAdd,
+        if (onAdd case final onAdd?)
+          Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: TextButton.icon(
+              icon: const Icon(Icons.add, size: IconSizes.inline),
+              label: Text(l10n.addPage),
+              onPressed: onAdd,
+            ),
           ),
-        ),
       ],
     );
   }
