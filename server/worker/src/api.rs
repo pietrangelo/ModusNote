@@ -13,9 +13,11 @@ use ledger::WorkspaceId;
 use serde::{Deserialize, Serialize};
 use sync::{Denied, RendezvousError, SyncError};
 
-/// Signed requests carry their body's digest; a body over these sizes is
-/// refused before it is read.
-pub const MAX_JSON_BODY: usize = 2 << 20;
+/// What a body may weigh, as JSON: a push or a bundle (rows of up to
+/// 1 MiB, grants of every epoch to every member, in base64), or anything
+/// else. Larger pushes go in several requests.
+pub const MAX_BULK_BODY: u64 = 8 << 20;
+pub const MAX_SMALL_BODY: u64 = 64 << 10;
 /// What proof of work founding a workspace or answering a code costs: about
 /// a million BLAKE2b hashes, a second or two on a phone.
 pub const POW_BITS: u32 = 20;
@@ -91,6 +93,14 @@ impl Route {
         )
     }
 
+    /// The largest body the route reads, refused before it is read.
+    pub fn max_body(&self) -> u64 {
+        match self {
+            Self::Push(_) | Self::AppendBundle(_) => MAX_BULK_BODY,
+            _ => MAX_SMALL_BODY,
+        }
+    }
+
     /// A request that changes something; it is throttled more and its
     /// nonce is remembered.
     pub fn writes(&self) -> bool {
@@ -124,6 +134,8 @@ pub enum ApiError {
     LengthRequired,
     RateLimited,
     CrossOrigin,
+    /// The proof of work is missing, stale or short.
+    Work,
     Unavailable,
 }
 
@@ -134,7 +146,7 @@ impl ApiError {
             Self::MethodNotAllowed => 405,
             Self::BadRequest => 400,
             Self::Unauthenticated | Self::Clock => 401,
-            Self::Forbidden | Self::CrossOrigin => 403,
+            Self::Forbidden | Self::CrossOrigin | Self::Work => 403,
             Self::Conflict => 409,
             Self::LengthRequired => 411,
             Self::TooLarge => 413,
@@ -159,6 +171,7 @@ impl ApiError {
             Self::LengthRequired => "length_required",
             Self::RateLimited => "rate_limited",
             Self::CrossOrigin => "cross_origin",
+            Self::Work => "proof_of_work",
             Self::Unavailable => "unavailable",
         };
         format!(r#"{{"error":"{code}"}}"#)
@@ -275,7 +288,8 @@ pub fn route(method: &str, path: &str, query: Option<&str>) -> Result<Route, Api
     if method != allowed {
         return Err(ApiError::MethodNotAllowed);
     }
-    let takes_query = matches!(route, Route::Membership(..) | Route::Bundles(..) | Route::Pull(..) | Route::ListBlobs(..));
+    let takes_query =
+        matches!(route, Route::Membership(..) | Route::Bundles(..) | Route::Pull(..) | Route::ListBlobs(..));
     if !takes_query && !query.is_empty() {
         return Err(ApiError::NotFound);
     }
@@ -346,6 +360,38 @@ pub fn network_key(address: &str) -> Option<String> {
         }
         _ => None,
     }
+}
+
+/// Whether a limiter's verdict stops the call: a write is refused when the
+/// limiter cannot answer, a read goes on.
+pub fn throttled(write: bool, admitted: Option<bool>) -> bool {
+    match admitted {
+        Some(admitted) => !admitted,
+        None => write,
+    }
+}
+
+/// The part of a blob a `Range` header asks for: `bytes=a-b` or `bytes=a-`,
+/// as offset and inclusive end. Anything else, several ranges included, is
+/// ignored and the whole blob is sent, as HTTP allows.
+pub fn byte_range(header: Option<&str>) -> Option<(u64, Option<u64>)> {
+    let spec = header?.trim().strip_prefix("bytes=")?;
+    let (first, last) = spec.split_once('-')?;
+    let digits = |s: &str| !s.is_empty() && s.len() <= 16 && s.bytes().all(|b| b.is_ascii_digit());
+    if !digits(first) {
+        return None;
+    }
+    let first: u64 = first.parse().ok()?;
+    if last.is_empty() {
+        return Some((first, None));
+    }
+    let last: u64 = if digits(last) { last.parse().ok()? } else { return None };
+    (last >= first).then_some((first, Some(last)))
+}
+
+/// A positive whole number from the Worker's configuration, or `default`.
+pub fn setting(value: Option<&str>, default: u64) -> u64 {
+    value.and_then(|v| v.trim().parse().ok()).filter(|v| *v > 0).unwrap_or(default)
 }
 
 /// The declared length of a body, which must be there and fit.
@@ -455,6 +501,68 @@ pub struct HeadsReply {
     pub rows: u64,
     pub bundles: u64,
     pub membership: u64,
+}
+
+impl From<sync::Heads> for HeadsReply {
+    fn from(heads: sync::Heads) -> Self {
+        Self { rows: heads.rows, bundles: heads.bundles, membership: heads.membership }
+    }
+}
+
+#[derive(Debug, Serialize)]
+pub struct RecordsReply {
+    pub records: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct BundleReply {
+    pub position: u64,
+    pub bundle: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct BundlesReply {
+    pub bundles: Vec<BundleReply>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct PositionReply {
+    pub position: u64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct PositionsReply {
+    pub positions: Vec<u64>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct BlobReply {
+    pub id: String,
+    pub size: u64,
+    pub uploaded: u64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct BlobsReply {
+    pub blobs: Vec<BlobReply>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct OfferReply {
+    pub offer: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct AnswersReply {
+    pub answers: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct InfoReply<'a> {
+    /// Changes only with a new server, whose data starts empty: a device
+    /// that sees another id publishes its vault again.
+    pub server: &'a str,
+    pub pow: u32,
 }
 
 #[derive(Debug, Serialize)]
@@ -578,6 +686,24 @@ mod tests {
         assert!(pow_day_ok(19_999, now));
         assert!(!pow_day_ok(19_998, now));
         assert!(!pow_day_ok(20_001, now));
+    }
+
+    #[test]
+    fn ranges_limiters_and_settings() {
+        assert_eq!(byte_range(Some("bytes=0-99")), Some((0, Some(99))));
+        assert_eq!(byte_range(Some("bytes=100-")), Some((100, None)));
+        assert_eq!(byte_range(Some("bytes=9-3")), None);
+        assert_eq!(byte_range(Some("bytes=-5")), None);
+        assert_eq!(byte_range(Some("bytes=0-1,4-5")), None);
+        assert_eq!(byte_range(Some("items=0-1")), None);
+        assert_eq!(byte_range(None), None);
+        assert!(throttled(true, None));
+        assert!(!throttled(false, None));
+        assert!(throttled(false, Some(false)));
+        assert_eq!(setting(Some(" 12 "), 5), 12);
+        assert_eq!(setting(Some("0"), 5), 5);
+        assert_eq!(setting(Some("x"), 5), 5);
+        assert_eq!(setting(None, 5), 5);
     }
 
     #[test]
