@@ -2,45 +2,43 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:modusnote/sync/sync_config.dart';
 
 void main() {
-  test('a build without a project has no sync', () {
-    expect(SyncConfig.parse(url: '', anonKey: ''), isNull);
-    expect(SyncConfig.parse(url: 'https://a.supabase.co', anonKey: ''), isNull);
-    expect(SyncConfig.parse(url: '', anonKey: 'sb_publishable_x'), isNull);
+  test('a native build without a server has no sync', () {
+    expect(SyncConfig.parse(''), isNull);
     expect(SyncConfig.fromEnvironment(), isNull);
   });
 
-  test('a project URL becomes the root the adapters resolve against', () {
-    final config = SyncConfig.parse(
-      url: 'https://abc.supabase.co',
-      anonKey: 'sb_publishable_x',
+  test('the web client without one talks to its own origin', () {
+    final config = SyncConfig.fromEnvironment(
+      page: Uri.parse('https://modus.serv.run/index.html?x=1#notes'),
     )!;
 
-    expect(config.projectUrl, Uri.parse('https://abc.supabase.co/'));
-    expect(config.anonKey, 'sb_publishable_x');
+    expect(config.origin, Uri.parse('https://modus.serv.run'));
   });
 
-  test('a local Supabase may use plain HTTP', () {
+  test('a server URL becomes the origin the adapters resolve against', () {
     expect(
-      SyncConfig.parse(url: 'http://localhost:54321', anonKey: 'k'),
-      isNotNull,
+      SyncConfig.parse('https://modus.serv.run/')!.origin,
+      Uri.parse('https://modus.serv.run'),
     );
+  });
+
+  test('a server on this machine may use plain HTTP', () {
+    expect(SyncConfig.parse('http://localhost:8787'), isNotNull);
+    expect(SyncConfig.parse('http://127.0.0.1:8787'), isNotNull);
   });
 
   group('adversary', () {
     for (final url in [
-      'http://abc.supabase.co',
-      'ftp://abc.supabase.co',
-      'https://user:pw@abc.supabase.co',
-      'https://abc.supabase.co/rest/v1',
-      'https://abc.supabase.co/?next=evil',
-      'https://abc.supabase.co/#x',
+      'http://modus.serv.run',
+      'ftp://modus.serv.run',
+      'https://user:pass@modus.serv.run',
+      'https://modus.serv.run/api',
+      'https://modus.serv.run/?next=evil',
+      'https://modus.serv.run/#x',
       'not a url',
     ]) {
-      test('tokens never travel to $url', () {
-        expect(
-          () => SyncConfig.parse(url: url, anonKey: 'k'),
-          throwsArgumentError,
-        );
+      test('requests never travel to $url', () {
+        expect(() => SyncConfig.parse(url), throwsArgumentError);
       });
     }
   });

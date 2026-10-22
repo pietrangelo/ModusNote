@@ -5,37 +5,29 @@ import 'package:modusnote/sync/invite_sheet.dart';
 import 'package:modusnote/sync/members_sheet.dart';
 import 'package:modusnote/sync/sync_controller.dart';
 import 'package:offline_sync/offline_sync.dart';
-import 'package:offline_sync_adapters/offline_sync_adapters.dart';
 import 'package:sqlite3/sqlite3.dart';
 
 import '../notes/harness.dart';
 import '../vault/support.dart';
 import 'cloud_support.dart';
-import 'link_gate_test.dart' show email, gate, secret, tapOn, work;
-
-const friendEmail = 'bea@example.com';
+import 'link_gate_test.dart' show gate, secret, tapOn, work;
 
 void main() {
   setUpAll(loadSodium);
-  late FakeAuthServer auth;
-  late SyncAccount ownerAccount;
   late MemorySyncServer server;
   late Database ownerDb;
   late Database friendDb;
   late UnlockedVault owner;
 
   setUp(() async {
-    auth = FakeAuthServer();
-    ownerAccount = auth.account()..attach(null, persist: (_) async {});
-    await ownerAccount.signIn(email, goodCode);
-    server = MemorySyncServer(ownerAccount.accessToken);
+    server = MemorySyncServer();
     ownerDb = memoryDatabase();
     friendDb = memoryDatabase();
     addTearDown(ownerDb.close);
     addTearDown(friendDb.close);
     owner = await keeperOn(
       ownerDb,
-      server: server,
+      gateway: server,
     ).create(secret('frase del telefono'.codeUnits));
     addTearDown(owner.lock);
     await owner.engine.sync();
@@ -43,15 +35,14 @@ void main() {
 
   Future<InviteOffering> offer(InviteCode code, Role role) => keeperOn(
     ownerDb,
-    server: server,
+    gateway: server,
   ).offerInvite(owner, secret(code.toBytes()), lookup: code.lookup, role: role);
 
   /// The invited person's device, outside the UI.
   Future<LinkRequest> accept(InviteCode code) =>
-      keeperOn(friendDb, server: server).acceptInvite(
+      keeperOn(friendDb, gateway: server).acceptInvite(
         code: secret(code.toBytes()),
         lookup: code.lookup,
-        account: AccountId.parse(accountIdOf(friendEmail)),
         passphrase: secret('frase di Bea'.codeUnits),
       );
 
@@ -68,8 +59,8 @@ void main() {
   SyncController controllerFor(UnlockedVault vault) {
     final sync = SyncController(
       engine: vault.engine,
-      account: ownerAccount,
       onPulled: () async {},
+      enabled: true,
       interval: const Duration(hours: 1),
     );
     addTearDown(sync.dispose);
@@ -134,7 +125,30 @@ void main() {
         owner.engine.ledger.workspace.member(friend.member)?.role,
         Role.viewer,
       );
-      expect(server.accounts[AccountId.parse(accountIdOf(friendEmail))], false);
+    });
+
+    testWidgets('a code whose lookup another offer holds is made again', (
+      tester,
+    ) async {
+      var offered = 0;
+      await pumpApp(
+        tester,
+        Scaffold(
+          body: InviteSheet(
+            offer: (code, role) {
+              // The first code drawn collides with an open offer.
+              if (offered++ == 0) throw const LookupTakenException();
+              return offer(code, role);
+            },
+          ),
+        ),
+      );
+
+      await tapOn(tester, find.byKey(const ValueKey('invite-create')));
+      await work(tester);
+
+      expect(offered, 2);
+      expect(find.byKey(const ValueKey('link-code')), findsOneWidget);
     });
 
     testWidgets('closing the sheet withdraws the code', (tester) async {
@@ -148,11 +162,10 @@ void main() {
       )!;
 
       await pumpApp(tester, const SizedBox());
-      final request = await accept(code);
-      await tester.pump(const Duration(seconds: 2));
+      await tester.pump();
 
-      expect(server.accounts, isEmpty);
-      request.cancel();
+      expect(server.closed, contains(code.lookup));
+      expect(server.membershipLog, hasLength(1));
     });
   });
 
@@ -203,94 +216,33 @@ void main() {
     });
   });
 
-  group('the new device', () {
-    testWidgets('joins with an invitation code under its own account', (
-      tester,
-    ) async {
-      final code = InviteCode.tryParse('K7MQ4X-T9ABC-D2EFG')!;
-      final offering = await offer(code, Role.editor);
-      await pumpApp(tester, gate(friendDb, auth.account(), server));
-      await tester.pumpAndSettle();
+  testWidgets('the invited device joins with the role chosen and syncs', (
+    tester,
+  ) async {
+    final code = InviteCode.tryParse('K7MQ4X-T9ABC-D2EFG')!;
+    final offering = await offer(code, Role.editor);
+    await pumpApp(tester, gate(friendDb, server));
+    await tester.pumpAndSettle();
 
-      await tapOn(tester, find.byKey(const ValueKey('join-vault')));
-      await tester.pumpAndSettle();
-      await tester.enterText(
-        find.byKey(const ValueKey('cloud-email')),
-        friendEmail,
-      );
-      await tapOn(tester, find.text('Invia il codice'));
-      await tester.pumpAndSettle();
-      await tester.enterText(
-        find.byKey(const ValueKey('cloud-code')),
-        goodCode,
-      );
-      await tapOn(tester, find.text('Accedi'));
-      await tester.pumpAndSettle();
-      await tester.enterText(
-        find.byKey(const ValueKey('join-code')),
-        'k7mq4x t9abc d2efg',
-      );
-      for (final key in ['passphrase', 'passphrase-confirm']) {
-        await tester.enterText(find.byKey(ValueKey(key)), 'frase di Bea');
-      }
-      await tapOn(
-        tester,
-        find.byKey(const ValueKey('passphrase-acknowledged')),
-      );
-      await tapOn(tester, find.byKey(const ValueKey('join-submit')));
-      await work(tester);
+    await tapOn(tester, find.byKey(const ValueKey('join-vault')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey('join-code')),
+      'k7mq4x t9abc d2efg',
+    );
+    for (final key in ['passphrase', 'passphrase-confirm']) {
+      await tester.enterText(find.byKey(ValueKey(key)), 'frase di Bea');
+    }
+    await tapOn(tester, find.byKey(const ValueKey('passphrase-acknowledged')));
+    await tapOn(tester, find.byKey(const ValueKey('join-submit')));
+    await work(tester);
 
-      final member = await offering.poll();
-      expect(member, isNotNull);
-      expect(server.accounts[AccountId.parse(accountIdOf(friendEmail))], false);
-      await tester.pump(const Duration(seconds: 2));
-      await tester.pumpAndSettle();
+    final member = await offering.poll();
+    expect(member, isNotNull);
+    await tester.pump(const Duration(seconds: 2));
+    await tester.pumpAndSettle();
 
-      expect(find.byKey(const ValueKey('cloud')), findsOneWidget);
-      expect(owner.engine.ledger.workspace.member(member!)?.role, Role.editor);
-    });
-
-    testWidgets('a code of the wrong length is refused before anything', (
-      tester,
-    ) async {
-      await pumpApp(tester, gate(friendDb, auth.account(), server));
-      await tester.pumpAndSettle();
-      await tapOn(tester, find.byKey(const ValueKey('join-vault')));
-      await tester.pumpAndSettle();
-      await tester.enterText(
-        find.byKey(const ValueKey('cloud-email')),
-        friendEmail,
-      );
-      await tapOn(tester, find.text('Invia il codice'));
-      await tester.pumpAndSettle();
-      await tester.enterText(
-        find.byKey(const ValueKey('cloud-code')),
-        goodCode,
-      );
-      await tapOn(tester, find.text('Accedi'));
-      await tester.pumpAndSettle();
-
-      await tester.enterText(
-        find.byKey(const ValueKey('join-code')),
-        'K7MQ4X-T9ABC-D2EF',
-      );
-      for (final key in ['passphrase', 'passphrase-confirm']) {
-        await tester.enterText(find.byKey(ValueKey(key)), 'frase di Bea');
-      }
-      await tapOn(
-        tester,
-        find.byKey(const ValueKey('passphrase-acknowledged')),
-      );
-      await tapOn(tester, find.byKey(const ValueKey('join-submit')));
-      await tester.pumpAndSettle();
-
-      expect(
-        find.text(
-          'Il codice è formato da 10 lettere e cifre, o 16 se è un invito.',
-        ),
-        findsOneWidget,
-      );
-      expect(server.inviteAnswered, isEmpty);
-    });
+    expect(find.byTooltip('Sincronizzazione: aggiornato'), findsOneWidget);
+    expect(owner.engine.ledger.workspace.member(member!)?.role, Role.editor);
   });
 }

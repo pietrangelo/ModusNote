@@ -7,7 +7,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:identity_cryptography/identity_cryptography.dart';
 import 'package:offline_sync/offline_sync.dart';
-import 'package:offline_sync_adapters/offline_sync_adapters.dart';
 import 'package:schema_dynamic_content/schema_dynamic_content.dart';
 
 import '../attachments/note_images.dart';
@@ -43,8 +42,8 @@ import '../theme/modus_palette.dart';
 /// Moves a UTF-8 passphrase into native memory and wipes the buffer.
 typedef PasswordFactory = PasswordSecret Function(Uint8List utf8Bytes);
 
-/// The app's front door: creates the vault on first launch (or joins the
-/// vault of another device of the same account), asks for the
+/// The app's front door: creates the vault on first launch (or joins a
+/// vault with a code from an owner's device), asks for the
 /// passphrase (or the passkey, where one is set up) afterwards, and shows
 /// the notes only while it is unlocked.
 class VaultGate extends StatefulWidget {
@@ -57,8 +56,6 @@ class VaultGate extends StatefulWidget {
     this.imagesFor,
     this.sharedBlobsFor,
     this.autoLockFor,
-    this.account,
-    this.syncFor,
     this.files,
     this.remindersFor,
     this.switcher,
@@ -96,22 +93,10 @@ class VaultGate extends StatefulWidget {
 
   /// Connects the open vault's recordings and pictures to the workspace's
   /// shared storage; null without a server, which keeps them on the device.
-  final SharedBlobs Function(SyncEngine engine)? sharedBlobsFor;
+  final SharedBlobs Function(UnlockedVault vault)? sharedBlobsFor;
 
   /// Builds the auto-lock of an open vault; tests shorten its times.
   final AutoLock Function(VoidCallback onLock)? autoLockFor;
-
-  /// The sync account; null in a build without a server, which offers no
-  /// sign-in and keeps edits queued on the device.
-  final SyncAccount? account;
-
-  /// Builds the sync of an open vault; tests shorten its times.
-  final SyncController Function(
-    SyncEngine engine,
-    SyncAccount account,
-    Future<void> Function() onPulled,
-  )?
-  syncFor;
 
   /// Saves and picks files for the backup and the export; null where the
   /// platform has no way yet, which hides them.
@@ -176,11 +161,16 @@ final class _Open extends _Stage {
   final NoteTypeSetting types;
 }
 
-/// The Supabase session, sealed in the vault under the local key: it opens
-/// only the account's rows (ciphertext), but it is still a credential.
+/// Present once the sync of the vault was turned on (see
+/// SyncController.enabled).
+const _enabledSetting = 'sync.enabled';
+
+/// The Supabase session of the vaults that synced there: a vault that has
+/// one had its sync on.
 const _sessionSetting = 'sync.session';
 
-/// Present once the vault's account was deleted (see SyncController.retired).
+/// Present once the vault's data was deleted from the server (see
+/// SyncController.retired).
 const _retiredSetting = 'sync.retired';
 
 /// How this device shows the page of a note (width, text size): sealed
@@ -217,10 +207,6 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
   final _passphrase = TextEditingController();
   final _confirmation = TextEditingController();
 
-  /// The session signed in while joining, before a vault exists to seal it
-  /// in; it goes into the new vault the moment there is one.
-  SupabaseSession? _joinSession;
-
   @override
   void initState() {
     super.initState();
@@ -250,13 +236,9 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
     )) {
       reminders?.dispose();
       sync?.dispose();
-      widget.account?.detach();
       autoLock.dispose();
       vault.lock();
-    } else if (_stage is _Joining) {
-      widget.account?.detach();
     }
-    _joinSession = null;
     _passphrase.dispose();
     _confirmation.dispose();
     super.dispose();
@@ -302,9 +284,7 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
     UnlockedVault? opened;
     try {
       final vault = opened = await opening();
-      final shared = widget.account == null
-          ? null
-          : widget.sharedBlobsFor?.call(vault.engine);
+      final shared = widget.sharedBlobsFor?.call(vault);
       BlobSync? blobs;
       final ensureLocal = shared == null
           ? null
@@ -328,7 +308,6 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
           : await _storedJournal(vault);
       if (!mounted) {
         sync?.dispose();
-        widget.account?.detach();
         vault.lock();
         return;
       }
@@ -392,38 +371,14 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
     }
   }
 
-  void _startJoining() {
-    widget.account!.attach(
-      null,
-      persist: (session) async => _joinSession = session,
-    );
-    setState(() {
-      _problem = null;
-      _stage = const _Joining();
-    });
-  }
+  void _startJoining() => setState(() {
+    _problem = null;
+    _stage = const _Joining();
+  });
 
-  void _stopJoining() {
-    widget.account?.detach();
-    _joinSession = null;
-    setState(() => _stage = const _Locked(exists: false));
-  }
+  void _stopJoining() => setState(() => _stage = const _Locked(exists: false));
 
   /// Both secrets move into native memory before anything else happens.
-  Future<LinkRequest> _join(LinkCode code, Uint8List passphrase) async {
-    final password = widget.passwordFrom(passphrase);
-    final PasswordSecret secret;
-    try {
-      secret = widget.passwordFrom(code.toBytes());
-    } catch (_) {
-      password.dispose();
-      rethrow;
-    }
-    return widget.keeper.join(code: secret, passphrase: password);
-  }
-
-  /// As [_join], for an invitation from another person's vault: the
-  /// signed-in account is the one the invitation lets in.
   Future<LinkRequest> _accept(InviteCode code, Uint8List secretBytes) async {
     final password = widget.passwordFrom(secretBytes);
     final PasswordSecret secret;
@@ -436,33 +391,29 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
     return widget.keeper.acceptInvite(
       code: secret,
       lookup: code.lookup,
-      account: AccountId.parse(widget.account!.userId!),
       passphrase: password,
     );
   }
 
-  Future<void> _joined(UnlockedVault vault) {
-    final session = _joinSession;
-    _joinSession = null;
-    return _open(() async {
-      if (session != null) {
-        await widget.keeper.saveSetting(
-          vault,
-          _sessionSetting,
-          session.toBytes(),
-        );
-      }
-      return vault;
-    });
-  }
+  /// A vault joined with a code syncs from the start: its notes are on the
+  /// server already.
+  Future<void> _joined(UnlockedVault vault) => _open(() async {
+    await widget.keeper.saveSetting(vault, _enabledSetting, _present);
+    return vault;
+  });
 
-  /// Shows a code for another device of this account and admits it.
+  /// Shows a code for another device of the same person and admits it, as
+  /// an owner.
   Future<void> _linkDevice() async {
     if (_stage case _Open(:final vault, :final sync)) {
       await LinkDeviceSheet.show(
         context,
-        offer: (code) =>
-            widget.keeper.offerLink(vault, widget.passwordFrom(code.toBytes())),
+        offer: (code) => widget.keeper.offerInvite(
+          vault,
+          widget.passwordFrom(code.toBytes()),
+          lookup: code.lookup,
+          role: Role.owner,
+        ),
         onLinked: sync?.syncNow,
       );
     }
@@ -485,46 +436,30 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
     }
   }
 
-  /// Restores the account's session from the vault and hands new ones back
-  /// to it, sealed. Nothing of the session outlives the unlocked vault.
+  /// The sync of the open vault, where the build has a server: on if it
+  /// was turned on, or the vault synced through a Supabase account.
   Future<SyncController?> _connect(
     UnlockedVault vault,
     VaultNoteStore store,
     BlobSync? blobs,
   ) async {
-    final account = widget.account;
-    if (account == null) return null;
     final keeper = widget.keeper;
-    account.attach(
-      await _storedSession(vault),
-      persist: (session) async {
-        try {
-          await keeper.saveSetting(vault, _sessionSetting, session?.toBytes());
-        } on VaultLockedException {
-          // Locked meanwhile: the session is dropped with the vault.
-        }
-      },
+    if (!keeper.offersInvites) return null;
+    final sync = SyncController(
+      engine: vault.engine,
+      onPulled: store.reload,
+      afterSync: blobs?.afterSync,
+      enabled: await _isEnabled(vault),
+      turnOn: () => keeper.saveSetting(vault, _enabledSetting, _present),
+      retired: await _isRetired(vault),
+      retire: () => keeper.saveSetting(vault, _retiredSetting, _present),
     );
-    final sync =
-        widget.syncFor?.call(vault.engine, account, store.reload) ??
-        SyncController(
-          engine: vault.engine,
-          account: account,
-          onPulled: store.reload,
-          afterSync: blobs?.afterSync,
-          retired: await _isRetired(vault),
-          retire: () => keeper.saveSetting(
-            vault,
-            _retiredSetting,
-            Uint8List.fromList(const [1]),
-          ),
-        );
     store.onWrite = sync.changed;
     return sync;
   }
 
   /// Which blobs the server holds, and which ones to delete there, are
-  /// sealed settings, like the session; a damaged one only means checking
+  /// sealed settings; a damaged one only means checking
   /// them again, or leaving blobs for the next sweep.
   BlobSync _blobSync(
     UnlockedVault vault,
@@ -556,19 +491,29 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
     );
   }
 
-  /// A session that is missing, damaged or sealed for another vault means
-  /// signing in again, never a vault that will not open.
-  Future<SupabaseSession?> _storedSession(UnlockedVault vault) async {
+  /// A damaged mark counts as on: the person turned the sync on once.
+  /// The session a vault kept when it synced through Supabase means the
+  /// same, and is dropped: it opens nothing on our server.
+  Future<bool> _isEnabled(UnlockedVault vault) async {
+    final keeper = widget.keeper;
     try {
-      final stored = await widget.keeper.loadSetting(vault, _sessionSetting);
-      return stored == null ? null : SupabaseSession.fromBytes(stored);
+      if (await keeper.loadSetting(vault, _enabledSetting) != null) return true;
     } on MalformedSyncDataException {
-      return null;
+      return true;
     }
+    bool synced;
+    try {
+      synced = await keeper.loadSetting(vault, _sessionSetting) != null;
+    } on MalformedSyncDataException {
+      synced = true;
+    }
+    if (synced) {
+      await keeper.saveSetting(vault, _enabledSetting, _present);
+      await keeper.saveSetting(vault, _sessionSetting, null);
+    }
+    return synced;
   }
 
-  /// A damaged mark still counts: syncing a retired vault again would push
-  /// to a workspace the server no longer has.
   Future<PageAppearance> _storedPage(UnlockedVault vault) async {
     try {
       return PageAppearance.fromBytes(
@@ -653,6 +598,8 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
     _appearance = null;
   }
 
+  /// A damaged mark still counts: syncing a retired vault again would push
+  /// to a workspace the server no longer has.
   Future<bool> _isRetired(UnlockedVault vault) async {
     try {
       return await widget.keeper.loadSetting(vault, _retiredSetting) != null;
@@ -681,7 +628,6 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
       ScaffoldMessenger.maybeOf(context)?.clearSnackBars();
       // The sync stops before the keys it works with are released.
       sync?.dispose();
-      widget.account?.detach();
       autoLock.dispose();
       vault.lock();
       store.dispose();
@@ -859,10 +805,8 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
               ? null
               : CloudButton(
                   sync: sync,
-                  onLinkDevice: widget.keeper.offersLinking
-                      ? _linkDevice
-                      : null,
-                  onInvite: widget.keeper.offersInvites ? _invite : null,
+                  onLinkDevice: _linkDevice,
+                  onInvite: _invite,
                 ),
           onLock: _lock,
           onBackup: widget.files == null ? null : _backup,
@@ -874,8 +818,6 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
         ),
       ),
     _Joining() => JoinVaultScreen(
-      account: widget.account!,
-      join: _join,
       accept: _accept,
       onJoined: _joined,
       onBack: _stopJoining,
@@ -1008,9 +950,7 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
                             : l10n.vaultUnlockAction,
                       ),
                     ),
-                    if (creating &&
-                        widget.keeper.offersLinking &&
-                        widget.account != null) ...[
+                    if (creating && widget.keeper.offersInvites) ...[
                       const SizedBox(height: Spacing.m),
                       OutlinedButton.icon(
                         key: const ValueKey('join-vault'),
@@ -1049,3 +989,6 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
     );
   }
 }
+
+/// The value of a setting that only marks something.
+final _present = Uint8List.fromList(const [1]);

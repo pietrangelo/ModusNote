@@ -1,5 +1,3 @@
-import 'dart:math';
-
 import 'package:collaboration_access_control/collaboration_access_control.dart';
 import 'package:flutter/material.dart';
 import 'package:offline_sync/offline_sync.dart';
@@ -10,9 +8,8 @@ import 'link_device_sheet.dart';
 import '../theme/modus_palette.dart';
 
 /// Invites another person: the owner picks what they may do, then shows a
-/// one-time code that the person types on their own device, signed in to
-/// their own account. Their device is admitted with that role and their
-/// account let into the workspace.
+/// one-time code that the person types on their own device. Their device is
+/// admitted with that role.
 ///
 /// Like [LinkDeviceSheet], the vault stays open while the sheet is up and
 /// closing it withdraws the code.
@@ -45,12 +42,6 @@ class _InviteSheetState extends State<InviteSheet> {
   var _role = Role.editor;
   var _started = false;
 
-  Future<CodeAdmission> _start() async {
-    final code = InviteCode.random(Random.secure());
-    final offering = await widget.offer(code, _role);
-    return (code: code.display, poll: offering.poll, cancel: offering.cancel);
-  }
-
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
@@ -60,7 +51,7 @@ class _InviteSheetState extends State<InviteSheet> {
       title: l10n.inviteTitle,
       child: _started
           ? CodeAdmissionPanel(
-              start: _start,
+              start: () => offerCode((code) => widget.offer(code, _role)),
               onAdmitted: widget.onInvited,
               pollEvery: widget.pollEvery,
               texts: (

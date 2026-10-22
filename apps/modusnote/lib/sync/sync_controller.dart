@@ -8,8 +8,9 @@ import 'package:offline_sync/offline_sync.dart';
 import 'package:offline_sync_adapters/offline_sync_adapters.dart';
 
 enum SyncState {
-  /// No account: edits stay queued on the device.
-  signedOut,
+  /// The sync is not turned on, or the vault left the server: edits stay
+  /// queued on the device.
+  off,
   syncing,
   synced,
 
@@ -21,8 +22,12 @@ enum SyncState {
 }
 
 enum SyncProblem {
-  /// The server turned the request down (an expired account, a policy).
+  /// The server turned the request down (a policy, a ceiling).
   refused,
+
+  /// The server does not know this device in the vault's workspace: an
+  /// owner deleted it from the server, or this device was never let in.
+  notAdmitted,
 
   /// The server hid or forged part of the workspace: nothing of it was
   /// applied.
@@ -36,8 +41,8 @@ enum SyncProblem {
   removed,
 }
 
-/// Keeps an open vault in step with the server: right after unlock and
-/// sign-in, a moment after each saved edit, every [interval] and when the
+/// Keeps an open vault in step with the server, once its sync is turned
+/// on: right after unlock and [enable], a moment after each saved edit, every [interval] and when the
 /// app returns to the foreground. While syncs find nothing, the periodic
 /// one slows down to every [maxQuietTicks] + 1 intervals. One sync runs at a time; a request while
 /// one runs makes it go round once more.
@@ -47,9 +52,10 @@ enum SyncProblem {
 final class SyncController extends ChangeNotifier {
   SyncController({
     required this._engine,
-    required this._account,
     required this._onPulled,
     this._afterSync,
+    this._enabled = false,
+    this._turnOn,
     this._retired = false,
     this._retire,
     this._debounce = const Duration(seconds: 2),
@@ -58,13 +64,15 @@ final class SyncController extends ChangeNotifier {
   }) : _clock = clock ?? DateTime.now;
 
   final SyncEngine _engine;
-  final SyncAccount _account;
   final Future<void> Function() _onPulled;
+
+  /// Remembers in the vault that its sync is on.
+  final Future<void> Function()? _turnOn;
 
   /// Runs after each sync that reached the server: uploads recordings.
   final Future<void> Function()? _afterSync;
 
-  /// Remembers in the vault that its account was deleted.
+  /// Remembers in the vault that its data was deleted from the server.
   final Future<void> Function()? _retire;
   final Duration _debounce;
   final Duration _interval;
@@ -73,7 +81,7 @@ final class SyncController extends ChangeNotifier {
   /// Periodic ticks skipped at most after syncs that moved nothing.
   static const maxQuietTicks = 4;
 
-  var _state = SyncState.signedOut;
+  var _state = SyncState.off;
   SyncProblem? _problem;
   DateTime? _lastSynced;
   Timer? _soon;
@@ -83,6 +91,7 @@ final class SyncController extends ChangeNotifier {
   var _quiet = 0;
   var _skip = 0;
   var _disposed = false;
+  bool _enabled;
   bool _retired;
 
   SyncState get state => _state;
@@ -92,17 +101,17 @@ final class SyncController extends ChangeNotifier {
 
   DateTime? get lastSynced => _lastSynced;
 
-  bool get signedIn => _account.signedIn;
+  /// Whether the sync was turned on: a new vault stays on the device
+  /// until its person does, a vault joined with a code syncs from the
+  /// start.
+  bool get enabled => _enabled;
 
-  String? get email => _account.email;
-
-  /// The vault's account was deleted: it no longer syncs nor signs in.
+  /// The vault's data was deleted from the server: it no longer syncs.
   /// The server forgot the workspace while this vault still counts what it
-  /// pushed and pulled there, so a new account would get none of its notes.
+  /// pushed and pulled there, so syncing again would send none of its notes.
   bool get retired => _retired;
 
   void start() {
-    _account.onChanged = _accountChanged;
     _periodic = Timer.periodic(_interval, (_) {
       if (_skip > 0) {
         _skip--;
@@ -121,23 +130,28 @@ final class SyncController extends ChangeNotifier {
     _soon = Timer(_debounce, syncNow);
   }
 
-  Future<void> sendCode(String email) => _account.sendCode(email);
+  /// Turns the sync on, for good, and syncs.
+  Future<void> enable() async {
+    if (_enabled || _retired || _disposed) return;
+    await _turnOn?.call();
+    _enabled = true;
+    await syncNow();
+  }
 
-  Future<void> signIn(String email, String code) =>
-      _account.signIn(email, code);
-
-  Future<void> signOut() => _account.signOut();
-
-  /// Deletes the account and everything the server holds for it. Throws
-  /// what [SyncAccount.deleteAccount] throws, with nothing deleted yet.
-  Future<void> deleteAccount() async {
+  /// Deletes the vault's workspace from the server, with everything it
+  /// holds: notes, recordings, pictures, members and codes, for every
+  /// device. Throws what [SyncEngine.deleteFromServer] throws, with
+  /// nothing deleted yet. The notes stay on the devices.
+  Future<void> deleteFromServer() async {
     if (_retired) return;
-    // A sync in flight would only fail against a vanishing account.
-    await _running;
-    await _account.deleteAccount();
+    // A sync in flight would only fail against a vanishing workspace.
+    for (var running = _running; running != null; running = _running) {
+      await running;
+    }
+    await _engine.deleteFromServer();
     _retired = true;
     await _retire?.call();
-    _set(SyncState.signedOut);
+    _set(SyncState.off);
   }
 
   /// Who belongs to the vault, in the order they joined.
@@ -181,13 +195,6 @@ final class SyncController extends ChangeNotifier {
     return _running = _loop().whenComplete(() => _running = null);
   }
 
-  void _accountChanged() {
-    if (_disposed) return;
-    if (!_account.signedIn) _lastSynced = null;
-    _set(_account.signedIn ? _state : SyncState.signedOut);
-    unawaited(syncNow());
-  }
-
   Future<void> _loop() async {
     do {
       _again = false;
@@ -196,16 +203,12 @@ final class SyncController extends ChangeNotifier {
   }
 
   Future<void> _once() async {
-    if (_retired || !_account.signedIn) return _set(SyncState.signedOut);
+    if (_retired || !_enabled) return _set(SyncState.off);
     _set(SyncState.syncing);
     try {
       final report = await _engine.sync();
       if (_disposed) return;
-      if (report.offline) {
-        return _set(
-          _account.signedIn ? SyncState.offline : SyncState.signedOut,
-        );
-      }
+      if (report.offline) return _set(SyncState.offline);
       if (report.pushed > 0 || report.pulled > 0) {
         _quiet = _skip = 0;
       } else {
@@ -234,6 +237,8 @@ final class SyncController extends ChangeNotifier {
       _fail(SyncProblem.untrusted);
     } on RemovedFromWorkspaceException {
       _fail(SyncProblem.removed);
+    } on NotAdmittedException {
+      _fail(SyncProblem.notAdmitted);
     } on Object {
       // The vault locked under a running sync and its keys are gone.
       if (_disposed) return;
@@ -261,7 +266,6 @@ final class SyncController extends ChangeNotifier {
     _disposed = true;
     _soon?.cancel();
     _periodic?.cancel();
-    if (_account.onChanged == _accountChanged) _account.onChanged = null;
     super.dispose();
   }
 }

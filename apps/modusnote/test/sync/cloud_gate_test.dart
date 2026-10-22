@@ -1,10 +1,9 @@
-import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:identity_cryptography_adapters/identity_cryptography_adapters.dart';
 import 'package:modusnote/vault/vault_gate.dart';
-import 'package:offline_sync_adapters/offline_sync_adapters.dart';
 import 'package:schema_dynamic_content/schema_dynamic_content.dart';
 import 'package:sqlite3/sqlite3.dart';
 
@@ -12,37 +11,23 @@ import '../notes/harness.dart';
 import '../vault/support.dart';
 import 'cloud_support.dart';
 
-/// The app on [database] in a build that names a sync server; a new
-/// [account] is a new app process.
-Widget cloudGate(
-  Database database,
-  SyncAccount account,
-  MemorySyncServer server,
-) => VaultGate(
-  keeper: keeperOn(database, server: server),
+/// The app on [database] in a build that names a sync server; a new gate
+/// is a new app process.
+Widget cloudGate(Database database, MemorySyncServer server) => VaultGate(
+  keeper: keeperOn(database, gateway: server),
   passwordFrom: (bytes) => SodiumPasswordSecret.fromUtf8Bytes(sodium, bytes),
   catalog: SeedSchemas.catalog,
-  account: account,
 );
 
 final cloudButton = find.byKey(const ValueKey('cloud'));
 
-void main() {
-  setUpAll(loadSodium);
-  late Database database;
-  late FakeAuthServer auth;
-
-  setUp(() {
-    database = memoryDatabase();
-    auth = FakeAuthServer();
-  });
-  tearDown(() => database.close());
-
-  Future<void> create(WidgetTester tester) async {
-    await tester.enterText(
-      find.byKey(const ValueKey('passphrase')),
-      'frase lunga',
-    );
+/// Creates the vault, or unlocks it, on the gate's form.
+Future<void> unlock(WidgetTester tester, {required bool create}) async {
+  await tester.enterText(
+    find.byKey(const ValueKey('passphrase')),
+    'frase lunga',
+  );
+  if (create) {
     await tester.enterText(
       find.byKey(const ValueKey('passphrase-confirm')),
       'frase lunga',
@@ -52,26 +37,41 @@ void main() {
     );
     await tester.tap(find.byKey(const ValueKey('passphrase-acknowledged')));
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text('Crea il vault'));
-    await tester.tap(find.text('Crea il vault'));
-    await tester.pumpAndSettle();
   }
+  final submit = find.text(create ? 'Crea il vault' : 'Sblocca');
+  await tester.ensureVisible(submit);
+  await tester.tap(submit);
+  await tester.pumpAndSettle();
+}
 
-  Future<void> signIn(WidgetTester tester, {String code = goodCode}) async {
-    await tester.tap(cloudButton);
-    await tester.pumpAndSettle();
-    await tester.enterText(
-      find.byKey(const ValueKey('cloud-email')),
-      'pietro@example.com',
-    );
-    await tester.tap(find.text('Invia il codice'));
-    await tester.pumpAndSettle();
-    await tester.enterText(find.byKey(const ValueKey('cloud-code')), code);
-    await tester.tap(find.text('Accedi'));
-    await tester.pumpAndSettle();
-  }
+/// Opens the sync sheet and turns the sync on.
+Future<void> turnOn(WidgetTester tester) async {
+  await tester.tap(cloudButton);
+  await tester.pumpAndSettle();
+  await tester.tap(find.byKey(const ValueKey('cloud-enable')));
+  await tester.pumpAndSettle();
+}
 
-  testWidgets('a build without a server offers no sign-in', (tester) async {
+/// Locks the vault from the library.
+Future<void> lock(WidgetTester tester) async {
+  await tester.tapAt(const Offset(1, 1));
+  await tester.pumpAndSettle();
+  await tester.tap(find.byTooltip('Blocca'));
+  await tester.pumpAndSettle();
+}
+
+void main() {
+  setUpAll(loadSodium);
+  late Database database;
+  late MemorySyncServer server;
+
+  setUp(() {
+    database = memoryDatabase();
+    server = MemorySyncServer();
+  });
+  tearDown(() => database.close());
+
+  testWidgets('a build without a server offers no sync', (tester) async {
     await pumpApp(
       tester,
       VaultGate(
@@ -81,262 +81,110 @@ void main() {
         catalog: SeedSchemas.catalog,
       ),
     );
-    await create(tester);
+    await unlock(tester, create: true);
 
     expect(cloudButton, findsNothing);
   });
 
-  testWidgets('signing in with the emailed code starts the sync', (
+  testWidgets('a new vault stays on the device until its sync is turned on', (
     tester,
   ) async {
-    final account = auth.account();
-    final server = MemorySyncServer(account.accessToken);
-    await pumpApp(tester, cloudGate(database, account, server));
-    await create(tester);
-    expect(server.workspaces, isEmpty);
+    await pumpApp(tester, cloudGate(database, server));
+    await unlock(tester, create: true);
 
-    await signIn(tester);
+    expect(find.byTooltip('Sincronizzazione spenta'), findsOneWidget);
+    expect(server.signed, isEmpty);
+    await tester.tap(cloudButton);
+    await tester.pumpAndSettle();
+    expect(find.textContaining('La sincronizzazione è spenta'), findsOneWidget);
+    expect(find.byKey(const ValueKey('members')), findsNothing);
+  });
 
-    expect(
-      find.text('Accesso effettuato come pietro@example.com'),
-      findsOneWidget,
-    );
+  testWidgets('turning it on publishes the vault and shows the state', (
+    tester,
+  ) async {
+    await pumpApp(tester, cloudGate(database, server));
+    await unlock(tester, create: true);
+
+    await turnOn(tester);
+
     expect(find.textContaining('Sincronizzato alle'), findsOneWidget);
+    expect(find.byKey(const ValueKey('cloud-enable')), findsNothing);
     expect(server.workspaces, hasLength(1));
-    expect(auth.requests, ['/auth/v1/otp', '/auth/v1/verify']);
-  });
-
-  testWidgets('the link of a default email, pasted, signs in too', (
-    tester,
-  ) async {
-    final account = auth.account();
-    final server = MemorySyncServer(account.accessToken);
-    await pumpApp(tester, cloudGate(database, account, server));
-    await create(tester);
-
-    await signIn(tester, code: goodLink);
-
-    expect(account.signedIn, isTrue);
-    expect(server.workspaces, hasLength(1));
-  });
-
-  testWidgets('a link to anywhere else is refused without a request', (
-    tester,
-  ) async {
-    final account = auth.account();
-    final server = MemorySyncServer(account.accessToken);
-    await pumpApp(tester, cloudGate(database, account, server));
-    await create(tester);
-
-    await signIn(
-      tester,
-      code: goodLink.replaceFirst('project.supabase.co', 'evil.example'),
-    );
-
-    expect(
-      find.textContaining('Codice o link errato o scaduto.'),
-      findsOneWidget,
-    );
-    expect(account.signedIn, isFalse);
-    expect(auth.requests, ['/auth/v1/otp']);
-  });
-
-  testWidgets('a wrong code is refused and the user stays signed out', (
-    tester,
-  ) async {
-    final account = auth.account();
-    final server = MemorySyncServer(account.accessToken);
-    await pumpApp(tester, cloudGate(database, account, server));
-    await create(tester);
-
-    await signIn(tester, code: '654321');
-
-    expect(
-      find.textContaining('Codice o link errato o scaduto.'),
-      findsOneWidget,
-    );
-    expect(account.signedIn, isFalse);
-    expect(server.workspaces, isEmpty);
-  });
-
-  testWidgets('a new code can be sent, and the button tells the state', (
-    tester,
-  ) async {
-    final account = auth.account();
-    final server = MemorySyncServer(account.accessToken);
-    await pumpApp(tester, cloudGate(database, account, server));
-    await create(tester);
-    expect(
-      find.byTooltip('Sincronizzazione: accesso non effettuato'),
-      findsOneWidget,
-    );
-    await signIn(tester, code: '654321');
-
-    await tester.tap(find.byKey(const ValueKey('cloud-resend')));
+    await tester.tapAt(const Offset(1, 1));
     await tester.pumpAndSettle();
-    expect(auth.requests.where((path) => path == '/auth/v1/otp'), hasLength(2));
-    expect(find.byKey(const ValueKey('cloud-problem')), findsNothing);
-    await tester.enterText(find.byKey(const ValueKey('cloud-code')), goodCode);
-    await tester.tap(find.text('Accedi'));
-    await tester.pumpAndSettle();
-
-    expect(account.signedIn, isTrue);
     expect(find.byTooltip('Sincronizzazione: aggiornato'), findsOneWidget);
   });
 
-  testWidgets('an address that is not one is caught before any request', (
-    tester,
-  ) async {
-    final account = auth.account();
-    await pumpApp(
-      tester,
-      cloudGate(database, account, MemorySyncServer(account.accessToken)),
-    );
-    await create(tester);
-    await tester.tap(cloudButton);
-    await tester.pumpAndSettle();
+  testWidgets('the sync stays on after a restart', (tester) async {
+    await pumpApp(tester, cloudGate(database, server));
+    await unlock(tester, create: true);
+    await turnOn(tester);
+    await lock(tester);
 
-    await tester.enterText(find.byKey(const ValueKey('cloud-email')), 'pietro');
-    await tester.tap(find.text('Invia il codice'));
-    await tester.pumpAndSettle();
+    await pumpApp(tester, cloudGate(database, server));
+    await unlock(tester, create: false);
 
-    expect(find.text('Inserisci un indirizzo email valido.'), findsOneWidget);
-    expect(auth.requests, isEmpty);
+    expect(find.byTooltip('Sincronizzazione: aggiornato'), findsOneWidget);
   });
 
-  testWidgets('an unreachable server is said so', (tester) async {
-    final account = auth.account();
-    await pumpApp(
-      tester,
-      cloudGate(database, account, MemorySyncServer(account.accessToken)),
-    );
-    await create(tester);
-    auth.failWith = 503;
-    await tester.tap(cloudButton);
-    await tester.pumpAndSettle();
-
-    await tester.enterText(
-      find.byKey(const ValueKey('cloud-email')),
-      'pietro@example.com',
-    );
-    await tester.tap(find.text('Invia il codice'));
-    await tester.pumpAndSettle();
-
-    expect(
-      find.text('Il server non è raggiungibile. Controlla la connessione.'),
-      findsOneWidget,
-    );
-  });
-
-  testWidgets('the session comes back with the vault after a restart', (
+  testWidgets('an unreachable server leaves the edits queued, and says so', (
     tester,
   ) async {
-    final account = auth.account();
-    final server = MemorySyncServer(account.accessToken);
-    await pumpApp(tester, cloudGate(database, account, server));
-    await create(tester);
-    await signIn(tester);
-    await tester.tapAt(const Offset(1, 1));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('Blocca'));
-    await tester.pumpAndSettle();
-    expect(account.signedIn, isFalse);
+    server.online = false;
+    await pumpApp(tester, cloudGate(database, server));
+    await unlock(tester, create: true);
 
-    final restarted = auth.account();
-    await pumpApp(
-      tester,
-      cloudGate(database, restarted, MemorySyncServer(restarted.accessToken)),
-    );
-    expect(restarted.signedIn, isFalse);
-    await tester.enterText(
-      find.byKey(const ValueKey('passphrase')),
-      'frase lunga',
-    );
-    await tester.tap(find.text('Sblocca'));
-    await tester.pumpAndSettle();
+    await turnOn(tester);
 
-    expect(restarted.signedIn, isTrue);
-    expect(restarted.email, 'pietro@example.com');
-    expect(
-      auth.requests.where((path) => path == '/auth/v1/verify'),
-      hasLength(1),
-    );
+    expect(find.textContaining('non è raggiungibile'), findsOneWidget);
+    expect(server.workspaces, isEmpty);
+  });
+
+  group('a vault that synced through an account', () {
+    Future<void> legacy(WidgetTester tester, Uint8List session) async {
+      await pumpApp(tester, cloudGate(database, server));
+      await unlock(tester, create: true);
+      await lock(tester);
+      // What the app before this one sealed: no way to write it from here
+      // but through the keeper, as that app did.
+      final keeper = keeperOn(database);
+      final vault = await keeper.unlock(passphrase('frase lunga'));
+      await keeper.saveSetting(vault, 'sync.session', session);
+      vault.lock();
+    }
+
+    testWidgets('keeps syncing, and its session is dropped', (tester) async {
+      await legacy(tester, Uint8List.fromList(List.filled(40, 7)));
+
+      await pumpApp(tester, cloudGate(database, server));
+      await unlock(tester, create: false);
+
+      expect(find.byTooltip('Sincronizzazione: aggiornato'), findsOneWidget);
+      final rows = database.select(
+        "SELECT name FROM vault_settings WHERE name LIKE 'sync.%'",
+      );
+      expect(rows.map((row) => row['name']), ['sync.enabled']);
+    });
   });
 
   group('adversary', () {
-    testWidgets('the session token is stored sealed, never in the clear', (
+    testWidgets('a damaged mark counts as on: the person turned it on once', (
       tester,
     ) async {
-      final account = auth.account();
-      final server = MemorySyncServer(account.accessToken);
-      await pumpApp(tester, cloudGate(database, account, server));
-      await create(tester);
-
-      await signIn(tester);
-
-      final token = utf8.encode(issuedToken);
-      final email = utf8.encode('pietro@example.com');
-      final stored = database.select('SELECT envelope FROM vault_settings');
-      expect(stored, hasLength(1));
-      for (final table
-          in database
-              .select("SELECT name FROM sqlite_master WHERE type = 'table'")
-              .map((row) => row['name'] as String)) {
-        for (final row in database.select('SELECT * FROM "$table"')) {
-          for (final value in row.values) {
-            final bytes = switch (value) {
-              final List<int> blob => blob,
-              final String text => utf8.encode(text),
-              _ => const <int>[],
-            };
-            expect(_contains(bytes, token), isFalse, reason: table);
-            expect(_contains(bytes, email), isFalse, reason: table);
-          }
-        }
-      }
-    });
-
-    testWidgets('a damaged stored session means signing in again', (
-      tester,
-    ) async {
-      final account = auth.account();
-      final server = MemorySyncServer(account.accessToken);
-      await pumpApp(tester, cloudGate(database, account, server));
-      await create(tester);
-      await signIn(tester);
-      await tester.tapAt(const Offset(1, 1));
-      await tester.pumpAndSettle();
-      await tester.tap(find.byTooltip('Blocca'));
-      await tester.pumpAndSettle();
+      await pumpApp(tester, cloudGate(database, server));
+      await unlock(tester, create: true);
+      await turnOn(tester);
+      await lock(tester);
       database.execute(
-        "UPDATE vault_settings SET envelope = zeroblob(80) WHERE name = 'sync.session'",
+        "UPDATE vault_settings SET envelope = zeroblob(80) "
+        "WHERE name = 'sync.enabled'",
       );
 
-      final restarted = auth.account();
-      await pumpApp(
-        tester,
-        cloudGate(database, restarted, MemorySyncServer(restarted.accessToken)),
-      );
-      await tester.enterText(
-        find.byKey(const ValueKey('passphrase')),
-        'frase lunga',
-      );
-      await tester.tap(find.text('Sblocca'));
-      await tester.pumpAndSettle();
+      await pumpApp(tester, cloudGate(database, server));
+      await unlock(tester, create: false);
 
-      expect(cloudButton, findsOneWidget);
-      expect(restarted.signedIn, isFalse);
+      expect(find.byTooltip('Sincronizzazione: aggiornato'), findsOneWidget);
     });
   });
-}
-
-bool _contains(List<int> haystack, List<int> needle) {
-  outer:
-  for (var i = 0; i + needle.length <= haystack.length; i++) {
-    for (var j = 0; j < needle.length; j++) {
-      if (haystack[i + j] != needle[j]) continue outer;
-    }
-    return true;
-  }
-  return false;
 }

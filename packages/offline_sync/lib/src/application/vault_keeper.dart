@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math';
 import 'dart:typed_data';
 
@@ -925,18 +926,28 @@ final class InviteOffering {
       if (member == _vault.member) continue;
       if (_vault.isLocked) throw const VaultLockedException();
       await _vault.engine.admit(device, role: role);
-      cancel();
-      try {
-        await invites.closeInvite(lookup);
-      } on ServerUnavailableException {
-        // The rows expire on the server anyway.
-      }
+      _key.dispose();
+      await _close();
       return member;
     }
     return null;
   }
 
-  void cancel() => _key.dispose();
+  /// Withdraws the code: its key is released, and the server forgets the
+  /// offer, so no one can answer it any longer.
+  void cancel() {
+    if (isClosed) return;
+    _key.dispose();
+    unawaited(_close());
+  }
+
+  Future<void> _close() async {
+    try {
+      await _invites.closeInvite(lookup);
+    } on Object {
+      // Offline or refused: the offer expires on the server anyway.
+    }
+  }
 }
 
 /// The server of a build without one: always out of reach, so edits wait
