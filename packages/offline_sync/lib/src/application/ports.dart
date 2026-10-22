@@ -27,6 +27,11 @@ abstract interface class SyncServer {
   /// founder already holding the id is a [LedgerRollbackException].
   Future<void> createWorkspace(MembershipRecord genesis);
 
+  /// Deletes the workspace from the server, with its rows, log, bundles
+  /// and blobs; an owner's call. Nothing on any device changes. A
+  /// workspace already gone is not an error.
+  Future<void> deleteWorkspace(WorkspaceId workspace);
+
   /// Appends one signed record to the workspace's membership log. The
   /// server holds each sequence number once.
   Future<void> appendMembership(MembershipRecord record);

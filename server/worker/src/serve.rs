@@ -115,12 +115,10 @@ pub fn workspace<S: Store, C: SignatureCheck>(
             Ok(empty(201))
         }
         Route::Bundles(_, after) => {
-            let bundles = space
-                .bundles(&request, after)?
-                .into_iter()
-                .map(|(position, wire)| BundleReply { position, bundle: encode(&wire) })
-                .collect();
-            json(200, &BundlesReply { bundles })
+            let (bundles, more) = space.bundles(&request, after)?;
+            let bundles =
+                bundles.into_iter().map(|(position, wire)| BundleReply { position, bundle: encode(&wire) }).collect();
+            json(200, &BundlesReply { bundles, more })
         }
         Route::AppendBundle(_) => {
             let bundle = decode(&parse_json::<BundleBody>(body)?.bundle)?;

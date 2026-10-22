@@ -2,9 +2,9 @@
 /// context.
 library;
 
+export 'src/blake2b.dart';
 export 'src/local_schema.dart' show UnsupportedLocalSchemaException;
+export 'src/modus_server.dart';
 export 'src/sqlite_local_record_store.dart';
 export 'src/sqlite_shelf_store.dart';
 export 'src/sqlite_vault_store.dart';
-export 'src/supabase_auth.dart';
-export 'src/supabase_sync_server.dart';

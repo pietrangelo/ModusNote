@@ -523,6 +523,7 @@ pub struct BundleReply {
 #[derive(Debug, Serialize)]
 pub struct BundlesReply {
     pub bundles: Vec<BundleReply>,
+    pub more: bool,
 }
 
 #[derive(Debug, Serialize)]

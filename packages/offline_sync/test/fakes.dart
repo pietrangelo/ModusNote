@@ -78,6 +78,20 @@ final class FakeSyncServer implements SyncServer {
       if (!compacted.contains(index + 1)) row,
   ];
 
+  /// Whether an owner deleted the workspace.
+  var deleted = false;
+
+  @override
+  Future<void> deleteWorkspace(WorkspaceId workspace) async {
+    _check();
+    calls.add('delete');
+    deleted = true;
+    rows.clear();
+    compacted.clear();
+    membershipLog.clear();
+    bundles.clear();
+  }
+
   /// Keeps [genesis] as the log's first record, as the real server does;
   /// another first record already held is a conflict.
   @override
@@ -319,6 +333,12 @@ final class _Admitting implements SyncServer {
       throw const NotAdmittedException();
     }
     await _backend.createWorkspace(genesis);
+  }
+
+  @override
+  Future<void> deleteWorkspace(WorkspaceId workspace) async {
+    await _admitted('DELETE', '/api/w/${workspace.hex}');
+    await _backend.deleteWorkspace(workspace);
   }
 
   @override

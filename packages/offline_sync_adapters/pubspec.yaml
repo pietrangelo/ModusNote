@@ -1,5 +1,5 @@
 name: offline_sync_adapters
-description: "Adapters for the Offline Sync bounded context: local SQLite database (native and WASM) and the Supabase sync server."
+description: "Adapters for the Offline Sync bounded context: local SQLite database (native and WASM) and the sync server on Durable Objects."
 publish_to: none
 resolution: workspace
 

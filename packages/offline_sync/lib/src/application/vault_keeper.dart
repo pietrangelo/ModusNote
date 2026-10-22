@@ -950,6 +950,9 @@ final class _OfflineServer implements SyncServer {
   Future<void> createWorkspace(MembershipRecord genesis) async => _away();
 
   @override
+  Future<void> deleteWorkspace(WorkspaceId workspace) async => _away();
+
+  @override
   Future<void> appendMembership(MembershipRecord record) async => _away();
 
   @override
