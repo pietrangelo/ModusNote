@@ -202,38 +202,19 @@ final class WorkspaceAdministration {
   );
 
   /// Verifies [bundle] and adds the keys it grants to [me] to [keyring].
-  ///
-  /// The issuer must have been an owner at the log position the bundle
-  /// names, and may only grant epochs that existed there: a member revoked
-  /// later cannot use an old position to hand out a key for an epoch that
-  /// began after their removal.
   void accept(
     KeyBundle bundle, {
     required VerifiedLedger ledger,
     required IdentityKeyPair me,
     required GroupKeyring keyring,
   }) {
+    verify(bundle, ledger: ledger);
     final state = ledger.at(bundle.atSequence);
-    if (bundle.workspace != state.id || keyring.workspace != state.id) {
+    if (keyring.workspace != state.id) {
       throw const TamperedWorkspaceDataException('bundle for another space');
-    }
-    if (!state.isOwner(bundle.issuer)) {
-      throw const TamperedWorkspaceDataException('issuer is not an owner');
-    }
-    try {
-      _identities.verify(
-        bundle.signedMessage,
-        signature: bundle.signature,
-        signer: bundle.issuer.signingKey,
-      );
-    } on InvalidSignatureException {
-      throw const TamperedWorkspaceDataException('bad bundle signature');
     }
     final myId = MemberId.of(me.publicIdentity);
     for (final grant in bundle.grants.where((g) => g.recipient == myId)) {
-      if (grant.epoch.value > state.epoch.value || !state.isMember(myId)) {
-        throw const TamperedWorkspaceDataException('grant beyond authority');
-      }
       final SymmetricKey key;
       try {
         key = _encapsulation.open(
@@ -249,6 +230,37 @@ final class WorkspaceAdministration {
         throw const TamperedWorkspaceDataException('grant does not open');
       }
       keyring.add(grant.epoch, key);
+    }
+  }
+
+  /// Checks [bundle] without opening any grant, as the sync server does
+  /// before storing it: the issuer must have been an owner at the log
+  /// position the bundle names, and every grant must go to a member of that
+  /// state for an epoch that existed there, so a member revoked later
+  /// cannot use an old position to hand out a key for an epoch that began
+  /// after their removal.
+  void verify(KeyBundle bundle, {required VerifiedLedger ledger}) {
+    final state = ledger.at(bundle.atSequence);
+    if (bundle.workspace != state.id) {
+      throw const TamperedWorkspaceDataException('bundle for another space');
+    }
+    if (!state.isOwner(bundle.issuer)) {
+      throw const TamperedWorkspaceDataException('issuer is not an owner');
+    }
+    try {
+      _identities.verify(
+        bundle.signedMessage,
+        signature: bundle.signature,
+        signer: bundle.issuer.signingKey,
+      );
+    } on InvalidSignatureException {
+      throw const TamperedWorkspaceDataException('bad bundle signature');
+    }
+    for (final grant in bundle.grants) {
+      if (grant.epoch.value > state.epoch.value ||
+          !state.isMember(grant.recipient)) {
+        throw const TamperedWorkspaceDataException('grant beyond authority');
+      }
     }
   }
 
