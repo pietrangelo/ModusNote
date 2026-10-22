@@ -46,7 +46,8 @@ final class FakeSyncServer implements SyncServer {
   /// Answers [heads] with zeros, as a server hiding that anything changed.
   var lieLow = false;
 
-  /// Fails the next call to [appendMembership] as if the network dropped.
+  /// Fails the next call to [appendMembership] or [createWorkspace] as if
+  /// the network dropped.
   var dropNextAppend = false;
 
   /// Fails the next call to [appendKeyBundle] as if the network dropped.
@@ -77,12 +78,23 @@ final class FakeSyncServer implements SyncServer {
       if (!compacted.contains(index + 1)) row,
   ];
 
+  /// Keeps [genesis] as the log's first record, as the real server does;
+  /// another first record already held is a conflict.
   @override
-  Future<void> createWorkspace(WorkspaceId workspace) async {
+  Future<void> createWorkspace(MembershipRecord genesis) async {
     _check();
+    if (dropNextAppend) {
+      dropNextAppend = false;
+      throw const ServerUnavailableException();
+    }
     calls.add('workspace');
-    if (!createdWorkspaces.contains(workspace)) {
-      createdWorkspaces.add(workspace);
+    if (!createdWorkspaces.contains(genesis.workspace)) {
+      createdWorkspaces.add(genesis.workspace);
+    }
+    if (membershipLog.isEmpty) {
+      membershipLog.add(genesis);
+    } else if (membershipLog.first != genesis) {
+      throw const LedgerRollbackException();
     }
   }
 
@@ -178,48 +190,6 @@ KeyBundle forgedBundle(WorkspaceId workspace, MemberId issuer) => KeyBundle(
   signature: Signature.fromBytes(Uint8List(Signature.length)),
 );
 
-/// Where two devices of one account meet: whatever they post, it relays.
-final class FakeLinkChannel implements DeviceLinkChannel {
-  var online = true;
-  final offers = <LinkOffer>[];
-  final posted = <LinkAnswer>[];
-  final closed = <LinkId>[];
-
-  void _check() {
-    if (!online) throw const ServerUnavailableException();
-  }
-
-  @override
-  Future<void> postOffer(LinkOffer offer) async {
-    _check();
-    offers.add(offer);
-  }
-
-  @override
-  Future<LinkOffer?> latestOffer() async {
-    _check();
-    return offers.lastOrNull;
-  }
-
-  @override
-  Future<void> postAnswer(LinkAnswer answer) async {
-    _check();
-    posted.add(answer);
-  }
-
-  @override
-  Future<List<LinkAnswer>> answers(LinkId link) async {
-    _check();
-    return [...posted.where((answer) => answer.id == link)];
-  }
-
-  @override
-  Future<void> close(LinkId link) async {
-    _check();
-    closed.add(link);
-  }
-}
-
 /// Where an owner and another person's device meet: it relays offers by
 /// lookup and answers to whoever asks.
 final class FakeInviteChannel implements InviteChannel {
@@ -233,8 +203,13 @@ final class FakeInviteChannel implements InviteChannel {
   }
 
   @override
-  Future<void> postInvite(InviteOffer offer) async {
+  Future<void> postInvite(WorkspaceId workspace, InviteOffer offer) async {
     _check();
+    if (offers.any((held) => held.lookup == offer.lookup) &&
+        !closed.contains(offer.lookup)) {
+      throw const LookupTakenException();
+    }
+    closed.remove(offer.lookup);
     offers.add(offer);
   }
 
@@ -263,53 +238,139 @@ final class FakeInviteChannel implements InviteChannel {
   }
 }
 
-/// The server's list of accounts and of which account each member uses,
-/// with the rule `remove_member` follows: an account goes when no member
-/// uses it any more, unless it is the caller's own.
-final class FakeMemberAccounts implements MemberAccounts {
-  FakeMemberAccounts(this.caller);
+/// The server as each device reaches it: requests are signed by the
+/// device, and only members of the log the server holds are let in, the
+/// way the real server checks them; a removed member still reads the log.
+final class FakeGateway implements SyncGateway {
+  FakeGateway(this.backend, [FakeInviteChannel? codes])
+    : codes = codes ?? FakeInviteChannel();
 
-  /// The account this device signs in with.
-  final AccountId caller;
-  var online = true;
+  final FakeSyncServer backend;
+  final FakeInviteChannel codes;
 
-  /// Shared by every device of a test.
-  static final accounts = <AccountId, bool>{};
-  static final members = <MemberId, AccountId>{};
+  /// Every request the devices signed, as `METHOD path`.
+  final signed = <String>[];
 
-  /// Accounts that may append and change blobs.
-  static final writers = <AccountId>{};
-
-  static void reset() {
-    accounts.clear();
-    members.clear();
-    writers.clear();
-  }
+  /// Whether it lets in only members; a hostile server lets in anyone.
+  var checks = true;
 
   @override
-  Future<void> admitMember(
-    WorkspaceId workspace,
-    MemberId member, {
-    AccountId? account,
-    bool manages = false,
-    bool writes = true,
-  }) async {
-    if (!online) throw const ServerUnavailableException();
-    final target = account ?? caller;
-    accounts[target] = (accounts[target] ?? false) || manages;
-    if (writes || manages) writers.add(target);
-    members.putIfAbsent(member, () => target);
-  }
+  SyncServer server(RequestSigner signer) => _Admitting(this, signer);
 
   @override
-  Future<void> removeMember(WorkspaceId workspace, MemberId member) async {
-    if (!online) throw const ServerUnavailableException();
-    final account = members.remove(member);
-    if (account != null &&
-        account != caller &&
-        !members.containsValue(account)) {
-      accounts.remove(account);
+  InviteChannel invites(RequestSigner? signer) => codes;
+}
+
+final class _Admitting implements SyncServer {
+  _Admitting(this._gateway, this._signer);
+
+  final FakeGateway _gateway;
+  final RequestSigner _signer;
+
+  FakeSyncServer get _backend => _gateway.backend;
+
+  /// Signs as the real adapter does, so a released identity fails here.
+  Future<void> _sign(String method, String path) async {
+    _backend._check();
+    await _signer.authorize(
+      method,
+      path.startsWith('/') ? path : '/api/w/$path',
+      Uint8List(0),
+    );
+    _gateway.signed.add('$method $path');
+  }
+
+  Iterable<MembershipRecord> get _log => _backend.membershipLog;
+
+  bool get _isMember {
+    final members = <PublicSigningKey>{};
+    for (final record in _log) {
+      switch (record.change) {
+        case WorkspaceFounded(:final founder):
+          members.add(founder.signingKey);
+        case MemberInvited(:final identity):
+          members.add(identity.signingKey);
+        case MemberRevoked(:final member):
+          members.remove(member.signingKey);
+        case RoleChanged():
+          break;
+      }
     }
+    return members.contains(_signer.key);
+  }
+
+  bool get _wasMember => _log.any(
+    (record) => switch (record.change) {
+      WorkspaceFounded(:final founder) => founder.signingKey == _signer.key,
+      MemberInvited(:final identity) => identity.signingKey == _signer.key,
+      _ => false,
+    },
+  );
+
+  Future<void> _admitted(String method, String path) async {
+    await _sign(method, path);
+    if (_gateway.checks && !_isMember) throw const NotAdmittedException();
+  }
+
+  @override
+  Future<void> createWorkspace(MembershipRecord genesis) async {
+    await _sign('POST', '/api/w/${genesis.workspace.hex}');
+    if (genesis.author.signingKey != _signer.key) {
+      throw const NotAdmittedException();
+    }
+    await _backend.createWorkspace(genesis);
+  }
+
+  @override
+  Future<void> appendMembership(MembershipRecord record) async {
+    await _admitted('POST', 'membership');
+    await _backend.appendMembership(record);
+  }
+
+  @override
+  Future<void> push(WorkspaceId workspace, List<SealedRow> rows) async {
+    await _admitted('POST', 'rows');
+    await _backend.push(workspace, rows);
+  }
+
+  @override
+  Future<SyncHeads?> heads(WorkspaceId workspace) async {
+    await _admitted('GET', 'heads');
+    return _backend.heads(workspace);
+  }
+
+  @override
+  Future<List<PulledRow>> pull(
+    WorkspaceId workspace, {
+    required int after,
+  }) async {
+    await _admitted('GET', 'rows');
+    return _backend.pull(workspace, after: after);
+  }
+
+  @override
+  Future<List<MembershipRecord>> membership(
+    WorkspaceId workspace, {
+    required int from,
+  }) async {
+    await _sign('GET', 'membership');
+    if (_gateway.checks && !_wasMember) throw const NotAdmittedException();
+    return _backend.membership(workspace, from: from);
+  }
+
+  @override
+  Future<List<(int, KeyBundle)>> keyBundles(
+    WorkspaceId workspace, {
+    required int after,
+  }) async {
+    await _admitted('GET', 'bundles');
+    return _backend.keyBundles(workspace, after: after);
+  }
+
+  @override
+  Future<void> appendKeyBundle(KeyBundle bundle) async {
+    await _admitted('POST', 'bundles');
+    await _backend.appendKeyBundle(bundle);
   }
 }
 

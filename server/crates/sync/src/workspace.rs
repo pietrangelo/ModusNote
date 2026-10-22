@@ -7,7 +7,7 @@
 //! record id, then the ciphertext), `idx/<record>/<position>` (to find the
 //! rows a new one supersedes), `blob/<id>` (size and time), `nonce/<hex>`.
 
-use ledger::{KeyBundle, MemberKey, Record, Refused, Role, SignatureCheck, VerifiedLedger, WorkspaceId};
+use ledger::{Change, KeyBundle, MemberKey, Record, Refused, Role, SignatureCheck, VerifiedLedger, WorkspaceId};
 
 use crate::auth::{Caller, Denied, Request, authenticate, decode_u64, ledger_hex};
 use crate::limits::Limits;
@@ -226,10 +226,19 @@ impl<S: Store, C: SignatureCheck> Workspace<S, C> {
         Ok(Heads { rows: meta.next_row - 1, bundles: meta.next_bundle - 1, membership })
     }
 
-    /// Records from sequence `from` on.
+    /// Records from sequence `from` on. A removed member may still read
+    /// them, and nothing else: the log is how it learns, from a signed
+    /// record, that it was removed, and it already held every public
+    /// identity in it but those of members admitted since.
     pub fn membership(&mut self, request: &Request<'_>, from: u32) -> Result<Vec<Vec<u8>>, SyncError> {
-        self.member(request, |_| true)?;
+        if self.ledger()?.is_none() {
+            return Err(SyncError::NotFound);
+        }
+        let Caller { key } = authenticate(&mut self.store, &self.check, request)?;
         let ledger = self.ledger()?.ok_or(SyncError::NotFound)?;
+        if !ledger.records().iter().any(|record| admits(record, &key)) {
+            return Err(SyncError::Denied(Denied::Forbidden));
+        }
         Ok(ledger.records().iter().skip(from as usize).map(|record| record.wire().to_vec()).collect())
     }
 
@@ -512,4 +521,12 @@ fn index_key(record: &[u8; 16], position: u64) -> String {
 
 fn position_of(key: &str) -> u64 {
     key.rsplit('/').next().and_then(|hex| u64::from_str_radix(hex, 16).ok()).unwrap_or(0)
+}
+
+/// Whether `record` founded the workspace as `key` or invited `key`.
+fn admits(record: &Record, key: &MemberKey) -> bool {
+    match &record.change {
+        Change::Founded(identity) | Change::Invited(identity, _) => identity.key() == *key,
+        Change::Revoked(_) | Change::RoleChanged(..) => false,
+    }
 }

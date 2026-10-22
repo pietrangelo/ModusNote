@@ -30,7 +30,8 @@ void main() {
   VaultKeeper keeper() => VaultKeeper(
     vaults: vaults,
     records: (_) => records,
-    server: server,
+    hasher: SodiumContentHasher(sodium),
+    gateway: FakeGateway(server),
     identities: SodiumIdentityService(sodium),
     keys: SodiumKeyDerivationService(sodium),
     subkeys: SodiumSubkeyDerivationService(sodium),
@@ -58,7 +59,7 @@ void main() {
   );
 
   test(
-    'the first sync publishes the workspace, then its log, then rows',
+    'the first sync founds the workspace with its first record, then rows',
     () async {
       final vault = await newVault();
       await write(vault, 'prima');
@@ -69,7 +70,7 @@ void main() {
       expect(report.pushed, 1);
       expect(server.createdWorkspaces, [vault.workspace]);
       expect(server.membershipLog, vault.engine.ledger.records);
-      expect(server.calls, ['workspace', 'membership 0', 'push 1']);
+      expect(server.calls, ['workspace', 'push 1']);
     },
   );
 
@@ -100,12 +101,11 @@ void main() {
     expect(server.membershipLog, hasLength(1));
   });
 
-  test('a publish cut short resumes without writing a record twice', () async {
+  test('a founding cut short is retried by the next sync', () async {
     final vault = await newVault();
     server.dropNextAppend = true;
 
     expect((await vault.engine.sync()).offline, isTrue);
-    expect(server.createdWorkspaces, hasLength(1));
     expect(server.membershipLog, isEmpty);
 
     await vault.engine.sync();

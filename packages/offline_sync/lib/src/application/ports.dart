@@ -1,25 +1,31 @@
 import 'package:collaboration_access_control/collaboration_access_control.dart';
 import 'package:identity_cryptography/identity_cryptography.dart';
 
-import '../core/device_link.dart';
+import '../core/invite.dart';
 import '../core/outbox.dart';
 import '../core/passkey_slot.dart';
 import '../core/record_revision.dart';
 import '../core/sync_row.dart';
 import '../core/vault_header.dart';
 import '../core/vault_shelf.dart';
+import 'request_signer.dart';
 
-/// Port: the zero-knowledge sync server (Supabase in production). Every
-/// method throws [ServerUnavailableException] when it cannot be reached.
+/// Port: the zero-knowledge sync server (our Worker on Durable Objects in
+/// production), as one device sees it: every request is signed by that
+/// device ([RequestSigner]) and admitted only for a member of the
+/// workspace's verified log. Every method throws
+/// [ServerUnavailableException] when the server cannot be reached, or does
+/// not admit the device (yet).
 ///
 /// All three streams are append-only for clients: the server never
 /// overwrites a row, and conflicts are resolved by the clients. The one
 /// removal is the writer's: a pushed row may name the rows of its record it
 /// supersedes ([SealedRow.supersedes]), and the server drops them.
 abstract interface class SyncServer {
-  /// Registers [workspace] for this account. Idempotent: a workspace this
-  /// account already registered is not an error.
-  Future<void> createWorkspace(WorkspaceId workspace);
+  /// Registers a workspace with its first record, signed by its founder,
+  /// this device. Idempotent: the same record again is not an error; another
+  /// founder already holding the id is a [LedgerRollbackException].
+  Future<void> createWorkspace(MembershipRecord genesis);
 
   /// Appends one signed record to the workspace's membership log. The
   /// server holds each sequence number once.
@@ -54,67 +60,37 @@ abstract interface class SyncServer {
   Future<void> appendKeyBundle(KeyBundle bundle);
 }
 
-/// Port: where two devices of the same account meet to link (Supabase in
-/// production). The server relays two sealed messages and learns nothing
-/// but their size and the link's random id; every method throws
-/// [ServerUnavailableException] when it cannot be reached.
-abstract interface class DeviceLinkChannel {
-  Future<void> postOffer(LinkOffer offer);
-
-  /// The newest offer this account posted in the last few minutes.
-  Future<LinkOffer?> latestOffer();
-
-  Future<void> postAnswer(LinkAnswer answer);
-
-  /// The answers posted for [link], oldest first.
-  Future<List<LinkAnswer>> answers(LinkId link);
-
-  /// Removes what was posted for [link], once it is done with.
-  Future<void> close(LinkId link);
-}
-
-/// Port: where an owner and another person's device meet to join (Supabase
-/// in production). Like [DeviceLinkChannel], but across accounts: the offer
-/// is found by its lookup, and its answers are read by the account that
-/// posted it. Every method throws [ServerUnavailableException] when the
-/// server cannot be reached.
+/// Port: where an owner and a device that knows a code meet to join: a
+/// device of the owner's or another person's. The offer is found by its
+/// lookup; only the owner who posted it reads its answers and closes it.
+/// Every method throws [ServerUnavailableException] when the server cannot
+/// be reached.
 abstract interface class InviteChannel {
-  Future<void> postInvite(InviteOffer offer);
+  /// Posts [offer] for [workspace], whose owner this device must be. Throws
+  /// [LookupTakenException] when another offer holds the lookup.
+  Future<void> postInvite(WorkspaceId workspace, InviteOffer offer);
 
   /// The newest offer posted under [lookup] in the last few minutes.
   Future<InviteOffer?> invite(String lookup);
 
   Future<void> postInviteAnswer(InviteAnswer answer);
 
-  /// The answers to this account's offer under [lookup], oldest first.
+  /// The answers to this device's offer under [lookup], oldest first.
   Future<List<InviteAnswer>> inviteAnswers(String lookup);
 
   /// Removes the offer under [lookup] and its answers.
   Future<void> closeInvite(String lookup);
 }
 
-/// Port: which server account each member signs in with, so that removing
-/// a member also shuts its account out once no other member uses it. Every
-/// method throws [ServerUnavailableException] when the server cannot be
-/// reached.
-abstract interface class MemberAccounts {
-  /// Lets [account] (this device's own when null) into [workspace] and
-  /// records that [member] signs in with it; [manages] lets it admit and
-  /// remove others, and without [writes] (a member that only reads) it
-  /// appends nothing and changes no blob. An account keeps the most any of
-  /// its members was given. Safe to repeat.
-  Future<void> admitMember(
-    WorkspaceId workspace,
-    MemberId member, {
-    AccountId? account,
-    bool manages = false,
-    bool writes = true,
-  });
+/// Port: reaches the sync server as one device.
+abstract interface class SyncGateway {
+  /// The server, every request signed by [signer]'s device.
+  SyncServer server(RequestSigner signer);
 
-  /// Forgets [member]'s account and removes it from [workspace] once no
-  /// other member uses it; this device's own account always stays. Safe to
-  /// repeat.
-  Future<void> removeMember(WorkspaceId workspace, MemberId member);
+  /// Codes: reading an offer and answering it need no signature (the
+  /// device has no workspace yet); posting one, reading its answers and
+  /// closing it need [signer], the owner's.
+  InviteChannel invites(RequestSigner? signer);
 }
 
 enum SyncStream {

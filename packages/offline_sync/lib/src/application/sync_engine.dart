@@ -1,10 +1,7 @@
-import 'dart:typed_data';
-
 import 'package:collaboration_access_control/collaboration_access_control.dart';
 import 'package:identity_cryptography/identity_cryptography.dart';
 
 import '../core/conflict_resolver.dart';
-import '../core/device_link.dart';
 import '../core/local_record.dart';
 import '../core/record_revision.dart';
 import '../core/sync_exception.dart';
@@ -64,7 +61,6 @@ final class SyncEngine {
     required this._ledger,
     required this._keyring,
     this._journal,
-    this._accounts,
   }) : _ledgers = MembershipLedger(_identities),
        _authenticator = RevisionAuthenticator(_identities);
 
@@ -82,10 +78,6 @@ final class SyncEngine {
   /// Where verified membership and the bundles granting this device keys
   /// are kept, so the vault reopens offline knowing all it learned.
   final VaultStore? _journal;
-
-  /// Which server account each member uses; null where the server keeps
-  /// no such list (offline builds, tests).
-  final MemberAccounts? _accounts;
   final MembershipLedger _ledgers;
   final RevisionAuthenticator _authenticator;
   VerifiedLedger _ledger;
@@ -195,13 +187,29 @@ final class SyncEngine {
   /// log that fails verification; nothing past that point is applied.
   ///
   /// Throws [RemovedFromWorkspaceException] once this device learns that an
-  /// owner removed it.
+  /// owner removed it, and [NotAdmittedException] when the server does not
+  /// let it in for any other reason.
   Future<SyncReport> sync() async {
     if (removed) throw const RemovedFromWorkspaceException();
     try {
+      return await _sync();
+    } on NotAdmittedException {
+      // A removed member still reads the log: learn it from a signed record
+      // rather than from the server's word.
+      try {
+        await _catchUpMembership();
+      } on ServerUnavailableException {
+        return const SyncReport(offline: true);
+      }
+      if (removed) throw const RemovedFromWorkspaceException();
+      rethrow;
+    }
+  }
+
+  Future<SyncReport> _sync() async {
+    try {
       await _publishMembership();
       await _publishPendingBundle();
-      await _publishPendingRemovals();
       final pushed = await _push();
       final heads = await _server.heads(_workspace);
       if (heads == null || heads.membership > _ledger.records.length) {
@@ -222,28 +230,16 @@ final class SyncEngine {
     }
   }
 
-  /// Admits [device] with [role]: lets its server [account] in (this
-  /// device's own when null, for another device of the same person),
-  /// appends it to the membership log, publishes the record and grants it
-  /// every GroupKey this device holds. Safe to repeat: a device already
-  /// admitted is only granted the keys again, in case its first bundle
-  /// never went out.
-  Future<void> admit(
-    PublicIdentity device, {
-    Role role = Role.owner,
-    AccountId? account,
-  }) async {
+  /// Admits [device] with [role]: appends it to the membership log,
+  /// publishes the record and grants it every GroupKey this device holds.
+  /// From then on the server admits its signed requests. Safe to repeat: a
+  /// device already admitted is only granted the keys again, in case its
+  /// first bundle never went out.
+  Future<void> admit(PublicIdentity device, {Role role = Role.owner}) async {
     if (removed) throw const RemovedFromWorkspaceException();
     await _publishMembership();
     await _catchUpMembership();
     final id = MemberId.of(device);
-    await _accounts?.admitMember(
-      _workspace,
-      id,
-      account: account,
-      manages: role.managesMembers,
-      writes: role.writesContent,
-    );
     final KeyBundle bundle;
     if (_ledger.workspace.isMember(id)) {
       bundle = _administration.grantAll(
@@ -270,7 +266,8 @@ final class SyncEngine {
 
   /// Removes [member], another device or person, and rotates the GroupKey:
   /// what anyone writes from now on is sealed under a key granted only to
-  /// those who remain. [member] keeps what it already holds.
+  /// those who remain, and the server stops admitting [member]'s requests
+  /// once it holds the record. [member] keeps what it already holds.
   ///
   /// Needs the server, to see the latest membership first; offline it
   /// throws [ServerUnavailableException] with nothing changed. Once the
@@ -294,79 +291,9 @@ final class SyncEngine {
     await _journal?.appendKeyBundles([bundle]);
     await _savePendingBundle(bundle);
     _ledger = update.ledger;
-    await _savePendingRemovals({...await _loadPendingRemovals(), member});
     await _publishMembership();
     await _publishPendingBundle();
-    await _publishPendingRemovals();
   }
-
-  /// Members removed here whose server accounts are still to be shut out.
-  static const _pendingRemovals = 'sync.pending-removals';
-
-  Future<Set<MemberId>> _loadPendingRemovals() async {
-    final journal = _journal;
-    if (_accounts == null) return {};
-    if (journal == null) return {..._unsavedRemovals};
-    final sealed = await journal.loadSetting(_pendingRemovals);
-    if (sealed == null) return {};
-    try {
-      final bytes = _envelopes.open(
-        sealed,
-        key: _localKey,
-        associatedData: _removalsSlot,
-      );
-      final keys = <MemberId>{};
-      for (var i = 0; i + 32 <= bytes.length; i += 32) {
-        keys.add(
-          MemberId(
-            PublicSigningKey.fromBytes(Uint8List.sublistView(bytes, i, i + 32)),
-          ),
-        );
-      }
-      return keys;
-    } on CryptographyException {
-      return {};
-    }
-  }
-
-  Future<void> _savePendingRemovals(Set<MemberId> members) async {
-    final journal = _journal;
-    if (_accounts == null) return;
-    if (journal == null) {
-      _unsavedRemovals = members;
-      return;
-    }
-    await journal.saveSetting(
-      _pendingRemovals,
-      members.isEmpty
-          ? null
-          : _envelopes.seal(
-              Uint8List.fromList([
-                for (final member in members) ...member.signingKey.bytes,
-              ]),
-              key: _localKey,
-              associatedData: _removalsSlot,
-            ),
-    );
-  }
-
-  Set<MemberId> _unsavedRemovals = {};
-
-  Future<void> _publishPendingRemovals() async {
-    final accounts = _accounts;
-    if (accounts == null) return;
-    final pending = await _loadPendingRemovals();
-    if (pending.isEmpty) return;
-    for (final member in pending) {
-      await accounts.removeMember(_workspace, member);
-    }
-    await _savePendingRemovals({});
-  }
-
-  AssociatedData get _removalsSlot => AssociatedData.forContext(
-    'modusnote.pending-removals.v1',
-    _workspace.hex,
-  );
 
   /// A rotation's bundle waits here until the server holds it: until then
   /// the other members cannot write under the new epoch.
@@ -431,7 +358,8 @@ final class SyncEngine {
   }
 
   /// Appends the local membership records the server does not hold yet.
-  /// The founder first registers the workspace; records the server already
+  /// The founder first registers the workspace with its first record, which
+  /// the server keeps as the log's start; records the server already
   /// holds (a sync cut short after appending them) must be ours, or the
   /// server is serving another log under this workspace.
   Future<void> _publishMembership() async {
@@ -439,7 +367,7 @@ final class SyncEngine {
     var published = await _store.loadCursor(SyncStream.membership);
     if (published >= local.length) return;
     if (published == 0 && local.first.author == _myId) {
-      await _server.createWorkspace(_workspace);
+      await _server.createWorkspace(local.first);
     }
     final held = await _server.membership(_workspace, from: published);
     for (final record in held) {

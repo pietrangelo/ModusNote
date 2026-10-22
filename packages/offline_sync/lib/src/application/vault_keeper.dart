@@ -4,7 +4,7 @@ import 'dart:typed_data';
 import 'package:collaboration_access_control/collaboration_access_control.dart';
 import 'package:identity_cryptography/identity_cryptography.dart';
 
-import '../core/device_link.dart';
+import '../core/invite.dart';
 import '../core/passkey_slot.dart';
 import '../core/record_revision.dart';
 import '../core/sync_exception.dart';
@@ -13,6 +13,7 @@ import '../core/vault_backup.dart';
 import '../core/vault_header.dart';
 import 'bundle_order.dart';
 import 'ports.dart';
+import 'request_signer.dart';
 import 'sync_engine.dart';
 
 /// An open vault: the device identity, its local key and the GroupKeys, all
@@ -28,6 +29,7 @@ final class UnlockedVault {
     required this._identity,
     required this._localKey,
     required this._keyring,
+    required this.signer,
   });
 
   final MemberId member;
@@ -36,6 +38,9 @@ final class UnlockedVault {
   final IdentityKeyPair _identity;
   final SymmetricKey _localKey;
   final GroupKeyring _keyring;
+
+  /// Signs this device's requests to the sync server, until [lock].
+  final RequestSigner signer;
   var _locked = false;
 
   bool get isLocked => _locked;
@@ -68,8 +73,8 @@ final class VaultKeeper {
   VaultKeeper({
     required this._vaults,
     required this._records,
-    required this._server,
     required this._identities,
+    required this._hasher,
     required this._keys,
     required this._subkeys,
     required this._envelopes,
@@ -78,9 +83,7 @@ final class VaultKeeper {
     required this._random,
     required this._kdf,
     this._passkeys,
-    this._links,
-    this._invites,
-    this._accounts,
+    this._gateway,
   }) : _encapsulation = encapsulation,
        _administration = WorkspaceAdministration(
          identities: _identities,
@@ -93,23 +96,16 @@ final class VaultKeeper {
 
   final VaultStore _vaults;
   final LocalRecordStore Function(WorkspaceId) _records;
-  final SyncServer _server;
   final IdentityService _identities;
+  final ContentHasher _hasher;
   final KeyDerivationService _keys;
   final SubkeyDerivationService _subkeys;
   final EnvelopeEncryptor _envelopes;
   final KeyEncapsulation _encapsulation;
   final PasskeyPrf? _passkeys;
 
-  /// Where devices of one account meet to link; null without a server.
-  final DeviceLinkChannel? _links;
-
-  /// Where an owner and another person's device meet; null without a
-  /// server.
-  final InviteChannel? _invites;
-
-  /// Which account each member signs in with; null without a server.
-  final MemberAccounts? _accounts;
+  /// The sync server; null in builds without one, which stay offline.
+  final SyncGateway? _gateway;
   final WorkspaceAdministration _administration;
   final Clock _clock;
   final Random _random;
@@ -120,11 +116,8 @@ final class VaultKeeper {
   /// Whether this platform can unlock with a passkey at all.
   bool get offersPasskeys => _passkeys != null;
 
-  /// Whether this build can link devices into one workspace.
-  bool get offersLinking => _links != null;
-
-  /// Whether this build can invite other people's accounts.
-  bool get offersInvites => _invites != null && _accounts != null;
+  /// Whether this build can bring other devices in with a code.
+  bool get offersInvites => _gateway != null;
 
   /// Whether a passkey is enrolled and this platform can use it.
   Future<bool> get hasPasskey async =>
@@ -534,180 +527,64 @@ final class VaultKeeper {
         id: header.localKeyId,
       );
 
+  /// Signs requests as [device], which stays owned by the caller.
+  RequestSigner _signer(IdentityKeyPair device) => RequestSigner(
+    identities: _identities,
+    hasher: _hasher,
+    device: device,
+    clock: _clock,
+    random: _random,
+  );
+
+  SyncServer _serverFor(RequestSigner signer) =>
+      _gateway?.server(signer) ?? const _OfflineServer();
+
   UnlockedVault _open(
     VaultHeader header,
     IdentityKeyPair identity,
     SymmetricKey localKey,
     VerifiedLedger ledger,
     GroupKeyring keyring,
-  ) => UnlockedVault._(
-    member: MemberId.of(identity.publicIdentity),
-    workspace: header.workspace,
-    identity: identity,
-    localKey: localKey,
-    keyring: keyring,
-    engine: SyncEngine(
-      server: _server,
-      store: _records(header.workspace),
-      identities: _identities,
-      administration: _administration,
-      contents: WorkspaceContentCipher(_envelopes),
-      envelopes: _envelopes,
+  ) {
+    final signer = _signer(identity);
+    return UnlockedVault._(
+      member: MemberId.of(identity.publicIdentity),
+      workspace: header.workspace,
+      identity: identity,
       localKey: localKey,
-      clock: _clock,
-      me: identity,
-      ledger: ledger,
       keyring: keyring,
-      journal: _vaults,
-      accounts: _accounts,
-    ),
-  );
+      signer: signer,
+      engine: SyncEngine(
+        server: _serverFor(signer),
+        store: _records(header.workspace),
+        identities: _identities,
+        administration: _administration,
+        contents: WorkspaceContentCipher(_envelopes),
+        envelopes: _envelopes,
+        localKey: localKey,
+        clock: _clock,
+        me: identity,
+        ledger: ledger,
+        keyring: keyring,
+        journal: _vaults,
+      ),
+    );
+  }
 
   /// How long a code stays good, on both devices.
   static const linkLifetime = Duration(minutes: 10);
 
-  DeviceLinkChannel get _channel =>
-      _links ?? (throw UnsupportedError('no server to link devices through'));
+  SyncGateway get _server =>
+      _gateway ?? (throw UnsupportedError('no server to invite through'));
 
-  /// Starts linking another device into the open [vault]'s workspace:
-  /// stretches [code] (a fresh [LinkCode], shown to the user) with Argon2id
-  /// and posts the workspace's [Invitation] sealed under it. The returned
-  /// [LinkOffering] admits the device that answers with the same code.
-  ///
-  /// [code] is consumed.
-  Future<LinkOffering> offerLink(
-    UnlockedVault vault,
-    PasswordSecret code,
-  ) async {
-    final links = _channel;
-    final id = LinkId.random(_random);
-    final salt = _keys.newSalt();
-    final SymmetricKey key;
-    try {
-      if (vault.isLocked) throw const VaultLockedException();
-      key = await _keys.deriveKey(password: code, salt: salt, parameters: _kdf);
-    } finally {
-      code.dispose();
-    }
-    try {
-      if (vault.isLocked) throw const VaultLockedException();
-      final ledger = vault.engine.ledger;
-      final invitation = Invitation(
-        workspace: ledger.workspace.id,
-        founder: ledger.records.first.author,
-      );
-      await links.postOffer(
-        LinkOffer(
-          id: id,
-          salt: salt,
-          sealedInvitation: _envelopes.seal(
-            invitation.toBytes(),
-            key: key,
-            associatedData: LinkOffer.associatedData(id),
-          ),
-        ),
-      );
-    } catch (_) {
-      key.dispose();
-      rethrow;
-    }
-    return LinkOffering._(
-      keeper: this,
-      vault: vault,
-      id: id,
-      key: key,
-      expiresAt: _clock.now().add(linkLifetime),
-    );
-  }
-
-  /// Joins the workspace of another device of this account, on a device
-  /// with no vault yet: opens that device's offer with [code], posts this
-  /// device's new identity back under the same key, and stretches
-  /// [passphrase] into the MasterKey of the vault to be. The returned
-  /// [LinkRequest] creates the vault once the other device has admitted
-  /// this one.
-  ///
-  /// Throws [VaultAlreadyExistsException], [LinkCodeRejectedException] or
-  /// [ServerUnavailableException]. [code] and [passphrase] are consumed.
-  Future<LinkRequest> join({
-    required PasswordSecret code,
-    required PasswordSecret passphrase,
-  }) async {
-    SymmetricKey? linkKey;
-    SymmetricKey? master;
-    IdentityKeyPair? identity;
-    try {
-      final links = _channel;
-      if (await exists) throw const VaultAlreadyExistsException();
-      final offer =
-          await links.latestOffer() ??
-          (throw const LinkCodeRejectedException());
-      linkKey = await _keys.deriveKey(
-        password: code,
-        salt: offer.salt,
-        parameters: _kdf,
-      );
-      final Invitation invitation;
-      try {
-        invitation = Invitation.parse(
-          _envelopes.open(
-            offer.sealedInvitation,
-            key: linkKey,
-            associatedData: LinkOffer.associatedData(offer.id),
-          ),
-        );
-      } on AuthenticationTagMismatchException {
-        throw const LinkCodeRejectedException();
-      } on CollaborationException {
-        throw const LinkCodeRejectedException();
-      }
-      final salt = _keys.newSalt();
-      master = await _keys.deriveKey(
-        password: passphrase,
-        salt: salt,
-        parameters: _kdf,
-      );
-      identity = _identities.generateIdentity();
-      await links.postAnswer(
-        LinkAnswer(
-          id: offer.id,
-          sealedIdentity: _envelopes.seal(
-            identity.publicIdentity.toBytes(),
-            key: linkKey,
-            associatedData: LinkAnswer.associatedData(offer.id),
-          ),
-        ),
-      );
-      final request = LinkRequest._(
-        keeper: this,
-        invitation: invitation,
-        salt: salt,
-        master: master,
-        identity: identity,
-        expiresAt: _clock.now().add(linkLifetime),
-      );
-      master = null;
-      identity = null;
-      return request;
-    } finally {
-      code.dispose();
-      passphrase.dispose();
-      linkKey?.dispose();
-      master?.dispose();
-      identity?.dispose();
-    }
-  }
-
-  InviteChannel get _inviteChannel =>
-      _invites ?? (throw UnsupportedError('no server to invite through'));
-
-  /// Starts inviting another person into the open [vault]'s workspace, the
-  /// way [offerLink] links a device of the same account: [code] (a fresh
-  /// [InviteCode], given to that person) is stretched with Argon2id and
+  /// Starts bringing a device into the open [vault]'s workspace: another
+  /// of the owner's (with [Role.owner]) or another person's. [code] (a
+  /// fresh [InviteCode], shown on screen) is stretched with Argon2id and
   /// seals the workspace's [Invitation], posted under the code's lookup.
   /// The returned [InviteOffering] admits, with [role], the device that
-  /// answers with the same code, and lets its account into the workspace.
+  /// answers with the same code.
   ///
+  /// Throws [LookupTakenException] when another offer holds the lookup.
   /// [code] is consumed.
   Future<InviteOffering> offerInvite(
     UnlockedVault vault,
@@ -715,7 +592,7 @@ final class VaultKeeper {
     required String lookup,
     required Role role,
   }) async {
-    final invites = _inviteChannel;
+    final invites = _server.invites(vault.signer);
     final salt = _keys.newSalt();
     final SymmetricKey key;
     try {
@@ -732,6 +609,7 @@ final class VaultKeeper {
         founder: ledger.records.first.author,
       );
       await invites.postInvite(
+        ledger.workspace.id,
         InviteOffer(
           lookup: lookup,
           salt: salt,
@@ -749,6 +627,7 @@ final class VaultKeeper {
     return InviteOffering._(
       keeper: this,
       vault: vault,
+      invites: invites,
       lookup: lookup,
       role: role,
       key: key,
@@ -756,10 +635,9 @@ final class VaultKeeper {
     );
   }
 
-  /// Accepts another person's invitation on a device with no vault yet,
-  /// signed in with [account]: opens the offer found under [lookup] with
-  /// [code], posts this device's new identity and [account] back under the
-  /// same key, and stretches [passphrase] into the MasterKey of the vault to
+  /// Joins a workspace with a code, on a device with no vault yet: opens
+  /// the offer found under [lookup] with [code], posts this device's new
+  /// identity back under the same key, and stretches [passphrase] into the MasterKey of the vault to
   /// be. The returned [LinkRequest] creates the vault once the owner has
   /// admitted this device.
   ///
@@ -768,14 +646,13 @@ final class VaultKeeper {
   Future<LinkRequest> acceptInvite({
     required PasswordSecret code,
     required String lookup,
-    required AccountId account,
     required PasswordSecret passphrase,
   }) async {
     SymmetricKey? inviteKey;
     SymmetricKey? master;
     IdentityKeyPair? identity;
     try {
-      final invites = _inviteChannel;
+      final invites = _server.invites(null);
       if (await exists) throw const VaultAlreadyExistsException();
       final offer =
           await invites.invite(lookup) ??
@@ -811,7 +688,7 @@ final class VaultKeeper {
         InviteAnswer(
           lookup: lookup,
           sealedJoiner: _envelopes.seal(
-            InviteAnswer.joiner(identity.publicIdentity, account),
+            InviteAnswer.joiner(identity.publicIdentity),
             key: inviteKey,
             associatedData: InviteAnswer.associatedData(lookup),
           ),
@@ -836,78 +713,6 @@ final class VaultKeeper {
       identity?.dispose();
     }
   }
-}
-
-/// A link offered from an open vault, waiting for the new device's answer.
-/// It holds the code's key until it admits a device, expires or is
-/// cancelled.
-final class LinkOffering {
-  LinkOffering._({
-    required this._keeper,
-    required this._vault,
-    required this.id,
-    required this._key,
-    required this.expiresAt,
-  });
-
-  final VaultKeeper _keeper;
-  final UnlockedVault _vault;
-  final LinkId id;
-  final SymmetricKey _key;
-  final DateTime expiresAt;
-
-  bool get isClosed => _key.isDisposed;
-
-  /// Looks for an answer sealed with the code and admits its device: the
-  /// member id it now has, or null while no one has answered. An answer
-  /// that does not open is ignored, so only the code's holder gets in.
-  ///
-  /// Throws [LinkExpiredException] past [expiresAt] or once closed,
-  /// [VaultLockedException] once the vault is locked, and
-  /// [ServerUnavailableException] offline, after which a later call retries.
-  Future<MemberId?> poll() async {
-    if (isClosed) throw const LinkExpiredException();
-    if (_vault.isLocked) {
-      cancel();
-      throw const VaultLockedException();
-    }
-    if (!_keeper._clock.now().isBefore(expiresAt)) {
-      cancel();
-      throw const LinkExpiredException();
-    }
-    final links = _keeper._channel;
-    for (final answer in await links.answers(id)) {
-      if (answer.id != id) continue;
-      if (isClosed) throw const LinkExpiredException();
-      final PublicIdentity device;
-      try {
-        device = PublicIdentity.parse(
-          _keeper._envelopes.open(
-            answer.sealedIdentity,
-            key: _key,
-            associatedData: LinkAnswer.associatedData(id),
-          ),
-        );
-      } on CryptographyException {
-        continue;
-      }
-      final member = MemberId.of(device);
-      // Only the code's holder could seal it, but this device is not new.
-      if (member == _vault.member) continue;
-      if (_vault.isLocked) throw const VaultLockedException();
-      await _vault.engine.admit(device);
-      cancel();
-      try {
-        await links.close(id);
-      } on ServerUnavailableException {
-        // The rows expire on the server anyway.
-      }
-      return member;
-    }
-    return null;
-  }
-
-  void cancel() => _key.dispose();
 }
 
 /// A device waiting to be admitted, with its new identity and the
@@ -947,14 +752,21 @@ final class LinkRequest {
       throw const LinkExpiredException();
     }
     final workspace = _invitation.workspace;
-    final records = await keeper._server.membership(workspace, from: 0);
+    // Signed by the new identity: the server answers once it is a member.
+    final server = keeper._serverFor(keeper._signer(_identity));
+    final List<MembershipRecord> records;
+    try {
+      records = await server.membership(workspace, from: 0);
+    } on NotAdmittedException {
+      return null;
+    }
     if (records.isEmpty) return null;
     final ledger = MembershipLedger(keeper._identities)
         .verify(records, invitation: _invitation);
     final me = MemberId.of(_identity.publicIdentity);
     if (!ledger.workspace.isMember(me)) return null;
 
-    final bundles = await keeper._server.keyBundles(workspace, after: 0);
+    final bundles = await server.keyBundles(workspace, after: 0);
     if (isClosed) throw const LinkExpiredException();
     final keyring = GroupKeyring(workspace);
     final granted = <KeyBundle>[];
@@ -964,10 +776,7 @@ final class LinkRequest {
       if (bundle.atSequence >= ledger.records.length) {
         // Read again after the record it names, which the engine will
         // fetch, unless the server does not hold that record.
-        if (await recordWillCome(
-          bundle,
-          heads ??= keeper._server.heads(workspace),
-        )) {
+        if (await recordWillCome(bundle, heads ??= server.heads(workspace))) {
           break;
         }
         cursor = position;
@@ -1059,6 +868,7 @@ final class InviteOffering {
   InviteOffering._({
     required this._keeper,
     required this._vault,
+    required this._invites,
     required this.lookup,
     required this.role,
     required this._key,
@@ -1067,6 +877,7 @@ final class InviteOffering {
 
   final VaultKeeper _keeper;
   final UnlockedVault _vault;
+  final InviteChannel _invites;
   final String lookup;
   final Role role;
   final SymmetricKey _key;
@@ -1074,9 +885,14 @@ final class InviteOffering {
 
   bool get isClosed => _key.isDisposed;
 
-  /// Like [LinkOffering.poll]: admits, with [role], the device of the first
-  /// answer that opens with the code, and lets the account it names into
-  /// the workspace; null while no one has answered.
+  /// Looks for an answer sealed with the code and admits its device with
+  /// [role]: the member id it now has, or null while no one has answered.
+  /// An answer that does not open is ignored, so only the code's holder
+  /// gets in.
+  ///
+  /// Throws [LinkExpiredException] past [expiresAt] or once closed,
+  /// [VaultLockedException] once the vault is locked, and
+  /// [ServerUnavailableException] offline, after which a later call retries.
   Future<MemberId?> poll() async {
     if (isClosed) throw const LinkExpiredException();
     if (_vault.isLocked) {
@@ -1087,14 +903,13 @@ final class InviteOffering {
       cancel();
       throw const LinkExpiredException();
     }
-    final invites = _keeper._inviteChannel;
+    final invites = _invites;
     for (final answer in await invites.inviteAnswers(lookup)) {
       if (answer.lookup != lookup) continue;
       if (isClosed) throw const LinkExpiredException();
       final PublicIdentity device;
-      final AccountId account;
       try {
-        (device, account) = InviteAnswer.readJoiner(
+        device = InviteAnswer.readJoiner(
           _keeper._envelopes.open(
             answer.sealedJoiner,
             key: _key,
@@ -1109,7 +924,7 @@ final class InviteOffering {
       final member = MemberId.of(device);
       if (member == _vault.member) continue;
       if (_vault.isLocked) throw const VaultLockedException();
-      await _vault.engine.admit(device, role: role, account: account);
+      await _vault.engine.admit(device, role: role);
       cancel();
       try {
         await invites.closeInvite(lookup);
@@ -1122,4 +937,46 @@ final class InviteOffering {
   }
 
   void cancel() => _key.dispose();
+}
+
+/// The server of a build without one: always out of reach, so edits wait
+/// in the queue, already sealed.
+final class _OfflineServer implements SyncServer {
+  const _OfflineServer();
+
+  Never _away() => throw const ServerUnavailableException();
+
+  @override
+  Future<void> createWorkspace(MembershipRecord genesis) async => _away();
+
+  @override
+  Future<void> appendMembership(MembershipRecord record) async => _away();
+
+  @override
+  Future<void> push(WorkspaceId workspace, List<SealedRow> rows) async =>
+      _away();
+
+  @override
+  Future<SyncHeads?> heads(WorkspaceId workspace) async => _away();
+
+  @override
+  Future<List<PulledRow>> pull(
+    WorkspaceId workspace, {
+    required int after,
+  }) async => _away();
+
+  @override
+  Future<List<MembershipRecord>> membership(
+    WorkspaceId workspace, {
+    required int from,
+  }) async => _away();
+
+  @override
+  Future<List<(int, KeyBundle)>> keyBundles(
+    WorkspaceId workspace, {
+    required int after,
+  }) async => _away();
+
+  @override
+  Future<void> appendKeyBundle(KeyBundle bundle) async => _away();
 }

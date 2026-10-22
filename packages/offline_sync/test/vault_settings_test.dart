@@ -23,7 +23,7 @@ void main() {
   VaultKeeper keeper() => VaultKeeper(
     vaults: vaults,
     records: (_) => FakeLocalStore(),
-    server: FakeSyncServer()..online = false,
+    hasher: SodiumContentHasher(sodium),
     identities: SodiumIdentityService(sodium),
     keys: SodiumKeyDerivationService(sodium),
     subkeys: SodiumSubkeyDerivationService(sodium),
