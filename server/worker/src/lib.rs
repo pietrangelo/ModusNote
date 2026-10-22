@@ -6,8 +6,12 @@
 //! R2 through the binding, all in the EU. Nothing it handles is in clear,
 //! and it logs neither ids nor bodies.
 //!
-//! `api` is the HTTP surface without the runtime; `runtime` (wasm only)
-//! wires it to Workers.
+//! `api` is the HTTP surface and `serve` what each object does with a call,
+//! both without the runtime; `runtime` (wasm only) wires them to Workers.
 #![forbid(unsafe_code)]
 
 pub mod api;
+pub mod serve;
+
+#[cfg(target_arch = "wasm32")]
+mod runtime;

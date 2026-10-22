@@ -399,6 +399,7 @@ mod blobs {
 
         assert_eq!(reserve(&mut space, "a", 50), Ok(true));
         assert_eq!(reserve(&mut space, "a", 50), Ok(false));
+        assert_eq!(reserve(&mut space, "a", 51), Err(SyncError::Conflict), "another size was never counted");
         assert_eq!(reserve(&mut space, "b", 20), Err(SyncError::Throttled));
         let tomorrow = NOW + 86_400_000;
         let next_day = call_at(&alice, "POST", &path("/blobs"), b"", tomorrow, tomorrow);

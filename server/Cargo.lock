@@ -457,7 +457,9 @@ version = "0.1.0"
 dependencies = [
  "base64",
  "crypto",
+ "ed25519-dalek",
  "getrandom",
+ "hex",
  "js-sys",
  "ledger",
  "serde",

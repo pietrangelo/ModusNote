@@ -356,8 +356,8 @@ impl<S: Store, C: SignatureCheck> Workspace<S, C> {
     }
 
     /// Counts a blob a writer is about to upload against the workspace's
-    /// space and today's budget. The same id again counts once. True when
-    /// the id is new.
+    /// space and today's budget. The same id again counts once, and only
+    /// with the same size. True when the id is new.
     pub fn reserve_blob(&mut self, request: &Request<'_>, id: &str, size: u64) -> Result<bool, SyncError> {
         self.member(request, Role::writes_content)?;
         check_blob_id(id)?;
@@ -365,8 +365,9 @@ impl<S: Store, C: SignatureCheck> Workspace<S, C> {
             return Err(SyncError::Full);
         }
         let key = format!("{BLOBS}{id}");
-        if self.store.get(&key)?.is_some() {
-            return Ok(false);
+        if let Some(entry) = self.store.get(&key)? {
+            // Another size under the same id would upload what was never counted.
+            return if entry.get(..8).map(decode_u64) == Some(size) { Ok(false) } else { Err(SyncError::Conflict) };
         }
         let limits = self.limits;
         let today = request.now_ms / DAY_MS;
