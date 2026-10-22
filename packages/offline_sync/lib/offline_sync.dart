@@ -15,6 +15,7 @@ export 'src/core/local_record.dart';
 export 'src/core/outbox.dart';
 export 'src/core/passkey_slot.dart';
 export 'src/core/record_revision.dart';
+export 'src/core/signed_request.dart';
 export 'src/core/sync_exception.dart';
 export 'src/core/sync_row.dart';
 export 'src/core/vault_backup.dart';
