@@ -10,6 +10,7 @@ import '../core/record_revision.dart';
 import '../core/sync_exception.dart';
 import '../core/sync_row.dart';
 import '../core/version_vector.dart';
+import 'bundle_order.dart';
 import 'ports.dart';
 import 'revision_authenticator.dart';
 
@@ -471,13 +472,20 @@ final class SyncEngine {
   Future<void> _acceptKeyBundles() async {
     var cursor = await _store.loadCursor(SyncStream.keyBundles);
     final granted = <KeyBundle>[];
+    Future<SyncHeads?>? heads;
     for (final (position, bundle) in await _server.keyBundles(
       _workspace,
       after: cursor,
     )) {
-      // A bundle can arrive before the record it names: wait for that
-      // record instead of skipping a key this device may need.
-      if (bundle.atSequence >= _ledger.records.length) break;
+      if (bundle.atSequence >= _ledger.records.length) {
+        // A bundle can arrive before the record it names: wait for that
+        // record instead of skipping a key this device may need.
+        if (await recordWillCome(bundle, heads ??= _server.heads(_workspace))) {
+          break;
+        }
+        cursor = position;
+        continue;
+      }
       try {
         _administration.accept(
           bundle,

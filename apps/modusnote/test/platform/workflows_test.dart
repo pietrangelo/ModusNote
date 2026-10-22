@@ -46,4 +46,35 @@ void main() {
       );
     }
   });
+
+  test('adversary: secrets are read only from the production environment, '
+      'on main', () {
+    for (final workflow in workflows) {
+      final text = workflow.readAsStringSync();
+      if (!text.contains(r'${{ secrets.')) continue;
+      expect(
+        text,
+        contains('    environment: production\n'),
+        reason: workflow.path,
+      );
+      expect(
+        text,
+        contains("github.ref == 'refs/heads/main'"),
+        reason: workflow.path,
+      );
+    }
+  });
+
+  test('adversary: the web deploy runs by hand only from main', () {
+    final deploy = workflows.singleWhere(
+      (file) => file.path.endsWith('deploy-web.yml'),
+    );
+    expect(
+      deploy.readAsStringSync(),
+      contains(
+        "(github.event_name == 'workflow_dispatch' &&\n"
+        "       github.ref == 'refs/heads/main')",
+      ),
+    );
+  });
 }

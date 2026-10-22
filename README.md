@@ -26,3 +26,7 @@ dart analyze --fatal-infos
 dart run tool/architecture_guard/bin/architecture_guard.dart
 (cd apps/modusnote && flutter run)
 ```
+
+## Licenza
+
+Il codice è software libero con licenza [GNU Affero General Public License v3.0](LICENSE): chi lo modifica e lo distribuisce, o lo offre come servizio in rete, deve pubblicare i propri sorgenti con la stessa licenza. Il nome «Modus Notes» e il logo non sono concessi dalla licenza: vedi [NOTICE](NOTICE). Per segnalare una vulnerabilità: [SECURITY.md](SECURITY.md).

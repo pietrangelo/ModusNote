@@ -5,7 +5,9 @@ name: Android release
 # The bundle is signed with the upload key; Google Play re-signs what it
 # delivers with the app signing key it keeps (Play App Signing).
 #
-# Needs four repository secrets, never sent anywhere else:
+# Needs four secrets of the GitHub environment `production`, open to main
+# and to tags android-v* only (never repository secrets, which a workflow
+# pushed on any branch could read), never sent anywhere else:
 #   ANDROID_UPLOAD_KEYSTORE_BASE64  the upload keystore (.jks), in base64
 #   ANDROID_UPLOAD_STORE_PASSWORD   its password
 #   ANDROID_UPLOAD_KEY_ALIAS        the key's alias
@@ -35,7 +37,11 @@ env:
 
 jobs:
   bundle:
+    if: >-
+      github.ref == 'refs/heads/main' ||
+      startsWith(github.ref, 'refs/tags/android-v')
     runs-on: ubuntu-latest
+    environment: production
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
@@ -59,7 +65,7 @@ jobs:
           KEY_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEY_PASSWORD }}
         run: |
           if [ -z "$KEYSTORE" ] || [ -z "$STORE_PASSWORD" ] || [ -z "$KEY_ALIAS" ] || [ -z "$KEY_PASSWORD" ]; then
-            echo '::error::The ANDROID_UPLOAD_* repository secrets are not set.'
+            echo '::error::The ANDROID_UPLOAD_* secrets of the production environment are not set.'
             exit 1
           fi
           umask 077

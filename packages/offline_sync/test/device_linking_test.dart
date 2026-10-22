@@ -163,6 +163,20 @@ void main() {
     expect(vault, isNotNull);
   });
 
+  test('adversary: a bundle naming a record the server does not have does not '
+      'hold back joining', () async {
+    final offering = await offer();
+    final request = await join(browser);
+    addTearDown(request.cancel);
+    server.bundles.add(forgedBundle(founder.workspace, founder.member));
+
+    expect(await offering.poll(), isNotNull);
+    final vault = await request.poll();
+    addTearDown(() => vault?.lock());
+
+    expect(vault, isNotNull);
+  });
+
   test('the founder waits until the device answers', () async {
     final offering = await offer();
     addTearDown(offering.cancel);

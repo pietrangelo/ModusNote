@@ -6,8 +6,11 @@ name: Deploy web
 # its SHA-256 list goes in the job summary, so anyone can compare what
 # modus.serv.run serves with what this commit builds.
 #
-# Needs two repository secrets: CLOUDFLARE_API_TOKEN (Pages: Edit, nothing
-# else) and CLOUDFLARE_ACCOUNT_ID.
+# Needs two secrets of the GitHub environment `production`, open to main
+# only: CLOUDFLARE_API_TOKEN (Pages: Edit, nothing else) and
+# CLOUDFLARE_ACCOUNT_ID. Never repository secrets: a workflow pushed on any
+# branch, or run by hand from it, could read those and publish its own
+# bundle on modus.serv.run.
 
 on:
   workflow_run:
@@ -32,10 +35,12 @@ env:
 jobs:
   deploy:
     if: >-
-      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'workflow_dispatch' &&
+       github.ref == 'refs/heads/main') ||
       (github.event.workflow_run.conclusion == 'success' &&
        github.event.workflow_run.event == 'push')
     runs-on: ubuntu-latest
+    environment: production
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
