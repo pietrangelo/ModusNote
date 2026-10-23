@@ -3,9 +3,9 @@ name = "modusnote"
 main = "build/worker/shim.mjs"
 compatibility_date = "2026-09-15"
 
-# Production origin, from phase 5 of the move (CLAUDE.md, «Server su Durable Objects»),
-# and only with Pietrangelo's go-ahead: today modus.serv.run is still Cloudflare Pages.
-# Then: routes = [{ pattern = "modus.serv.run", custom_domain = true }]
+# Production origin (phase 5, Pietrangelo's go-ahead of 2026-10-23). The custom domain
+# needs modus.serv.run detached from the old Pages project and no CNAME left for it.
+routes = [{ pattern = "modus.serv.run", custom_domain = true }]
 workers_dev = false
 
 [build]
