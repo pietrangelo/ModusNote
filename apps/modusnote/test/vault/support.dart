@@ -4,7 +4,6 @@ import 'dart:typed_data';
 import 'package:identity_cryptography/identity_cryptography.dart';
 import 'package:identity_cryptography_adapters/identity_cryptography_adapters.dart';
 import 'package:modusnote/bootstrap/vault_wiring.dart';
-import 'package:modusnote/vault/offline_server.dart';
 import 'package:offline_sync/offline_sync.dart';
 import 'package:sodium/sodium_sumo.dart';
 import 'package:sqlite3/sqlite3.dart';
@@ -17,13 +16,13 @@ Future<void> loadSodium() async => sodium = await SodiumSumoInit.init();
 /// device; several keepers on the same [database] are app restarts.
 VaultKeeper keeperOn(
   Database database, {
-  SyncServer? server,
+  SyncGateway? gateway,
   PasskeyPrf? passkeys,
 }) => vaultKeeper(
   sodium: sodium,
   database: database,
   kdf: KdfParameters.interactive,
-  server: server ?? const OfflineSyncServer(),
+  gateway: gateway,
   passkeys: passkeys,
 );
 

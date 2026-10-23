@@ -1,0 +1,14 @@
+[package]
+name = "ledger"
+description = "The membership log, key bundles and signed requests as the sync server checks them: wire formats and rules, no I/O"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+
+[lints]
+workspace = true

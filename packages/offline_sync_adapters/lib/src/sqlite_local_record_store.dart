@@ -153,6 +153,13 @@ final class SqliteLocalRecordStore implements LocalRecordStore {
         [_workspace, id.hex, position],
       );
 
+  @override
+  Future<void> forgetServer() async => _transaction(() {
+    for (final table in ['cursors', 'unreadable_rows']) {
+      _database.execute('DELETE FROM $table WHERE workspace = ?', [_workspace]);
+    }
+  });
+
   void _transaction(void Function() body) => transaction(_database, body);
 
   static SealedRow _sealedRow(

@@ -103,7 +103,7 @@ void main() {
   VaultKeeper keeper({bool withPasskeys = true}) => VaultKeeper(
     vaults: vaults,
     records: (workspace) => records.putIfAbsent(workspace, FakeLocalStore.new),
-    server: FakeSyncServer()..online = false,
+    hasher: SodiumContentHasher(sodium),
     identities: SodiumIdentityService(sodium),
     keys: SodiumKeyDerivationService(sodium),
     subkeys: SodiumSubkeyDerivationService(sodium),

@@ -32,8 +32,8 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  SUPABASE_URL: https://oobxqzjzauhmurvxvhuo.supabase.co
-  SUPABASE_PUBLISHABLE_KEY: sb_publishable_OTXiD1NZMG56ALSGasr2zQ_aeCsZYYy
+  # The sync server: our Worker, which also serves the web client.
+  MODUSNOTE_SERVER: https://modus.serv.run
 
 jobs:
   bundle:
@@ -94,8 +94,7 @@ jobs:
         run: |
           flutter build appbundle --release \
             --build-number=$((GITHUB_RUN_NUMBER + 1)) \
-            --dart-define=MODUSNOTE_SUPABASE_URL="$SUPABASE_URL" \
-            --dart-define=MODUSNOTE_SUPABASE_ANON_KEY="$SUPABASE_PUBLISHABLE_KEY"
+            --dart-define=MODUSNOTE_SERVER="$MODUSNOTE_SERVER"
 
       - name: Forget the upload key
         if: always()

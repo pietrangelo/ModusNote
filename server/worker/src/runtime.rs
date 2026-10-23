@@ -1,0 +1,722 @@
+//! The Workers runtime: the request door, the three Durable Objects and R2.
+//!
+//! The Worker routes, checks the origin, throttles by address, reads a JSON
+//! body only once its declared length fits, checks a proof of work where
+//! one is due and spends from the guard's daily ceilings; then it hands the
+//! device's own request (method, path, `Authorization`, body) to the object
+//! that owns it, which verifies the signature against its log. Blob bodies
+//! never pass through an object: once the workspace's object has said yes,
+//! the Worker streams them between the device and R2.
+
+use std::cell::RefCell;
+
+use crypto::StrictEd25519;
+use js_sys::{Array, Object, Reflect, Uint8Array};
+use ledger::WorkspaceId;
+use sync::{Budget, Guard, Limits, Rendezvous, Store, Unavailable, Workspace};
+use wasm_bindgen::prelude::*;
+use worker::{
+    Bucket, Context, Data, Date, DurableObject, Env, Headers, Method, ObjectNamespace, Range, Request, RequestInit,
+    Response, ResponseBody, Result, ScheduledTime, State, Stub, durable_object, event,
+};
+
+use crate::api::{self, ApiError, InfoReply, POW_BITS, Route};
+use crate::serve::{self, BLOB_SIZE, Blake2b, Done, INTERNAL_OFFER, INTERNAL_SPEND, Incoming};
+
+/// Every object is created in the EU.
+const JURISDICTION: &str = "eu";
+const WORKSPACES: &str = "WORKSPACES";
+const CODES: &str = "CODES";
+const GUARD: &str = "GUARD";
+const GUARD_NAME: &str = "guard";
+const BLOBS: &str = "BLOBS";
+/// The workspace an object holds, kept beside the use case's keys so the
+/// alarm knows which prefix of R2 to clear.
+const NAME: &str = "name";
+/// Present while a deleted workspace's blobs are still in R2; the object
+/// answers 503 until they are gone, so nothing new lands under the prefix.
+const PURGE: &str = "purge";
+const DAY_MS: u64 = 86_400_000;
+/// How often a purge that did not finish tries again.
+const RETRY_MS: u64 = 60_000;
+/// Rounds of 1000 objects one purge deletes before it yields.
+const PURGE_ROUNDS: usize = 20;
+
+#[wasm_bindgen]
+extern "C" {
+    /// `ctx.storage` of a SQLite-backed Durable Object.
+    #[derive(Clone)]
+    type SyncStorage;
+
+    #[wasm_bindgen(method, getter)]
+    fn kv(this: &SyncStorage) -> SyncKv;
+
+    #[wasm_bindgen(method, catch, js_name = transactionSync)]
+    fn transaction_sync(
+        this: &SyncStorage,
+        step: &mut dyn FnMut() -> std::result::Result<JsValue, JsValue>,
+    ) -> std::result::Result<JsValue, JsValue>;
+
+    /// `ctx.storage.kv`: synchronous, so a run of calls is one write.
+    #[derive(Clone)]
+    type SyncKv;
+
+    #[wasm_bindgen(method, catch)]
+    fn get(this: &SyncKv, key: &str) -> std::result::Result<JsValue, JsValue>;
+
+    #[wasm_bindgen(method, catch)]
+    fn put(this: &SyncKv, key: &str, value: &Uint8Array) -> std::result::Result<(), JsValue>;
+
+    #[wasm_bindgen(method, catch)]
+    fn delete(this: &SyncKv, key: &str) -> std::result::Result<bool, JsValue>;
+
+    #[wasm_bindgen(method, catch)]
+    fn list(this: &SyncKv, options: &Object) -> std::result::Result<JsValue, JsValue>;
+}
+
+fn unavailable<E>(_: E) -> Unavailable {
+    Unavailable
+}
+
+/// A Durable Object's own storage, through its synchronous API: the port
+/// [`Store`] of the use cases.
+struct DurableKv {
+    storage: SyncStorage,
+    kv: SyncKv,
+}
+
+impl std::fmt::Debug for DurableKv {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("DurableKv")
+    }
+}
+
+impl DurableKv {
+    fn new(state: &State) -> Self {
+        let raw: JsValue = AsRef::<JsValue>::as_ref(state.storage().as_raw()).clone();
+        let storage: SyncStorage = raw.unchecked_into();
+        let kv = storage.kv();
+        Self { storage, kv }
+    }
+
+    fn text(&self, key: &str) -> Option<String> {
+        self.get(key).ok().flatten().and_then(|bytes| String::from_utf8(bytes).ok())
+    }
+}
+
+impl Store for DurableKv {
+    fn get(&self, key: &str) -> std::result::Result<Option<Vec<u8>>, Unavailable> {
+        let value = self.kv.get(key).map_err(unavailable)?;
+        if value.is_undefined() {
+            return Ok(None);
+        }
+        Ok(Some(Uint8Array::new(&value).to_vec()))
+    }
+
+    fn put(&mut self, key: &str, value: &[u8]) -> std::result::Result<(), Unavailable> {
+        self.kv.put(key, &Uint8Array::from(value)).map_err(unavailable)
+    }
+
+    fn delete(&mut self, key: &str) -> std::result::Result<(), Unavailable> {
+        self.kv.delete(key).map(drop).map_err(unavailable)
+    }
+
+    fn list(
+        &self,
+        prefix: &str,
+        start_after: Option<&str>,
+        limit: usize,
+    ) -> std::result::Result<Vec<(String, Vec<u8>)>, Unavailable> {
+        let options = Object::new();
+        Reflect::set(&options, &"prefix".into(), &prefix.into()).map_err(unavailable)?;
+        if let Some(after) = start_after {
+            Reflect::set(&options, &"startAfter".into(), &after.into()).map_err(unavailable)?;
+        }
+        if limit < u32::MAX as usize {
+            Reflect::set(&options, &"limit".into(), &(limit as f64).into()).map_err(unavailable)?;
+        }
+        let listed = self.kv.list(&options).map_err(unavailable)?;
+        let entries = js_sys::try_iter(&listed).map_err(unavailable)?.ok_or(Unavailable)?;
+        let mut out = Vec::new();
+        for entry in entries {
+            let pair: Array = entry.map_err(unavailable)?.unchecked_into();
+            let key = pair.get(0).as_string().ok_or(Unavailable)?;
+            out.push((key, Uint8Array::new(&pair.get(1)).to_vec()));
+        }
+        Ok(out)
+    }
+
+    fn transaction<T, E: From<Unavailable>>(
+        &mut self,
+        step: impl FnOnce(&mut Self) -> std::result::Result<T, E>,
+    ) -> std::result::Result<T, E> {
+        let storage = self.storage.clone();
+        let mut step = Some(step);
+        let mut outcome = None;
+        let committed = {
+            let mut run = || {
+                let result = step.take().map(|step| step(self));
+                let failed = !matches!(result, Some(Ok(_)));
+                outcome = result;
+                // Throwing is how a transaction is rolled back.
+                if failed { Err(JsValue::from_str("rolled back")) } else { Ok(JsValue::UNDEFINED) }
+            };
+            storage.transaction_sync(&mut run)
+        };
+        match (outcome, committed) {
+            (Some(Ok(value)), Ok(_)) => Ok(value),
+            (Some(Err(error)), _) => Err(error),
+            _ => Err(Unavailable.into()),
+        }
+    }
+
+    fn clear(&mut self) -> std::result::Result<(), Unavailable> {
+        loop {
+            let page = self.list("", None, 256)?;
+            if page.is_empty() {
+                return Ok(());
+            }
+            for (key, _) in page {
+                self.delete(&key)?;
+            }
+        }
+    }
+}
+
+fn now_ms() -> u64 {
+    Date::now().as_millis()
+}
+
+fn at(ms: u64) -> ScheduledTime {
+    ScheduledTime::new(js_sys::Date::new(&JsValue::from_f64(ms as f64)))
+}
+
+fn plain_headers(headers: &Headers, content_type: &str) -> Result<()> {
+    headers.set("Content-Type", content_type)?;
+    headers.set("Cache-Control", "no-store")?;
+    headers.set("X-Content-Type-Options", "nosniff")?;
+    headers.set("Referrer-Policy", "no-referrer")?;
+    Ok(())
+}
+
+fn respond(status: u16, body: String) -> Result<Response> {
+    let mut response = Response::ok(body)?.with_status(status);
+    plain_headers(response.headers_mut(), "application/json")?;
+    Ok(response)
+}
+
+fn fail(error: ApiError) -> Result<Response> {
+    respond(error.status(), error.body(now_ms()))
+}
+
+impl From<worker::Error> for ApiError {
+    fn from(_: worker::Error) -> Self {
+        Self::Unavailable
+    }
+}
+
+/// Where the objects live: in the EU. `OBJECT_PLACEMENT = "local"` exists
+/// only for `wrangler dev`, whose runtime has no jurisdictions.
+fn stub(env: &Env, binding: &str, name: &str) -> Result<Stub> {
+    let namespace = env.durable_object(binding)?;
+    if env.var("OBJECT_PLACEMENT").is_ok_and(|v| v.to_string() == "local") {
+        return namespace.get_by_name(name);
+    }
+    let jurisdiction = Reflect::get(namespace.as_ref(), &"jurisdiction".into())?;
+    let restricted =
+        jurisdiction.unchecked_into::<js_sys::Function>().call1(namespace.as_ref(), &JURISDICTION.into())?;
+    restricted.unchecked_into::<ObjectNamespace>().get_by_name(name)
+}
+
+/// Hands a call to an object. The host means nothing: a stub's fetch never
+/// leaves Cloudflare.
+async fn relay(
+    stub: &Stub,
+    method: &str,
+    target: &str,
+    authorization: Option<&str>,
+    body: &[u8],
+    blob_size: Option<u64>,
+) -> Result<Response> {
+    let headers = Headers::new();
+    if let Some(authorization) = authorization {
+        headers.set("Authorization", authorization)?;
+    }
+    if let Some(size) = blob_size {
+        headers.set(BLOB_SIZE, &size.to_string())?;
+    }
+    let mut init = RequestInit::new();
+    init.with_method(Method::from(method.to_owned())).with_headers(headers);
+    if !body.is_empty() {
+        init.with_body(Some(Uint8Array::from(body).into()));
+    }
+    stub.fetch_with_request(Request::new_with_init(&format!("https://object{target}"), &init)?).await
+}
+
+/// What an object received, read once.
+struct Received {
+    method: String,
+    path: String,
+    query: Option<String>,
+    authorization: Option<String>,
+    blob_size: Option<String>,
+    body: Vec<u8>,
+}
+
+impl Received {
+    async fn read(mut req: Request) -> Result<Self> {
+        let url = req.url()?;
+        Ok(Self {
+            method: req.method().to_string(),
+            path: url.path().to_owned(),
+            query: url.query().map(str::to_owned),
+            authorization: req.headers().get("Authorization")?,
+            blob_size: req.headers().get(BLOB_SIZE)?,
+            body: req.bytes().await?,
+        })
+    }
+
+    fn incoming(&self, now_ms: u64) -> Incoming<'_> {
+        Incoming {
+            method: &self.method,
+            path: &self.path,
+            query: self.query.as_deref(),
+            authorization: self.authorization.as_deref(),
+            body: &self.body,
+            blob_size: self.blob_size.as_deref(),
+            now_ms,
+        }
+    }
+}
+
+fn blob_key(workspace: &str, id: &str) -> String {
+    format!("{workspace}/{id}.enc")
+}
+
+/// Deletes every object under a workspace's prefix, a few thousand at a
+/// time; true when none is left.
+async fn purge_blobs(bucket: &Bucket, workspace: &str) -> Result<bool> {
+    let prefix = format!("{workspace}/");
+    for _ in 0..PURGE_ROUNDS {
+        let listed = bucket.list().prefix(prefix.clone()).limit(1000).execute().await?;
+        let keys: Vec<String> = listed.objects().iter().map(|object| object.key()).collect();
+        if keys.is_empty() {
+            return Ok(true);
+        }
+        bucket.delete_multiple(keys).await?;
+        if !listed.truncated() {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+type Space = Workspace<DurableKv, StrictEd25519>;
+
+/// What the idle alarm finds.
+enum Idle {
+    /// Nothing is kept (never founded, or deleted).
+    Gone,
+    /// Unused for too long: deleted now, its blobs follow.
+    Expired,
+    /// In use: look again then.
+    Until(u64),
+}
+
+/// One workspace: its log, bundles, rows, blob reservations and nonces, in
+/// the object's own SQLite storage; an alarm deletes it after
+/// [`Limits::idle_days`] without a signed request.
+#[durable_object(alarm)]
+pub struct ModusWorkspace {
+    state: State,
+    env: Env,
+    space: RefCell<Option<Space>>,
+}
+
+impl std::fmt::Debug for ModusWorkspace {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("ModusWorkspace")
+    }
+}
+
+impl ModusWorkspace {
+    /// Runs `step` on the use case; nothing awaits inside, so one call is
+    /// one step of the object.
+    fn with_space<T>(&self, step: impl FnOnce(&mut Space) -> T) -> T {
+        let mut slot = self.space.borrow_mut();
+        let space =
+            slot.get_or_insert_with(|| Workspace::new(DurableKv::new(&self.state), StrictEd25519, Limits::default()));
+        step(space)
+    }
+
+    /// Clears R2 under a deleted workspace's prefix, or leaves the mark and
+    /// an alarm to try again.
+    async fn purge(&self, workspace: &str) -> Result<()> {
+        let mut kv = DurableKv::new(&self.state);
+        kv.put(PURGE, workspace.as_bytes()).map_err(|_| worker::Error::RustError("storage".into()))?;
+        let done = purge_blobs(&self.env.bucket(BLOBS)?, workspace).await.unwrap_or(false);
+        if done {
+            let _ = kv.delete(PURGE);
+        } else {
+            self.state.storage().set_alarm(at(now_ms() + RETRY_MS)).await?;
+        }
+        Ok(())
+    }
+
+    async fn keep_alarm(&self) -> Result<()> {
+        let storage = self.state.storage();
+        if storage.get_alarm().await?.is_none() {
+            storage.set_alarm(at(now_ms() + Limits::default().idle_days * DAY_MS)).await?;
+        }
+        Ok(())
+    }
+}
+
+impl DurableObject for ModusWorkspace {
+    fn new(state: State, env: Env) -> Self {
+        Self { state, env, space: RefCell::new(None) }
+    }
+
+    async fn fetch(&self, req: Request) -> Result<Response> {
+        let received = Received::read(req).await?;
+        let Ok(route) = api::route(&received.method, &received.path, received.query.as_deref()) else {
+            return fail(ApiError::NotFound);
+        };
+        let Some(workspace) = route.workspace().map(|ws| ws.to_hex()) else { return fail(ApiError::NotFound) };
+        let mut kv = DurableKv::new(&self.state);
+        if kv.get(PURGE).ok().flatten().is_some() {
+            return fail(ApiError::Unavailable);
+        }
+        let done = self.with_space(|space| serve::workspace(space, &Blake2b, &received.incoming(now_ms())));
+        let done = match done {
+            Ok(done) => done,
+            Err(error) => return fail(error),
+        };
+        if kv.get(NAME).ok().flatten().is_none() && !matches!(done, Done::Deleted) {
+            let _ = kv.put(NAME, workspace.as_bytes());
+        }
+        self.keep_alarm().await?;
+        match done {
+            Done::Json(status, body) => respond(status, body),
+            Done::Deleted => {
+                self.purge(&workspace).await?;
+                respond(200, "{}".into())
+            }
+            Done::Released(ids) => {
+                let keys: Vec<String> = ids.iter().map(|id| blob_key(&workspace, id)).collect();
+                match self.env.bucket(BLOBS)?.delete_multiple(keys).await {
+                    Ok(()) => respond(200, "{}".into()),
+                    Err(_) => fail(ApiError::Unavailable),
+                }
+            }
+            Done::Offer { poster, sealed } => {
+                let mut response = Response::from_bytes([poster.0.as_slice(), &sealed].concat())?;
+                plain_headers(response.headers_mut(), "application/octet-stream")?;
+                Ok(response)
+            }
+        }
+    }
+
+    async fn alarm(&self) -> Result<Response> {
+        let kv = DurableKv::new(&self.state);
+        if let Some(workspace) = kv.text(PURGE) {
+            self.purge(&workspace).await?;
+            return Response::ok("");
+        }
+        let now = now_ms();
+        let idle = Limits::default().idle_days * DAY_MS;
+        let name = kv.text(NAME);
+        let outcome = self.with_space(|space| -> std::result::Result<Idle, sync::SyncError> {
+            Ok(match space.last_seen_ms()? {
+                None => Idle::Gone,
+                Some(_) if space.expire(now)? => Idle::Expired,
+                Some(seen) => Idle::Until(seen + idle),
+            })
+        });
+        match (outcome, name) {
+            (Ok(Idle::Expired), Some(workspace)) => self.purge(&workspace).await?,
+            (Ok(Idle::Until(next)), _) => self.state.storage().set_alarm(at(next.max(now + 1))).await?,
+            (Err(_), _) => self.state.storage().set_alarm(at(now + RETRY_MS)).await?,
+            _ => {}
+        }
+        Response::ok("")
+    }
+}
+
+/// One code's lookup: an owner's offer and the answers to it, for fifteen
+/// minutes; then an alarm forgets them.
+#[durable_object(alarm)]
+pub struct ModusRendezvous {
+    state: State,
+    meeting: RefCell<Option<Rendezvous<DurableKv, StrictEd25519>>>,
+}
+
+impl std::fmt::Debug for ModusRendezvous {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("ModusRendezvous")
+    }
+}
+
+impl ModusRendezvous {
+    fn with_meeting<T>(&self, step: impl FnOnce(&mut Rendezvous<DurableKv, StrictEd25519>) -> T) -> T {
+        let mut slot = self.meeting.borrow_mut();
+        step(slot.get_or_insert_with(|| Rendezvous::new(DurableKv::new(&self.state), StrictEd25519)))
+    }
+}
+
+impl DurableObject for ModusRendezvous {
+    fn new(state: State, _env: Env) -> Self {
+        Self { state, meeting: RefCell::new(None) }
+    }
+
+    async fn fetch(&self, req: Request) -> Result<Response> {
+        let received = Received::read(req).await?;
+        let outcome = self.with_meeting(|meeting| serve::rendezvous(meeting, &Blake2b, &received.incoming(now_ms())));
+        match outcome {
+            Ok((status, body)) => {
+                if received.path == INTERNAL_OFFER
+                    && let Ok(Some(expires)) = self.with_meeting(|meeting| meeting.expires_ms())
+                {
+                    self.state.storage().set_alarm(at(expires)).await?;
+                }
+                respond(status, body)
+            }
+            Err(error) => fail(error),
+        }
+    }
+
+    async fn alarm(&self) -> Result<Response> {
+        let now = now_ms();
+        let _ = self.with_meeting(|meeting| meeting.expire(now));
+        if let Ok(Some(expires)) = self.with_meeting(|meeting| meeting.expires_ms())
+            && expires > now
+        {
+            self.state.storage().set_alarm(at(expires)).await?;
+        }
+        Response::ok("")
+    }
+}
+
+/// The daily ceilings of the whole service, in one object.
+#[durable_object(fetch)]
+pub struct ModusGuard {
+    state: State,
+}
+
+impl std::fmt::Debug for ModusGuard {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("ModusGuard")
+    }
+}
+
+impl DurableObject for ModusGuard {
+    fn new(state: State, _env: Env) -> Self {
+        Self { state }
+    }
+
+    async fn fetch(&self, req: Request) -> Result<Response> {
+        let received = Received::read(req).await?;
+        let mut guard = Guard::new(DurableKv::new(&self.state));
+        match serve::guard(&mut guard, &received.incoming(now_ms())) {
+            Ok(admitted) => respond(200, if admitted { "1" } else { "0" }.into()),
+            Err(error) => fail(error),
+        }
+    }
+}
+
+/// Spends from a daily ceiling; 429 for everyone once it is reached.
+async fn spend(env: &Env, budget: Budget, amount: u64) -> std::result::Result<(), ApiError> {
+    let (name, default) = match budget {
+        Budget::Workspaces => ("DAILY_WORKSPACES", 500),
+        Budget::UploadBytes => ("DAILY_UPLOAD_BYTES", 20 << 30),
+    };
+    let ceiling = api::setting(env.var(name).ok().map(|v| v.to_string()).as_deref(), default);
+    let guard = stub(env, GUARD, GUARD_NAME)?;
+    let mut reply =
+        relay(&guard, "POST", INTERNAL_SPEND, None, &serve::spend_call(budget, amount, ceiling), None).await?;
+    match (reply.status_code(), reply.text().await?.as_str()) {
+        (200, "1") => Ok(()),
+        (200, "0") => Err(ApiError::RateLimited),
+        _ => Err(ApiError::Unavailable),
+    }
+}
+
+/// Throttles every call by client address, IPv6 by /64 and, for writes,
+/// also by /48 (kept in Cloudflare's memory, never stored by us).
+async fn rate_limited(env: &Env, req: &Request, write: bool) -> bool {
+    let binding = if write { "WRITE_LIMITER" } else { "READ_LIMITER" };
+    let Ok(limiter) = env.rate_limiter(binding) else { return api::throttled(write, None) };
+    let address = req.headers().get("CF-Connecting-IP").ok().flatten().unwrap_or_default();
+    if api::throttled(write, limiter.limit(api::limiter_key(&address)).await.ok().map(|o| o.success)) {
+        return true;
+    }
+    let Some(network) = api::network_key(&address).filter(|_| write) else { return false };
+    let Ok(limiter) = env.rate_limiter("NETWORK_WRITE_LIMITER") else { return true };
+    api::throttled(true, limiter.limit(network).await.ok().map(|o| o.success))
+}
+
+fn header(req: &Request, name: &str) -> Option<String> {
+    req.headers().get(name).ok().flatten()
+}
+
+/// A blob's upload: the workspace's object counts it (signed over an empty
+/// body: the note's digest vouches for the content), then the body streams
+/// to R2 without being held.
+async fn put_blob(
+    env: &Env,
+    req: &Request,
+    target: &str,
+    ws: &WorkspaceId,
+    id: &str,
+) -> std::result::Result<Response, ApiError> {
+    let size = api::declared_length(header(req, "Content-Length").as_deref(), Limits::default().blob_bytes)?;
+    let object = stub(env, WORKSPACES, &ws.to_hex())?;
+    let authorization = header(req, "Authorization");
+    let reply = relay(&object, "PUT", target, authorization.as_deref(), b"", Some(size)).await?;
+    if reply.status_code() != 200 {
+        return Ok(reply);
+    }
+    let bucket = env.bucket(BLOBS)?;
+    let key = blob_key(&ws.to_hex(), id);
+    if bucket.head(key.clone()).await?.is_some_and(|stored| stored.size() == size) {
+        return Ok(respond(200, "{}".into())?);
+    }
+    spend(env, Budget::UploadBytes, size).await?;
+    let body = req.inner().body().ok_or(ApiError::LengthRequired)?;
+    let stored = bucket.put(key.clone(), Data::ReadableStream(body)).execute().await?;
+    if stored.is_none_or(|stored| stored.size() != size) {
+        let _ = bucket.delete(key).await;
+        return Err(ApiError::BadRequest);
+    }
+    Ok(respond(201, "{}".into())?)
+}
+
+/// A blob's download, whole or in a range, straight from R2.
+async fn get_blob(
+    env: &Env,
+    req: &Request,
+    target: &str,
+    ws: &WorkspaceId,
+    id: &str,
+) -> std::result::Result<Response, ApiError> {
+    let object = stub(env, WORKSPACES, &ws.to_hex())?;
+    let authorization = header(req, "Authorization");
+    let reply = relay(&object, "GET", target, authorization.as_deref(), b"", None).await?;
+    if reply.status_code() != 200 {
+        return Ok(reply);
+    }
+    let bucket = env.bucket(BLOBS)?;
+    let key = blob_key(&ws.to_hex(), id);
+    let (found, part) = match api::byte_range(header(req, "Range").as_deref()) {
+        None => (bucket.get(key).execute().await?, None),
+        Some((first, last)) => {
+            let size = bucket.head(key.clone()).await?.ok_or(ApiError::NotFound)?.size();
+            if first >= size {
+                let mut response = respond(416, r#"{"error":"range"}"#.into())?;
+                response.headers_mut().set("Content-Range", &format!("bytes */{size}"))?;
+                return Ok(response);
+            }
+            let last = last.map_or(size - 1, |last| last.min(size - 1));
+            let range = Range::OffsetWithLength { offset: first, length: last - first + 1 };
+            (bucket.get(key).range(range).execute().await?, Some((first, last, size)))
+        }
+    };
+    let found = found.ok_or(ApiError::NotFound)?;
+    let length = match part {
+        Some((first, last, _)) => last - first + 1,
+        None => found.size(),
+    };
+    let body: ResponseBody = found.body().ok_or(ApiError::NotFound)?.response_body()?;
+    let mut response = Response::from_body(body)?.with_status(if part.is_some() { 206 } else { 200 });
+    let headers = response.headers_mut();
+    plain_headers(headers, "application/octet-stream")?;
+    headers.set("Content-Length", &length.to_string())?;
+    headers.set("Accept-Ranges", "bytes")?;
+    if let Some((first, last, size)) = part {
+        headers.set("Content-Range", &format!("bytes {first}-{last}/{size}"))?;
+    }
+    Ok(response)
+}
+
+/// An owner's offer under a code: the workspace's object checks the owner,
+/// then the code's object takes the lookup if it is free.
+async fn post_offer(
+    env: &Env,
+    req: &Request,
+    target: &str,
+    ws: &WorkspaceId,
+    lookup: &str,
+    body: &[u8],
+) -> std::result::Result<Response, ApiError> {
+    let object = stub(env, WORKSPACES, &ws.to_hex())?;
+    let authorization = header(req, "Authorization");
+    let mut checked = relay(&object, "POST", target, authorization.as_deref(), body, None).await?;
+    if checked.status_code() != 200 {
+        return Ok(checked);
+    }
+    let bytes = checked.bytes().await?;
+    if bytes.len() < 32 {
+        return Err(ApiError::Unavailable);
+    }
+    let poster = ledger::MemberKey(bytes[..32].try_into().map_err(|_| ApiError::Unavailable)?);
+    let handed = serve::offer_call(&poster, ws, &bytes[32..]);
+    Ok(relay(&stub(env, CODES, lookup)?, "POST", INTERNAL_OFFER, None, &handed, None).await?)
+}
+
+async fn handle(req: &mut Request, env: &Env) -> std::result::Result<Response, ApiError> {
+    let url = req.url()?;
+    let method = req.method().to_string();
+    let route = api::route(&method, url.path(), url.query())?;
+    api::check_origin(header(req, "Origin").as_deref(), &url.origin().ascii_serialization())?;
+    if rate_limited(env, req, route.writes()).await {
+        return Err(ApiError::RateLimited);
+    }
+    if route == Route::Info {
+        let server = env.var("SERVER_ID").map(|v| v.to_string()).map_err(|_| ApiError::Unavailable)?;
+        let text =
+            serde_json::to_string(&InfoReply { server: &server, pow: POW_BITS }).map_err(|_| ApiError::Unavailable)?;
+        return Ok(respond(200, text)?);
+    }
+    // A body is read only where the route takes one, and only once its
+    // declared length fits.
+    let body = if route.takes_json() {
+        api::declared_length(header(req, "Content-Length").as_deref(), route.max_body())?;
+        let body = req.bytes().await?;
+        if body.len() as u64 > route.max_body() {
+            return Err(ApiError::TooLarge);
+        }
+        body
+    } else {
+        Vec::new()
+    };
+    serve::admit(&route, &body, &Blake2b, now_ms(), POW_BITS)?;
+    if matches!(route, Route::Found(_)) {
+        spend(env, Budget::Workspaces, 1).await?;
+    }
+    let target = match url.query() {
+        Some(query) => format!("{}?{query}", url.path()),
+        None => url.path().to_owned(),
+    };
+    match &route {
+        Route::PutBlob(ws, id) => put_blob(env, req, &target, ws, id).await,
+        Route::GetBlob(ws, id) => get_blob(env, req, &target, ws, id).await,
+        Route::PostOffer(ws, lookup) => post_offer(env, req, &target, ws, lookup, &body).await,
+        _ => {
+            let object = match (route.workspace(), route.lookup()) {
+                (Some(ws), _) => stub(env, WORKSPACES, &ws.to_hex())?,
+                (None, Some(lookup)) => stub(env, CODES, lookup)?,
+                (None, None) => return Err(ApiError::NotFound),
+            };
+            let authorization = header(req, "Authorization");
+            Ok(relay(&object, &method, &target, authorization.as_deref(), &body, None).await?)
+        }
+    }
+}
+
+#[event(fetch)]
+async fn fetch(mut req: Request, env: Env, _ctx: Context) -> Result<Response> {
+    match handle(&mut req, &env).await {
+        Ok(response) => Ok(response),
+        Err(error) => fail(error),
+    }
+}

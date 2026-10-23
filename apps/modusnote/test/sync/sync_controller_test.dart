@@ -6,7 +6,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:modusnote/sync/sync_controller.dart';
 import 'package:modusnote/vault/vault_note_store.dart';
 import 'package:offline_sync/offline_sync.dart';
-import 'package:offline_sync_adapters/offline_sync_adapters.dart';
 import 'package:schema_dynamic_content/schema_dynamic_content.dart';
 import 'package:sqlite3/sqlite3.dart';
 
@@ -20,11 +19,11 @@ final class Device {
 
   static Future<Device> open(
     Database database,
-    SyncServer server,
-    SyncAccount account, {
+    MemorySyncServer server, {
     bool create = false,
+    bool enabled = true,
   }) async {
-    final keeper = keeperOn(database, server: server);
+    final keeper = keeperOn(database, gateway: server);
     final vault = create
         ? await keeper.create(passphrase('frase lunga'))
         : await keeper.unlock(passphrase('frase lunga'));
@@ -34,8 +33,8 @@ final class Device {
     );
     final sync = SyncController(
       engine: vault.engine,
-      account: account,
       onPulled: store.reload,
+      enabled: enabled,
       debounce: const Duration(milliseconds: 20),
       interval: const Duration(hours: 1),
     );
@@ -53,54 +52,52 @@ final class Device {
   }
 }
 
-Future<SyncAccount> signedIn(FakeAuthServer auth) async {
-  final account = auth.account();
-  account.attach(null, persist: (_) async {});
-  await account.signIn('pietro@example.com', goodCode);
-  return account;
-}
-
 Future<void> settle() => Future<void>.delayed(const Duration(milliseconds: 60));
 
 void main() {
   setUpAll(loadSodium);
-  late FakeAuthServer auth;
 
-  setUp(() => auth = FakeAuthServer());
-
-  Future<(Device, MemorySyncServer)> device({bool signIn = true}) async {
-    final account = signIn ? await signedIn(auth) : auth.account();
-    final server = MemorySyncServer(account.accessToken);
+  Future<(Device, MemorySyncServer)> device({bool enabled = true}) async {
+    final server = MemorySyncServer();
     final database = memoryDatabase();
     addTearDown(database.close);
-    final opened = await Device.open(database, server, account, create: true);
+    final opened = await Device.open(
+      database,
+      server,
+      create: true,
+      enabled: enabled,
+    );
     addTearDown(opened.close);
     return (opened, server);
   }
 
-  test('without an account nothing reaches the server', () async {
-    final (phone, server) = await device(signIn: false);
+  test('before the sync is turned on nothing reaches the server', () async {
+    final (phone, server) = await device(enabled: false);
 
     phone.sync.start();
     await phone.store.save(quickNote(first, 'Ritornello', DateTime.utc(2026)));
     await settle();
 
-    expect(phone.sync.state, SyncState.signedOut);
+    expect(phone.sync.state, SyncState.off);
     expect(server.workspaces, isEmpty);
     expect(server.rows, isEmpty);
+    expect(server.signed, isEmpty);
   });
 
-  test('a signed-in vault publishes itself as soon as it opens', () async {
-    final (phone, server) = await device();
+  test(
+    'a vault whose sync is on publishes itself as soon as it opens',
+    () async {
+      final (phone, server) = await device();
 
-    phone.sync.start();
-    await settle();
+      phone.sync.start();
+      await settle();
 
-    expect(phone.sync.state, SyncState.synced);
-    expect(phone.sync.lastSynced, isNotNull);
-    expect(server.workspaces, [phone.vault.engine.ledger.workspace.id]);
-    expect(server.membershipLog, phone.vault.engine.ledger.records);
-  });
+      expect(phone.sync.state, SyncState.synced);
+      expect(phone.sync.lastSynced, isNotNull);
+      expect(server.workspaces, [phone.vault.engine.ledger.workspace.id]);
+      expect(server.membershipLog, phone.vault.engine.ledger.records);
+    },
+  );
 
   test('edits made close together go out in one sync', () async {
     final (phone, server) = await device();
@@ -137,18 +134,17 @@ void main() {
   test('notes pulled from the server appear in the library', () async {
     final directory = Directory.systemTemp.createTempSync('modusnote-sync');
     addTearDown(() => directory.deleteSync(recursive: true));
-    final account = await signedIn(auth);
-    final server = MemorySyncServer(account.accessToken);
+    final server = MemorySyncServer();
     // The same vault on two databases: a backup restored on a new phone.
     final phoneDb = sqlite3.open('${directory.path}/phone.sqlite');
     addTearDown(phoneDb.close);
-    final phone = await Device.open(phoneDb, server, account, create: true);
+    final phone = await Device.open(phoneDb, server, create: true);
     addTearDown(phone.close);
     File('${directory.path}/phone.sqlite')
         .copySync('${directory.path}/tablet.sqlite');
     final tabletDb = sqlite3.open('${directory.path}/tablet.sqlite');
     addTearDown(tabletDb.close);
-    final tablet = await Device.open(tabletDb, server, account);
+    final tablet = await Device.open(tabletDb, server);
     addTearDown(tablet.close);
 
     await phone.store.save(
@@ -166,28 +162,62 @@ void main() {
     );
   });
 
-  test('signing in starts a sync, signing out stops it', () async {
-    final account = auth.account();
-    account.attach(null, persist: (_) async {});
-    final server = MemorySyncServer(account.accessToken);
-    final database = memoryDatabase();
-    addTearDown(database.close);
-    final phone = await Device.open(database, server, account, create: true);
-    addTearDown(phone.close);
-    phone.sync.start();
+  test('turning the sync on syncs, and it stays on', () async {
+    final (phone, server) = await device(enabled: false);
+    var remembered = 0;
+    final sync = SyncController(
+      engine: phone.vault.engine,
+      onPulled: phone.store.reload,
+      turnOn: () async => remembered++,
+    );
+    addTearDown(sync.dispose);
+    sync.start();
     await settle();
-    expect(phone.sync.state, SyncState.signedOut);
+    expect(sync.state, SyncState.off);
 
-    await phone.sync.signIn('pietro@example.com', goodCode);
-    await settle();
-    expect(phone.sync.state, SyncState.synced);
-    expect(phone.sync.email, 'pietro@example.com');
+    await sync.enable();
+    await sync.enable();
 
-    await phone.sync.signOut();
-    await settle();
-    expect(phone.sync.state, SyncState.signedOut);
-    expect(phone.sync.lastSynced, isNull);
-    expect(auth.requests, contains('/auth/v1/logout'));
+    expect(sync.enabled, isTrue);
+    expect(sync.state, SyncState.synced);
+    expect(remembered, 1);
+    expect(server.workspaces, [phone.vault.workspace]);
+  });
+
+  test('deleting the vault from the server leaves it on the device, '
+      'never syncing again', () async {
+    final (phone, server) = await device();
+    await phone.store.save(quickNote(first, 'Resta qui', DateTime.utc(2026)));
+    await phone.sync.syncNow();
+    var retired = 0;
+    final sync = SyncController(
+      engine: phone.vault.engine,
+      onPulled: phone.store.reload,
+      enabled: true,
+      retire: () async => retired++,
+    );
+    addTearDown(sync.dispose);
+
+    await sync.deleteFromServer();
+    await sync.syncNow();
+
+    expect(sync.retired, isTrue);
+    expect(sync.state, SyncState.off);
+    expect(retired, 1);
+    expect(server.workspaces, isEmpty);
+    expect(server.rows, isEmpty);
+    expect(phone.store.entries, hasLength(1));
+  });
+
+  test('a server that does not know the device says so', () async {
+    final (phone, server) = await device();
+    await phone.sync.syncNow();
+    server.membershipLog.clear();
+
+    await phone.sync.syncNow();
+
+    expect(phone.sync.state, SyncState.failed);
+    expect(phone.sync.problem, SyncProblem.notAdmitted);
   });
 
   test('a request during a sync makes it go round once more', () async {
@@ -208,8 +238,8 @@ void main() {
     await phone.sync.syncNow();
     final quiet = SyncController(
       engine: phone.vault.engine,
-      account: await signedIn(auth),
       onPulled: phone.store.reload,
+      enabled: true,
       interval: const Duration(milliseconds: 30),
     );
     addTearDown(quiet.dispose);
@@ -225,22 +255,21 @@ void main() {
 
   group('recordings', () {
     Future<(SyncController, MemorySyncServer)> withUploads(
-      Future<void> Function() afterSync,
+      Future<void> Function(SyncReport report) afterSync,
     ) async {
-      final account = await signedIn(auth);
-      final server = MemorySyncServer(account.accessToken);
+      final server = MemorySyncServer();
       final database = memoryDatabase();
       addTearDown(database.close);
       final vault = await keeperOn(
         database,
-        server: server,
+        gateway: server,
       ).create(passphrase('frase lunga'));
       addTearDown(vault.lock);
       final sync = SyncController(
         engine: vault.engine,
-        account: account,
         onPulled: () async {},
         afterSync: afterSync,
+        enabled: true,
       );
       addTearDown(sync.dispose);
       return (sync, server);
@@ -249,7 +278,7 @@ void main() {
     test('go up after the notes reached the server', () async {
       late bool workspaceKnown;
       late MemorySyncServer shared;
-      final (sync, server) = await withUploads(() async {
+      final (sync, server) = await withUploads((_) async {
         workspaceKnown = shared.workspaces.isNotEmpty;
       });
       shared = server;
@@ -260,11 +289,23 @@ void main() {
       expect(sync.state, SyncState.synced);
     });
 
+    test('hear that the vault moved to a new server, once', () async {
+      final moves = <bool>[];
+      final (sync, server) = await withUploads(
+        (report) async => moves.add(report.moved),
+      );
+
+      await sync.syncNow();
+      await sync.syncNow();
+
+      expect(moves, [true, false]);
+    });
+
     test(
       'an unreachable blob storage leaves the sync offline, to retry',
       () async {
         final (sync, _) = await withUploads(
-          () => Future.error(const RemoteBlobUnavailableException()),
+          (_) => Future.error(const RemoteBlobUnavailableException()),
         );
 
         await sync.syncNow();
@@ -273,9 +314,9 @@ void main() {
       },
     );
 
-    test('a blob storage that refuses the account is reported', () async {
+    test('a blob storage that refuses the device is reported', () async {
       final (sync, _) = await withUploads(
-        () => Future.error(const RemoteBlobRejectedException(403)),
+        (_) => Future.error(const RemoteBlobRejectedException(403)),
       );
 
       await sync.syncNow();
@@ -286,7 +327,7 @@ void main() {
 
     test('a blob over the size limit is reported as no space', () async {
       final (sync, _) = await withUploads(
-        () => Future.error(const RemoteBlobRejectedException(413)),
+        (_) => Future.error(const RemoteBlobRejectedException(413)),
       );
 
       await sync.syncNow();
@@ -297,10 +338,10 @@ void main() {
   });
 
   group('adversary', () {
-    test('a server that refuses the account is reported, not retried '
+    test('a server that refuses the sync is reported, not retried '
         'as offline', () async {
       final (phone, server) = await device();
-      server.refuseWith = 401;
+      server.refuseWith = 400;
 
       await phone.sync.syncNow();
 
@@ -333,14 +374,10 @@ void main() {
 
     test('a vault locked under a running sync stays quiet', () async {
       final gate = Completer<void>();
-      final slow = MemorySyncServer(() async {
-        await gate.future;
-        return issuedToken;
-      });
+      final slow = MemorySyncServer()..hold = gate.future;
       final database = memoryDatabase();
       addTearDown(database.close);
-      final account = await signedIn(auth);
-      final locked = await Device.open(database, slow, account, create: true);
+      final locked = await Device.open(database, slow, create: true);
       var notified = 0;
       locked.sync.addListener(() => notified++);
 
@@ -387,10 +424,10 @@ void main() {
 /// A row sealed in someone else's workspace.
 Future<SealedRow> _foreignRow() async {
   final database = memoryDatabase();
-  final server = MemorySyncServer(() async => issuedToken);
+  final server = MemorySyncServer();
   final vault = await keeperOn(
     database,
-    server: server,
+    gateway: server,
   ).create(passphrase('frase lunga'));
   final store = await VaultNoteStore.open(
     vault.engine,

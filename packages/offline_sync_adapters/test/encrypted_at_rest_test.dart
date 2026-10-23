@@ -14,7 +14,14 @@ import 'package:test/test.dart';
 
 final class _OfflineServer implements SyncServer {
   @override
-  Future<void> createWorkspace(WorkspaceId workspace) =>
+  Future<String> serverId() => throw const ServerUnavailableException();
+
+  @override
+  Future<void> createWorkspace(List<MembershipRecord> start) =>
+      throw const ServerUnavailableException();
+
+  @override
+  Future<void> deleteWorkspace(WorkspaceId workspace) =>
       throw const ServerUnavailableException();
 
   @override
@@ -140,8 +147,8 @@ void main() {
         vaults: SqliteVaultStore(database),
         records: (workspace) =>
             SqliteLocalRecordStore(database, workspace: workspace),
-        server: _OfflineServer(),
         identities: SodiumIdentityService(sodium),
+        hasher: SodiumContentHasher(sodium),
         keys: SodiumKeyDerivationService(sodium),
         subkeys: SodiumSubkeyDerivationService(sodium),
         envelopes: SodiumEnvelopeEncryptor(sodium),

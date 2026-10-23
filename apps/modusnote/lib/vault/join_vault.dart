@@ -9,36 +9,27 @@ import 'package:offline_sync/offline_sync.dart';
 import 'package:offline_sync_adapters/offline_sync_adapters.dart';
 
 import '../l10n/generated/app_localizations.dart';
-import '../sync/sign_in_form.dart';
 import '../theme/golden_ratio.dart';
 import 'passphrase_field.dart';
 import 'passphrase_warning.dart';
 import '../theme/modus_palette.dart';
 
-/// First launch on a second device: signs in to the same account, takes
-/// the code another device shows and a passphrase for this one, then waits
-/// for that device to admit this one and opens the new vault.
+/// First launch on another device: takes the code an owner's device shows
+/// (one's own other device, or another person's invitation) and a
+/// passphrase for this one, then waits for that device to admit this one
+/// and opens the new vault.
 class JoinVaultScreen extends StatefulWidget {
   const JoinVaultScreen({
-    required this.account,
-    required this.join,
-    this.accept,
+    required this.accept,
     required this.onJoined,
     required this.onBack,
     this.pollEvery = const Duration(seconds: 2),
     super.key,
   });
 
-  /// Signed in here, before any vault exists to keep the session in.
-  final SyncAccount account;
-
-  /// Posts this device's answer; see [VaultKeeper.join]. The passphrase
-  /// arrives as UTF-8, to be moved into native memory at once.
-  final Future<LinkRequest> Function(LinkCode code, Uint8List passphrase) join;
-
-  /// Posts this device's answer to another person's invitation; see
-  /// [VaultKeeper.acceptInvite]. Null where invitations are not offered.
-  final Future<LinkRequest> Function(InviteCode code, Uint8List secret)? accept;
+  /// Posts this device's answer; see [VaultKeeper.acceptInvite]. The
+  /// passphrase arrives as UTF-8, to be moved into native memory at once.
+  final Future<LinkRequest> Function(InviteCode code, Uint8List secret) accept;
 
   /// The vault was created; the gate takes it from here.
   final Future<void> Function(UnlockedVault vault) onJoined;
@@ -81,12 +72,7 @@ class _JoinVaultScreenState extends State<JoinVaultScreen> {
   }
 
   Future<void> _submit() async {
-    // A link code (another device of this account) or an invitation (from
-    // another person): their lengths tell them apart.
-    final Object? code = switch (widget.accept) {
-      null => LinkCode.tryParse(_code.text),
-      _ => LinkCode.tryParse(_code.text) ?? InviteCode.tryParse(_code.text),
-    };
+    final code = InviteCode.tryParse(_code.text);
     // A mistyped code keeps the passphrase: nothing was read from it yet.
     if (code == null) return setState(() => _problem = _Problem.codeShape);
     final mismatch = _passphrase.text != _confirmation.text;
@@ -105,10 +91,7 @@ class _JoinVaultScreenState extends State<JoinVaultScreen> {
     // Let the progress indicator paint before Argon2id holds the isolate.
     await Future<void>.delayed(Duration.zero);
     try {
-      final request = switch (code) {
-        final InviteCode invite => await widget.accept!(invite, bytes),
-        _ => await widget.join(code as LinkCode, bytes),
-      };
+      final request = await widget.accept(code, bytes);
       if (!mounted) return request.cancel();
       _code.clear();
       setState(() => _request = request);
@@ -147,7 +130,8 @@ class _JoinVaultScreenState extends State<JoinVaultScreen> {
       LinkCodeRejectedException() => _Problem.codeRejected,
       LinkExpiredException() => _Problem.expired,
       ServerUnavailableException() => _Problem.unreachable,
-      SyncServerRejectedException() => _Problem.refused,
+      SyncServerRejectedException() ||
+      NotAdmittedException() => _Problem.refused,
       TamperedWorkspaceDataException() ||
       MalformedSyncDataException() ||
       MalformedWorkspaceDataException() ||
@@ -191,18 +175,7 @@ class _JoinVaultScreenState extends State<JoinVaultScreen> {
                     color: ModusPalette.of(context).primary,
                   ),
                   const SizedBox(height: Spacing.l),
-                  if (!widget.account.signedIn)
-                    SignInForm(
-                      title: l10n.joinVaultTitle,
-                      body: l10n.joinVaultSignInBody,
-                      sendCode: widget.account.sendCode,
-                      signIn: (email, code) async {
-                        await widget.account.signIn(email, code);
-                        if (mounted) setState(() {});
-                      },
-                    )
-                  else
-                    ..._linkForm(context),
+                  ..._linkForm(context),
                   const SizedBox(height: Spacing.s),
                   TextButton(
                     key: const ValueKey('join-back'),
@@ -247,14 +220,6 @@ class _JoinVaultScreenState extends State<JoinVaultScreen> {
       const SizedBox(height: Spacing.m),
       Text(
         waiting ? l10n.joinVaultWaiting : l10n.joinVaultBody,
-        style: muted,
-        textAlign: TextAlign.center,
-      ),
-      const SizedBox(height: Spacing.s),
-      // The likeliest reason a code is refused is another account.
-      Text(
-        l10n.cloudSignedInAs(widget.account.email ?? ''),
-        key: const ValueKey('join-account'),
         style: muted,
         textAlign: TextAlign.center,
       ),

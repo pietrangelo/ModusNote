@@ -29,8 +29,9 @@ typedef CodeAdmissionTexts = ({
   String untrusted,
 });
 
-/// Shows a one-time code for another device of the same account to type,
-/// and admits that device into this vault's workspace once it answers.
+/// Shows a one-time code for another device of the same person to type,
+/// and admits that device into this vault's workspace, as an owner, once it
+/// answers. The code is the same kind an invitation shows ([InviteCode]).
 ///
 /// The vault stays open while the sheet is up (the code lasts ten minutes
 /// at most); closing the sheet withdraws the code.
@@ -42,8 +43,8 @@ class LinkDeviceSheet extends StatelessWidget {
     super.key,
   });
 
-  /// Posts the offer for [code]; see [VaultKeeper.offerLink].
-  final Future<LinkOffering> Function(LinkCode code) offer;
+  /// Posts the offer for [code]; see [VaultKeeper.offerInvite].
+  final Future<InviteOffering> Function(InviteCode code) offer;
 
   /// Called once a device was admitted, to sync it the keys at once.
   final VoidCallback? onLinked;
@@ -51,16 +52,10 @@ class LinkDeviceSheet extends StatelessWidget {
 
   static Future<void> show(
     BuildContext context, {
-    required Future<LinkOffering> Function(LinkCode code) offer,
+    required Future<InviteOffering> Function(InviteCode code) offer,
     VoidCallback? onLinked,
   }) =>
       showHeldSheet(context, LinkDeviceSheet(offer: offer, onLinked: onLinked));
-
-  Future<CodeAdmission> _start() async {
-    final code = LinkCode.random(Random.secure());
-    final offering = await offer(code);
-    return (code: code.display, poll: offering.poll, cancel: offering.cancel);
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -68,7 +63,7 @@ class LinkDeviceSheet extends StatelessWidget {
     return CodeSheetFrame(
       title: l10n.linkDeviceTitle,
       child: CodeAdmissionPanel(
-        start: _start,
+        start: () => offerCode(offer),
         onAdmitted: onLinked,
         pollEvery: pollEvery,
         texts: (
@@ -80,6 +75,25 @@ class LinkDeviceSheet extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+/// Posts an offer under a new random code. Another offer may hold the
+/// code's lookup (one in a billion billion, or someone squatting it): a few
+/// fresh codes are tried before giving up.
+Future<CodeAdmission> offerCode(
+  Future<InviteOffering> Function(InviteCode code) offer, {
+  Random? random,
+}) async {
+  final source = random ?? Random.secure();
+  for (var attempt = 1; ; attempt++) {
+    final code = InviteCode.random(source);
+    try {
+      final offering = await offer(code);
+      return (code: code.display, poll: offering.poll, cancel: offering.cancel);
+    } on LookupTakenException {
+      if (attempt == 3) rethrow;
+    }
   }
 }
 
@@ -225,7 +239,10 @@ class _CodeAdmissionPanelState extends State<CodeAdmissionPanel> {
     final problem = switch (error) {
       LinkExpiredException() => _Problem.expired,
       ServerUnavailableException() => _Problem.unreachable,
-      SyncServerRejectedException() => _Problem.refused,
+      SyncServerRejectedException() ||
+      NotAdmittedException() ||
+      NotAuthorizedException() ||
+      LookupTakenException() => _Problem.refused,
       LedgerRollbackException() ||
       TamperedWorkspaceDataException() ||
       MalformedSyncDataException() => _Problem.untrusted,
