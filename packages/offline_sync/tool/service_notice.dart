@@ -4,7 +4,7 @@
 // it, so the server, which has no such key, cannot write one.
 //
 //   dart run tool/service_notice.dart keygen <key file>
-//   dart run tool/service_notice.dart sign --key <key file> --serial N \
+//   dart run tool/service_notice.dart sign --key <key file> [--serial N] \
 //       --days D [--level warning] --text it=... --text en=... \
 //       [--file <notices.json>]
 //   dart run tool/service_notice.dart prune [--file <notices.json>]
@@ -15,6 +15,13 @@
 // Worker. sign checks the new envelope with the app's own code before
 // writing it; prune drops the expired ones. The default file is
 // apps/modusnote/web/notices.json; publishing is a commit on main.
+//
+// Serials only go up. A device remembers, for good, the serials of the
+// notices its person closed and never shows those again, so a new notice
+// under an old serial would stay hidden there and nobody would know. The
+// file keeps the highest serial ever signed into it (`lastSerial`, which
+// prune leaves alone); sign refuses a serial that is not above it, and
+// without --serial takes the next one.
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -26,10 +33,13 @@ import 'package:sodium/sodium_sumo.dart';
 
 const _usage = '''
 usage: dart run tool/service_notice.dart keygen <key file>
-       dart run tool/service_notice.dart sign --key <key file> --serial N
+       dart run tool/service_notice.dart sign --key <key file> [--serial N]
            --days D [--level warning] --text it=... [--text en=...]
            [--file <notices.json>]
-       dart run tool/service_notice.dart prune [--file <notices.json>]''';
+       dart run tool/service_notice.dart prune [--file <notices.json>]
+
+Serials only go up: devices never show again a serial their person closed.
+Without --serial, sign takes the one after the highest ever signed.''';
 
 Future<void> main(List<String> args) async {
   final NoticeCommand command;
@@ -99,7 +109,9 @@ final class SignCommand extends NoticeCommand {
   });
 
   final String keyPath;
-  final int serial;
+
+  /// Null for the next one: one above the highest ever signed into [file].
+  final int? serial;
 
   /// How long the notice is shown, from now.
   final int days;
@@ -124,11 +136,13 @@ NoticeCommand parseCommand(List<String> args, {required String defaultFile}) {
     case 'keygen':
       return KeygenCommand(options.single('<key file>')!);
     case 'sign':
-      final serial = int.tryParse(options.single('--serial') ?? '');
+      final serialText = options.single('--serial');
+      final serial = serialText == null ? null : int.tryParse(serialText);
       final days = int.tryParse(options.single('--days') ?? '');
       final keyPath = options.single('--key');
       if (keyPath == null) throw const UsageException('--key is required');
-      if (serial == null || serial < 0 || serial > 0xffffffff) {
+      if (serialText != null &&
+          (serial == null || serial < 0 || serial > 0xffffffff)) {
         throw const UsageException('--serial must be 0 to 4294967295');
       }
       final longest = ServiceNotice.maxDuration.inDays;
@@ -208,14 +222,28 @@ const _accepted = {
   );
 }
 
-/// The envelopes [file] publishes; none when it does not exist yet.
-List<Uint8List> readNotices(File file) {
-  if (!file.existsSync()) return [];
+/// What a notices file holds: the envelopes it publishes, and the highest
+/// serial ever signed into it (null in a file written before it kept one,
+/// or before its first notice), which only goes up.
+typedef PublishedNotices = ({List<Uint8List> envelopes, int? lastSerial});
+
+/// What [file] publishes; nothing when it does not exist yet.
+PublishedNotices readNotices(File file) {
+  if (!file.existsSync()) return (envelopes: [], lastSerial: null);
   try {
     if (jsonDecode(file.readAsStringSync())
-        case {'notices': final List<Object?> notices}
-        when notices.every((n) => n is String)) {
-      return [for (final n in notices.cast<String>()) base64.decode(n)];
+        case {'notices': final List<Object?> notices} &&
+            final Map<Object?, Object?> json
+        when notices.every((n) => n is String) &&
+            json.keys.every(const {'lastSerial', 'notices'}.contains)) {
+      final lastSerial = json['lastSerial'];
+      if (!json.containsKey('lastSerial') ||
+          lastSerial is int && lastSerial >= 0 && lastSerial <= 0xffffffff) {
+        return (
+          envelopes: [for (final n in notices.cast<String>()) base64.decode(n)],
+          lastSerial: lastSerial as int?,
+        );
+      }
     }
   } on FormatException {
     // Falls through to the refusal below.
@@ -223,15 +251,35 @@ List<Uint8List> readNotices(File file) {
   throw UsageException('${file.path} is not a notices file');
 }
 
-void writeNotices(File file, List<Uint8List> envelopes) =>
-    file.writeAsStringSync(noticesText(envelopes), flush: true);
+void writeNotices(File file, List<Uint8List> envelopes, {int? lastSerial}) =>
+    file.writeAsStringSync(
+      noticesText(envelopes, lastSerial: lastSerial),
+      flush: true,
+    );
 
 /// The text [writeNotices] writes, whose size devices check.
-String noticesText(List<Uint8List> envelopes) {
+String noticesText(List<Uint8List> envelopes, {int? lastSerial}) {
   final json = const JsonEncoder.withIndent('  ').convert({
+    'lastSerial': ?lastSerial,
     'notices': [for (final envelope in envelopes) base64.encode(envelope)],
   });
   return '$json\n';
+}
+
+/// The highest serial ever signed into a file that publishes [envelopes]
+/// and remembers [lastSerial]: the highest of both.
+int? _highestSerial(List<Uint8List> envelopes, int? lastSerial) {
+  var highest = lastSerial;
+  for (final envelope in envelopes) {
+    final int serial;
+    try {
+      serial = SignedServiceNotice.parse(envelope).notice.serial;
+    } on MalformedSyncDataException {
+      continue;
+    }
+    if (highest == null || serial > highest) highest = serial;
+  }
+  return highest;
 }
 
 /// Keeps the operator key and signs with it.
@@ -311,20 +359,27 @@ final class NoticeTool {
   /// would, then adds it to the notices file.
   Future<SignedServiceNotice> sign(SignCommand command) async {
     final file = File(command.file);
-    final published = readNotices(file);
+    final (envelopes: published, :lastSerial) = readNotices(file);
     for (final envelope in published) {
-      final SignedServiceNotice existing;
       try {
-        existing = SignedServiceNotice.parse(envelope);
+        SignedServiceNotice.parse(envelope);
       } on MalformedSyncDataException {
         throw UsageException('${file.path} holds a malformed notice');
-      }
-      if (existing.notice.serial == command.serial) {
-        throw UsageException('serial ${command.serial} is already published');
       }
     }
     if (published.length >= ServiceNoticeBoard.maxPublished) {
       throw const UsageException('too many notices: prune first');
+    }
+    final highest = _highestSerial(published, lastSerial);
+    if (highest == 0xffffffff) {
+      throw const UsageException('no serial is left above 4294967295');
+    }
+    final serial = command.serial ?? (highest ?? 0) + 1;
+    if (highest != null && serial <= highest) {
+      throw UsageException(
+        'serial $serial is not above $highest, the highest signed: devices '
+        'never show again a serial their person closed',
+      );
     }
     final issued = DateTime.fromMillisecondsSinceEpoch(
       _now().millisecondsSinceEpoch,
@@ -333,7 +388,7 @@ final class NoticeTool {
     final ServiceNotice notice;
     try {
       notice = ServiceNotice(
-        serial: command.serial,
+        serial: serial,
         issued: issued,
         expires: issued.add(Duration(days: command.days)),
         level: command.level,
@@ -374,24 +429,31 @@ final class NoticeTool {
     final signed = SignedServiceNotice(notice: notice, signature: signature);
     await _check(signed.toBytes(), notice, keyFile.public);
     final envelopes = [...published, signed.toBytes()];
-    if (utf8.encode(noticesText(envelopes)).length >
-        ServiceNoticeBoard.maxPublishedBytes) {
+    final text = noticesText(envelopes, lastSerial: serial);
+    if (utf8.encode(text).length > ServiceNoticeBoard.maxPublishedBytes) {
       throw const UsageException('notices file too large: prune first');
     }
-    writeNotices(file, envelopes);
+    file.writeAsStringSync(text, flush: true);
     return signed;
   }
 
   /// Removes from [path] the notices no device shows any more; how many.
+  /// The highest serial they had stays in the file.
   int prune(String path) {
     final file = File(path);
-    final published = readNotices(file);
+    final (envelopes: published, :lastSerial) = readNotices(file);
     final now = _now();
     final kept = [
       for (final envelope in published)
         if (_inForce(envelope, now)) envelope,
     ];
-    if (kept.length != published.length) writeNotices(file, kept);
+    if (kept.length != published.length) {
+      writeNotices(
+        file,
+        kept,
+        lastSerial: _highestSerial(published, lastSerial),
+      );
+    }
     return published.length - kept.length;
   }
 

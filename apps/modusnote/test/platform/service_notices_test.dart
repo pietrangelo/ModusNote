@@ -22,12 +22,34 @@ void main() {
   final file = File('web/notices.json');
   final keys = operatorKeys();
 
-  List<String> published() {
+  Map<String, Object?> read() {
     final json = jsonDecode(file.readAsStringSync());
     expect(json, isA<Map<String, Object?>>());
-    expect((json as Map).keys, ['notices']);
-    return [for (final envelope in json['notices'] as List) envelope as String];
+    json as Map<String, Object?>;
+    expect(json.keys, contains('notices'));
+    expect(json.keys, everyElement(isIn(['lastSerial', 'notices'])));
+    return json;
   }
+
+  List<String> published() => [
+    for (final envelope in read()['notices']! as List) envelope as String,
+  ];
+
+  // A device never shows again a serial its person closed, so the tool
+  // keeps the highest serial it signed and signs only above it.
+  test('remembers a serial no lower than any it publishes', () {
+    final lastSerial = read()['lastSerial'];
+    for (final envelope in published()) {
+      final notice = SignedServiceNotice.parse(base64.decode(envelope)).notice;
+      expect(
+        lastSerial is int && notice.serial <= lastSerial,
+        isTrue,
+        reason:
+            'notice ${notice.serial} is above lastSerial $lastSerial: sign '
+            'with tool/service_notice.dart in packages/offline_sync',
+      );
+    }
+  });
 
   test('is a list of envelopes no device would cut short', () {
     final envelopes = published();

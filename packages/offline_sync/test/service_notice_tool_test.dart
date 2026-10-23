@@ -40,7 +40,7 @@ void main() {
   }
 
   SignCommand signing({
-    int serial = 1,
+    int? serial = 1,
     int days = 7,
     Map<String, String> texts = const {'it': 'Ciao', 'en': 'Hello'},
     ServiceNoticeLevel level = ServiceNoticeLevel.info,
@@ -110,6 +110,15 @@ void main() {
       expect(command.file, 'other.json');
     });
 
+    test('sign without a serial takes the next one', () {
+      final command = parse([
+        'sign',
+        ...['--key', 'k', '--days', '1', '--text', 'it=a'],
+      ]) as SignCommand;
+
+      expect(command.serial, isNull);
+    });
+
     test('prune takes the file, or the app\'s', () {
       expect(
         parse(['prune']),
@@ -128,7 +137,6 @@ void main() {
         ['keygen', 'a', 'b'],
         ['publish'],
         ['sign', '--key', 'k', '--serial', '1', '--text', 'it=a'],
-        ['sign', '--key', 'k', '--days', '1', '--text', 'it=a'],
         ['sign', '--serial', '1', '--days', '1', '--text', 'it=a'],
         ['sign', '--key', 'k', '--serial', '1', '--days', '1'],
         [
@@ -201,7 +209,7 @@ void main() {
 
   group('notices.json', () {
     test('a missing file holds no notices', () {
-      expect(readNotices(File(path('notices.json'))), isEmpty);
+      expect(readNotices(File(path('notices.json'))).envelopes, isEmpty);
     });
 
     test('holds the envelopes in standard base64, one per line', () {
@@ -211,15 +219,18 @@ void main() {
         Uint8List.fromList([4, 5, 6]),
       ];
 
-      writeNotices(file, envelopes);
+      writeNotices(file, envelopes, lastSerial: 7);
 
-      expect(readNotices(file), envelopes);
+      expect(readNotices(file).envelopes, envelopes);
+      expect(readNotices(file).lastSerial, 7);
       expect(
         file.readAsStringSync(),
-        '{\n  "notices": [\n    "AQID+g==",\n    "BAUG"\n  ]\n}\n',
+        '{\n  "lastSerial": 7,\n  "notices": [\n    "AQID+g==",\n'
+        '    "BAUG"\n  ]\n}\n',
       );
       writeNotices(file, []);
       expect(file.readAsStringSync(), '{\n  "notices": []\n}\n');
+      expect(readNotices(file).lastSerial, isNull);
     });
 
     test('a file of another shape is refused', () {
@@ -229,6 +240,21 @@ void main() {
       expect(() => readNotices(file), throwsA(isA<UsageException>()));
       file.writeAsStringSync('[]');
       expect(() => readNotices(file), throwsA(isA<UsageException>()));
+      for (final other in [
+        '{"lastSerial": "7", "notices": []}',
+        '{"lastSerial": -1, "notices": []}',
+        '{"lastSerial": 4294967296, "notices": []}',
+        '{"lastSerial": 1.5, "notices": []}',
+        '{"lastSerial": null, "notices": []}',
+        '{"next": 7, "notices": []}',
+      ]) {
+        file.writeAsStringSync(other);
+        expect(
+          () => readNotices(file),
+          throwsA(isA<UsageException>()),
+          reason: other,
+        );
+      }
     });
   });
 
@@ -252,7 +278,7 @@ void main() {
       expect(signed.notice.issued, now);
       expect(signed.notice.expires, now.add(const Duration(days: 30)));
       expect(signed.notice.texts, {'it': 'Ciao', 'en': 'Hello'});
-      final published = readNotices(File(path('notices.json')));
+      final published = readNotices(File(path('notices.json'))).envelopes;
       expect(published, [signed.toBytes()]);
 
       final board = ServiceNoticeBoard(
@@ -329,7 +355,7 @@ void main() {
         final second = await tool(['frase del gestore'])
             .sign(signing(serial: 2));
 
-        expect(readNotices(File(path('notices.json'))), [
+        expect(readNotices(File(path('notices.json'))).envelopes, [
           first.toBytes(),
           second.toBytes(),
         ]);
@@ -384,6 +410,67 @@ void main() {
       expect(file.readAsStringSync(), before);
     });
 
+    test('serials only go up, even after prune: devices remember the '
+        'serials people closed', () async {
+      await tool(['frase del gestore', 'frase del gestore'])
+          .keygen(path('operator.key'));
+      await tool(['frase del gestore']).sign(signing(serial: 5, days: 1));
+      final later = now.add(const Duration(days: 2));
+      expect(tool([], at: later).prune(path('notices.json')), 1);
+      expect(readNotices(File(path('notices.json'))).envelopes, isEmpty);
+
+      for (final serial in [5, 4, 0]) {
+        await expectLater(
+          tool(['frase del gestore'], at: later).sign(signing(serial: serial)),
+          throwsA(isA<UsageException>()),
+          reason: 'serial $serial',
+        );
+      }
+      final next = await tool([
+        'frase del gestore',
+      ], at: later).sign(signing(serial: null));
+      expect(next.notice.serial, 6);
+      expect(readNotices(File(path('notices.json'))).lastSerial, 6);
+      final skipped = await tool([
+        'frase del gestore',
+      ], at: later).sign(signing(serial: 9));
+      expect(skipped.notice.serial, 9);
+      expect(readNotices(File(path('notices.json'))).lastSerial, 9);
+    });
+
+    test('the first serial is 1, and a file written before lastSerial '
+        'counts its own notices', () async {
+      await tool(['frase del gestore', 'frase del gestore'])
+          .keygen(path('operator.key'));
+      final first = await tool(['frase del gestore'])
+          .sign(signing(serial: null, days: 1));
+      expect(first.notice.serial, 1);
+
+      final file = File(path('notices.json'));
+      writeNotices(file, [
+        _filler(30, 200, now),
+        _filler(12, 200, now.add(const Duration(days: 40))),
+      ]);
+      final later = now.add(const Duration(days: 35));
+      expect(tool([], at: later).prune(file.path), 1);
+      expect(readNotices(file).lastSerial, 30);
+      final next = await tool([
+        'frase del gestore',
+      ], at: later).sign(signing(serial: null));
+      expect(next.notice.serial, 31);
+    });
+
+    test('no serial is left above the highest', () async {
+      await tool(['frase del gestore', 'frase del gestore'])
+          .keygen(path('operator.key'));
+      await tool(['frase del gestore']).sign(signing(serial: 0xffffffff));
+
+      await expectLater(
+        tool(['frase del gestore']).sign(signing(serial: null)),
+        throwsA(isA<UsageException>()),
+      );
+    });
+
     test('sign refuses a text no device would show', () async {
       await tool(['frase del gestore', 'frase del gestore'])
           .keygen(path('operator.key'));
@@ -409,7 +496,9 @@ void main() {
     ).prune(path('notices.json'));
 
     expect(removed, 1);
-    expect(readNotices(File(path('notices.json'))), [lasting.toBytes()]);
+    expect(readNotices(File(path('notices.json'))).envelopes, [
+      lasting.toBytes(),
+    ]);
   });
 }
 
