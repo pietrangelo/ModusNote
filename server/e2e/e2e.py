@@ -7,12 +7,14 @@ and requests have the bytes the Dart domain writes.
 """
 
 import base64
+import http.client
 import hashlib
 import json
 import os
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
@@ -100,6 +102,18 @@ def call(method, target, by=None, body=None, raw=None, headers=None, signed_body
         return error.code, error.read(), dict(error.headers)
 
 
+def cut_upload(target, by, declared):
+    """A PUT that declares `declared` bytes and hangs up after a few."""
+    address = urllib.parse.urlsplit(BASE)
+    connection = http.client.HTTPConnection(address.hostname, address.port, timeout=30)
+    connection.putrequest("PUT", target)
+    connection.putheader("Authorization", by.authorization("PUT", target, b""))
+    connection.putheader("Content-Length", str(declared))
+    connection.endheaders()
+    connection.send(os.urandom(1000))
+    connection.close()
+
+
 def expect(outcome, status, what):
     if outcome[0] != status:
         raise SystemExit(f"FAIL {what}: expected {status}, got {outcome[0]} {outcome[1][:200]!r}")
@@ -165,7 +179,17 @@ def main():
     expect(call("GET", target, carol, headers={"Range": "bytes=70000-"}), 416, "a range past the end")
     listed = expect(call("GET", f"{w}/blobs", carol), 200, "list blobs")
     assert [b["id"] for b in listed["blobs"]] == ["note-audio_1"] and listed["blobs"][0]["size"] == 70_000
-    expect(call("POST", f"{w}/blobs/delete", bob, {"ids": ["note-audio_1"]}), 200, "delete a blob")
+    # run.sh sets the service's daily ceiling to 1 MB: uploads that never
+    # arrive must not spend it, or one address could stop everyone's.
+    for _ in range(3):
+        cut_upload(f"{w}/blobs/note-cut_1", bob, 900_000)
+    print("ok   three uploads cut short")
+    expect(call("GET", f"{w}/blobs/note-cut_1", carol), 404, "a cut upload leaves nothing in R2")
+    other = os.urandom(70_000)
+    expect(call("PUT", f"{w}/blobs/note-audio_2", bob, raw=other, signed_body=b""), 201, "and spent none of the ceiling")
+    expect(call("PUT", f"{w}/blobs/note-big_1", bob, raw=os.urandom(990_000), signed_body=b""), 429, "bytes that reach R2 do")
+    expect(call("GET", f"{w}/blobs/note-big_1", carol), 404, "and one past the ceiling is not kept")
+    expect(call("POST", f"{w}/blobs/delete", bob, {"ids": ["note-audio_1", "note-audio_2", "note-cut_1", "note-big_1"]}), 200, "delete a blob")
     expect(call("GET", target, carol), 404, "the deleted blob is gone from R2")
 
     lookup = "".join("0123456789ABCDEFGHJKMNPQRSTVWXYZ"[b % 32] for b in os.urandom(6))

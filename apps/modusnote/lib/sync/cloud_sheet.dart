@@ -175,6 +175,7 @@ class _CloudSheetState extends State<CloudSheet> {
       SyncState.failed => switch (sync.problem) {
         SyncProblem.untrusted => l10n.cloudStateUntrusted,
         SyncProblem.full => l10n.cloudStateFull,
+        SyncProblem.blobRefused => l10n.cloudStateBlobRefused,
         SyncProblem.removed => l10n.cloudStateRemoved,
         SyncProblem.notAdmitted => l10n.cloudStateNotAdmitted,
         SyncProblem.refused || null => l10n.cloudStateRefused,

@@ -561,7 +561,9 @@ fn header(req: &Request, name: &str) -> Option<String> {
 
 /// A blob's upload: the workspace's object counts it (signed over an empty
 /// body: the note's digest vouches for the content), then the body streams
-/// to R2 without being held.
+/// to R2 without being held. The service's daily ceiling is spent only on
+/// bytes that reached R2, so a declared length that never arrives, or a
+/// retry, costs the other workspaces nothing.
 async fn put_blob(
     env: &Env,
     req: &Request,
@@ -581,12 +583,15 @@ async fn put_blob(
     if bucket.head(key.clone()).await?.is_some_and(|stored| stored.size() == size) {
         return Ok(respond(200, "{}".into())?);
     }
-    spend(env, Budget::UploadBytes, size).await?;
     let body = req.inner().body().ok_or(ApiError::LengthRequired)?;
     let stored = bucket.put(key.clone(), Data::ReadableStream(body)).execute().await?;
     if stored.is_none_or(|stored| stored.size() != size) {
         let _ = bucket.delete(key).await;
         return Err(ApiError::BadRequest);
+    }
+    if let Err(refused) = spend(env, Budget::UploadBytes, size).await {
+        let _ = bucket.delete(key).await;
+        return Err(refused);
     }
     Ok(respond(201, "{}".into())?)
 }

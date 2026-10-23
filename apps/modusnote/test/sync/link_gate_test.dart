@@ -12,6 +12,7 @@ import 'package:schema_dynamic_content/schema_dynamic_content.dart';
 import 'package:sqlite3/sqlite3.dart';
 
 import '../notes/harness.dart';
+import '../vault/confirm_support.dart';
 import '../vault/support.dart';
 import '../vault/vault_note_store_test.dart' show first, quickNote;
 import 'cloud_support.dart';
@@ -84,6 +85,10 @@ void main() {
       gateway: server,
     ).create(secret('frase del telefono'.codeUnits));
     addTearDown(vault.lock);
+    await keeperOn(
+      phoneDb,
+      gateway: server,
+    ).confirm(vault, secret('frase del telefono'.codeUnits));
     final store = await VaultNoteStore.open(
       vault.engine,
       catalog: SeedSchemas.catalog,
@@ -248,6 +253,7 @@ void main() {
       await turnOnSync(tester);
       await tapOn(tester, find.byKey(const ValueKey('link-device')));
       if (offline) server.online = false;
+      await confirmWith(tester, 'frase lunga');
       await work(tester);
     }
 

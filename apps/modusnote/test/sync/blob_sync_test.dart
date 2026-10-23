@@ -26,6 +26,9 @@ final class MemoryRemote implements RemoteBlobStore {
   var listings = 0;
   var online = true;
 
+  /// Blobs the server turns down, as too large.
+  final refused = <BlobId>{};
+
   /// When uploads happen, as R2 would stamp them.
   DateTime now = DateTime.utc(2026, 10, 13, 9);
 
@@ -36,6 +39,7 @@ final class MemoryRemote implements RemoteBlobStore {
     required int length,
   }) async {
     if (!online) throw const RemoteBlobUnavailableException();
+    if (refused.contains(id)) throw const RemoteBlobRejectedException(413);
     uploads.add(id);
     final bytes = BytesBuilder();
     await for (final piece in ciphertext) {
@@ -214,6 +218,44 @@ void main() {
     await sync.uploadPending();
 
     expect(remote.objects.keys, [take.id]);
+  });
+
+  test('a blob the server refuses does not hold back the others', () async {
+    final recorder = NoteRecorder(
+      capture: () => FakeCapture(voice(6000)),
+      blobs: phone.storage,
+      engine: vault.engine,
+    );
+    final other = await (await recorder.start()).stop();
+    await store.save(
+      songWith('1123456789abcdef0123456789abcdef', other.id),
+      takes: [other],
+    );
+    remote.refused.add(take.id);
+    final sync = phone.sync(store);
+
+    await expectLater(
+      sync.uploadPending(),
+      throwsA(isA<RemoteBlobRejectedException>()),
+    );
+
+    expect(remote.objects.keys, [other.id]);
+    remote.refused.clear();
+    await sync.uploadPending();
+    expect(remote.objects.keys, unorderedEquals([take.id, other.id]));
+  });
+
+  test('a failed upload still lets the server be cleaned', () async {
+    remote.storedAt[BlobId('orphan-1')] = DateTime.utc(2026, 10, 1);
+    remote.objects[BlobId('orphan-1')] = Uint8List(1);
+    remote.refused.add(take.id);
+
+    await expectLater(
+      phone.sync(store).afterSync(),
+      throwsA(isA<RemoteBlobRejectedException>()),
+    );
+
+    expect(remote.deletions, [BlobId('orphan-1')]);
   });
 
   test('another device downloads it on the first play', () async {

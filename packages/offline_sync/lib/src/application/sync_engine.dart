@@ -24,6 +24,7 @@ final class SyncReport {
     this.rejected = 0,
     this.undecryptable = 0,
     this.moved = false,
+    this.lost = const [],
   });
 
   /// The server was unreachable; queued edits are still queued.
@@ -48,6 +49,11 @@ final class SyncReport {
   /// holds.
   final bool moved;
 
+  /// This device's own edits that lost a conflict to a concurrent one from
+  /// another device, in the order they lost. Only the author's device
+  /// reports its loss, so a copy kept from it is kept once.
+  final List<LostEdit> lost;
+
   /// This report after [move], the part of the same sync that published
   /// the vault on a new server.
   SyncReport _after(SyncReport move) => SyncReport(
@@ -58,7 +64,22 @@ final class SyncReport {
     rejected: move.rejected + rejected,
     undecryptable: move.undecryptable + undecryptable,
     moved: true,
+    lost: [...move.lost, ...lost],
   );
+}
+
+/// An edit of this device that another device's concurrent edit replaced:
+/// what the record held before the winner came in.
+final class LostEdit {
+  const LostEdit({
+    required this.record,
+    required this.contents,
+    required this.writtenAt,
+  });
+
+  final RecordId record;
+  final RevisionContents contents;
+  final DateTime writtenAt;
 }
 
 /// Use case: offline-first editing and sync of one workspace's records.
@@ -320,6 +341,7 @@ final class SyncEngine {
       conflicts: report.conflicts,
       rejected: report.rejected,
       undecryptable: report.undecryptable,
+      lost: report.lost,
     );
   }
 
@@ -687,12 +709,13 @@ final class SyncEngine {
     var conflicts = 0;
     var rejected = 0;
     var undecryptable = 0;
+    final lost = <LostEdit>[];
     try {
       for (final PulledRow(cursor: position, :row) in await _server.pull(
         _workspace,
         after: cursor,
       )) {
-        switch (await _merge(row, position, held)) {
+        switch (await _merge(row, position, held, lost)) {
           case _Merged.applied:
             pulled++;
           case _Merged.conflict:
@@ -716,6 +739,7 @@ final class SyncEngine {
       conflicts: conflicts,
       rejected: rejected,
       undecryptable: undecryptable,
+      lost: lost,
     );
   }
 
@@ -723,6 +747,7 @@ final class SyncEngine {
     SealedRow row,
     int position,
     Set<SignedRevision>? held,
+    List<LostEdit> lost,
   ) async {
     final SignedRevision incoming;
     try {
@@ -755,6 +780,19 @@ final class SyncEngine {
       return _Merged.applied;
     }
     final resolution = ConflictResolver.resolve(local.current, incoming);
+    final mine = local.current.revision;
+    // The author's device keeps what it lost; a deletion keeps nothing.
+    if (resolution.concurrent && resolution.changed && mine.author == _myId) {
+      if (mine.body case final RevisionContents contents) {
+        lost.add(
+          LostEdit(
+            record: row.record,
+            contents: contents,
+            writtenAt: mine.writtenAt,
+          ),
+        );
+      }
+    }
     final latest = local.latestWith(incoming.revision.writtenAt);
     if (resolution.changed ||
         resolution.seen != local.seen ||

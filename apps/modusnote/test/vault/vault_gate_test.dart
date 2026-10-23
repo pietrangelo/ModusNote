@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/gestures.dart';
@@ -6,27 +7,35 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:identity_cryptography/identity_cryptography.dart';
 import 'package:identity_cryptography_adapters/identity_cryptography_adapters.dart';
 import 'package:modusnote/appearance/appearance_scope.dart';
+import 'package:modusnote/backup/file_exchange.dart';
 import 'package:modusnote/appearance/page_appearance.dart';
 import 'package:modusnote/notes/note_editor.dart';
 import 'package:modusnote/notes/note_library.dart';
 import 'package:modusnote/vault/auto_lock.dart';
+import 'package:modusnote/vault/second_factor.dart';
 import 'package:modusnote/vault/vault_gate.dart';
 import 'package:offline_sync/offline_sync.dart';
 import 'package:schema_dynamic_content/schema_dynamic_content.dart';
 import 'package:sqlite3/sqlite3.dart';
 
+import '../backup/backup_sheet_test.dart' show FakeFiles;
 import '../notes/harness.dart';
+import 'confirm_support.dart';
 import 'support.dart';
 
 Widget gateOn(
   Database database, {
   AutoLock Function(VoidCallback)? autoLock,
   PasskeyPrf? passkeys,
+  FileExchange? files,
+  SecondFactor secondFactor = SecondFactor.passkey,
 }) => VaultGate(
   keeper: keeperOn(database, passkeys: passkeys),
   passwordFrom: (bytes) => SodiumPasswordSecret.fromUtf8Bytes(sodium, bytes),
   catalog: SeedSchemas.catalog,
   autoLockFor: autoLock,
+  files: files,
+  secondFactor: secondFactor,
 );
 
 /// The real policy with times short enough for a widget test.
@@ -395,7 +404,7 @@ void main() {
       await tester.tap(passkeySettings);
       await tester.pumpAndSettle();
       await tester.tap(find.text('Attiva la passkey'));
-      await tester.pumpAndSettle();
+      await confirmWith(tester, 'frase lunga');
     }
 
     testWidgets('without passkey support nothing mentions passkeys', (
@@ -407,6 +416,112 @@ void main() {
       expect(passkeySettings, findsNothing);
       await lock(tester);
       expect(passkeyButton, findsNothing);
+    });
+
+    testWidgets('the vault stays open while the person is at the '
+        'authenticator', (tester) async {
+      final waiting = passkeys.atAuthenticator = Completer<void>();
+      await pumpApp(
+        tester,
+        gateOn(database, autoLock: quickLock, passkeys: passkeys),
+      );
+      await create(tester, 'frase lunga', 'frase lunga');
+      await tester.tap(passkeySettings);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Attiva la passkey'));
+      await confirmWith(tester, 'frase lunga');
+
+      await tester.pump(const Duration(minutes: 2));
+      expect(find.byTooltip('Blocca'), findsOneWidget);
+      waiting.complete();
+      await tester.pumpAndSettle();
+      expect(find.byTooltip('Blocca'), findsOneWidget);
+
+      await tester.pump(const Duration(minutes: 2));
+      await tester.pumpAndSettle();
+      expect(find.byTooltip('Blocca'), findsNothing, reason: 'idle again');
+    });
+
+    testWidgets('setting up a passkey asks for the passphrase first', (
+      tester,
+    ) async {
+      await pumpApp(tester, gateOn(database, passkeys: passkeys));
+      await create(tester, 'frase lunga', 'frase lunga');
+      await lock(tester);
+      await unlock(tester, 'frase lunga');
+
+      await tester.tap(passkeySettings);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Attiva la passkey'));
+      await confirmWith(tester, 'frase sbagliata');
+      expect(find.byKey(const ValueKey('confirm-problem')), findsOneWidget);
+      await tester.tap(find.text('Annulla'));
+      await tester.pumpAndSettle();
+
+      expect(passkeys.registered, 0, reason: 'no ceremony without it');
+      await setUpPasskey(tester);
+      expect(passkeys.registered, 1);
+    });
+
+    testWidgets('with a passkey set up, the passkey confirms too', (
+      tester,
+    ) async {
+      await pumpApp(
+        tester,
+        gateOn(database, passkeys: passkeys, files: FakeFiles()),
+      );
+      await create(tester, 'frase lunga', 'frase lunga');
+      await setUpPasskey(tester);
+      await lock(tester);
+      await unlock(tester, 'frase lunga');
+
+      await tester.tap(find.byTooltip('Backup ed esportazione'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('confirm-factor')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Scarica un backup cifrato'), findsOneWidget);
+    });
+
+    testWidgets('the backup waits for the passphrase', (tester) async {
+      await pumpApp(tester, gateOn(database, files: FakeFiles()));
+      await create(tester, 'frase lunga', 'frase lunga');
+      await lock(tester);
+      await unlock(tester, 'frase lunga');
+
+      await tester.tap(find.byTooltip('Backup ed esportazione'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('confirm-factor')), findsNothing);
+      await tester.tap(find.text('Annulla'));
+      await tester.pumpAndSettle();
+      expect(find.text('Scarica un backup cifrato'), findsNothing);
+
+      await tester.tap(find.byTooltip('Backup ed esportazione'));
+      await confirmWith(tester, 'frase lunga');
+      expect(find.text('Scarica un backup cifrato'), findsOneWidget);
+    });
+
+    testWidgets('on Android the passkey is the fingerprint', (tester) async {
+      await pumpApp(
+        tester,
+        gateOn(
+          database,
+          passkeys: passkeys,
+          secondFactor: SecondFactor.biometric,
+        ),
+      );
+      await create(tester, 'frase lunga', 'frase lunga');
+
+      await tester.tap(find.byTooltip("Sblocco con l'impronta"));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Attiva'));
+      await confirmWith(tester, 'frase lunga');
+      expect(find.text("Sblocco con l'impronta attivo."), findsOneWidget);
+      await lock(tester);
+      await tester.tap(find.text("Sblocca con l'impronta"));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(NoteLibraryScreen), findsOneWidget);
     });
 
     testWidgets('a passkey set up in the library unlocks the next time', (

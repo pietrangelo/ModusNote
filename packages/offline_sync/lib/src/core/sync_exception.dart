@@ -120,6 +120,16 @@ final class WrongPassphraseException extends VaultException {
   String get message => 'wrong passphrase or altered vault';
 }
 
+/// The action gives lasting access to the vault (another device, an
+/// invited person, a backup file, a passkey) and the person has not
+/// confirmed, with the passphrase or the passkey, in the last few minutes.
+final class ConfirmationRequiredException extends VaultException {
+  const ConfirmationRequiredException();
+
+  @override
+  String get message => 'confirm the passphrase first';
+}
+
 final class VaultLockedException extends VaultException {
   const VaultLockedException();
 

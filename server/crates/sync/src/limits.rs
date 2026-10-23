@@ -25,7 +25,7 @@ impl Default for Limits {
             workspace_bytes: 100 * MIB,
             row_bytes: 1 << 20,
             rows_per_push: 100,
-            blob_bytes: 96 * MIB,
+            blob_bytes: 95 * MIB,
             workspace_blob_bytes: 2048 * MIB,
             daily_upload_bytes: 2048 * MIB,
             pull_rows: 200,

@@ -1,9 +1,11 @@
 import 'dart:io';
+import 'dart:ui' show PlatformDispatcher;
 
 import 'package:blob_storage_media/blob_storage_media.dart';
 import 'package:blob_storage_media_adapters/blob_storage_media_adapters.dart';
 import 'package:blob_storage_media_recorder_adapters/blob_storage_media_recorder_adapters.dart';
 import 'package:file/local.dart';
+import 'package:flutter/widgets.dart';
 
 import 'package:identity_cryptography/identity_cryptography.dart';
 import 'package:identity_cryptography_adapters/identity_cryptography_adapters.dart';
@@ -19,6 +21,9 @@ import '../audio/note_playback.dart';
 import '../audio/note_recorder.dart';
 import '../sync/sync_config.dart';
 import '../audio/soloud_player.dart';
+import '../l10n/generated/app_localizations.dart';
+import '../vault/android_biometric_prf.dart';
+import '../vault/second_factor.dart';
 import '../vault/vault_gate.dart';
 import '../appearance/theme_memory.dart';
 import 'home.dart' show AppHome;
@@ -37,6 +42,10 @@ Future<AppHome> buildHome() async {
   final directory = (await getApplicationSupportDirectory()).path;
   final player = SoloudRecordingPlayer();
   final cloud = cloudWiring(SyncConfig.fromEnvironment(), blake2b: blake2b256);
+  // The fingerprint (or face) is the passkey of Android; none on iOS yet.
+  final passkeys = Platform.isAndroid && await AndroidBiometricPrf.isSupported()
+      ? AndroidBiometricPrf(sodium, words: _promptWords)
+      : null;
   final shelf = sqlite3.open('$directory/$shelfDatabaseName');
   final home = VaultShelfGate(
     store: SqliteShelfStore(shelf),
@@ -56,6 +65,7 @@ Future<AppHome> buildHome() async {
         database: database,
         kdf: KdfParameters.moderate,
         gateway: cloud.gateway,
+        passkeys: passkeys,
       );
       return ShelfVault(
         build: (switcher) => _gate(
@@ -85,6 +95,21 @@ Future<AppHome> buildHome() async {
   return (home: home, themes: SqliteThemeMemory(shelf));
 }
 
+/// The system prompt in the phone's language, read when it opens.
+BiometricWords _promptWords() {
+  final l10n = lookupAppLocalizations(
+    basicLocaleListResolution(
+      PlatformDispatcher.instance.locales,
+      AppLocalizations.supportedLocales,
+    ),
+  );
+  return (
+    title: l10n.biometricPromptTitle,
+    subtitle: l10n.biometricPromptSubtitle,
+    cancel: l10n.cancel,
+  );
+}
+
 VaultGate _gate({
   required SodiumSumo sodium,
   required VaultKeeper keeper,
@@ -103,6 +128,7 @@ VaultGate _gate({
   return VaultGate(
     keeper: keeper,
     switcher: switcher,
+    secondFactor: SecondFactor.biometric,
     sharedBlobsFor: cloud.remoteBlobs == null
         ? null
         : (vault) {
