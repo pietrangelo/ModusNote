@@ -4,6 +4,7 @@
 @TestOn('vm')
 library;
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
@@ -137,6 +138,48 @@ void main() {
         throwsA(isA<NotAdmittedException>()),
       );
       expect(await read(alice, note), 'da Alice');
+    },
+    skip: _server == null ? 'needs MODUSNOTE_SERVER (server/e2e/run.sh)' : null,
+    timeout: const Timeout(Duration(minutes: 3)),
+  );
+
+  test(
+    'the live channel says when another device writes, and closes when '
+    'this one is removed',
+    () async {
+      final aliceKeeper = device();
+      final alice = await aliceKeeper.create(
+        secret(utf8.encode('frase di Alice, lunga')),
+      );
+      addTearDown(alice.lock);
+      await aliceKeeper.confirm(
+        alice,
+        secret(utf8.encode('frase di Alice, lunga')),
+      );
+      await alice.engine.sync();
+      final bob = await bringIn(aliceKeeper, alice, device(), Role.editor);
+      await bob.engine.sync();
+
+      final live = ModusLiveChannel(origin: Uri.parse(_server!))
+          .open(bob.workspace, bob.signer);
+      final signals = StreamIterator(live);
+      addTearDown(signals.cancel);
+      expect(await signals.moveNext(), isTrue);
+      expect(signals.current, const LiveOpened());
+
+      await alice.engine.write(note, RevisionContents(utf8.encode('nuova')));
+      await alice.engine.sync();
+      expect(await signals.moveNext(), isTrue);
+      expect(signals.current, const LiveChanged());
+
+      await alice.engine.revoke(bob.member);
+      LiveSignal last;
+      do {
+        expect(await signals.moveNext(), isTrue);
+        last = signals.current;
+      } while (last is LiveChanged);
+      expect(last, const LiveClosed(LiveClosed.removed));
+      expect(await signals.moveNext(), isFalse);
     },
     skip: _server == null ? 'needs MODUSNOTE_SERVER (server/e2e/run.sh)' : null,
     timeout: const Timeout(Duration(minutes: 3)),

@@ -13,10 +13,12 @@ dependencies:
   meta: ^1.16.0
   offline_sync: any
   sqlite3: ^3.7.0
+  web_socket: ^1.0.1
 
 dev_dependencies:
   crypto: ^3.0.7
   identity_cryptography_adapters: any
   lints: ^6.0.0
   sodium: ^4.1.1
+  stream_channel: ^2.1.4
   test: ^1.26.0
