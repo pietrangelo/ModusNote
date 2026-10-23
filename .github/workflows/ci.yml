@@ -110,6 +110,7 @@ jobs:
           for dir in packages/offline_sync packages/blob_storage_media; do
             (cd "$dir" && dart test -p chrome test/portable_int64_test.dart) || exit 1
           done
+          (cd packages/offline_sync && dart test -p chrome test/service_notice_test.dart) || exit 1
 
       - name: Browser audio and storage in Chrome
         # IndexedDB blobs, WebCodecs Opus and the Ogg container, compiled
@@ -119,6 +120,15 @@ jobs:
           for compiler in dart2js dart2wasm; do
             dart test -p chrome -c "$compiler" test/web \
               test/ogg_opus_muxer_test.dart test/ogg_opus_demuxer_test.dart || exit 1
+          done
+
+      - name: Live channel in Chrome
+        # The WebSocket to the workspace, both compilers, against a stand-in
+        # server on the VM (spawnHybridUri).
+        working-directory: packages/offline_sync_adapters
+        run: |
+          for compiler in dart2js dart2wasm; do
+            dart test -p chrome -c "$compiler" test/web || exit 1
           done
 
       - name: Passkeys in Chrome

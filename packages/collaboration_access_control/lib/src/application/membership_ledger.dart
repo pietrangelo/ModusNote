@@ -3,6 +3,7 @@ import 'package:identity_cryptography/identity_cryptography.dart';
 import '../core/collaboration_exception.dart';
 import '../core/identifiers.dart';
 import '../core/invitation.dart';
+import '../core/ledger_fingerprint.dart';
 import '../core/membership_change.dart';
 import '../core/membership_record.dart';
 import '../core/workspace.dart';
@@ -21,6 +22,10 @@ final class VerifiedLedger {
   final List<Workspace> _states;
 
   Workspace get workspace => _states.last;
+
+  /// What two devices compare to see the same log.
+  LedgerFingerprint get fingerprint =>
+      LedgerFingerprint.after(records.length, records.last.signature);
 
   /// The membership as it stood right after record [sequence].
   Workspace at(int sequence) {

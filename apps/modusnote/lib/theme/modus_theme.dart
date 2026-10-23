@@ -54,6 +54,18 @@ abstract final class ModusTheme {
         headerHeadlineStyle: textTheme.headlineMedium,
         headerHelpStyle: textTheme.labelMedium,
       ),
+      // The count on a button: caption text on the scale's smallest steps.
+      badgeTheme: BadgeThemeData(
+        backgroundColor: palette.primary,
+        textColor: palette.onAccent,
+        smallSize: Spacing.s,
+        largeSize: IconSizes.badge,
+        padding: const EdgeInsets.symmetric(horizontal: Spacing.xxs),
+        textStyle: textTheme.labelSmall?.copyWith(
+          fontWeight: FontWeight.w600,
+          height: 1,
+        ),
+      ),
       cardTheme: CardThemeData(
         color: palette.surface,
         margin: const EdgeInsets.all(Spacing.s),

@@ -7,10 +7,13 @@
 //! record id, then the ciphertext), `idx/<record>/<position>` (to find the
 //! rows a new one supersedes), `blob/<id>` (size and time), `nonce/<hex>`.
 
-use ledger::{Change, KeyBundle, MemberKey, Record, Refused, Role, SignatureCheck, VerifiedLedger, WorkspaceId};
+use ledger::{
+    Change, Credential, KeyBundle, MemberKey, Record, Refused, Role, SignatureCheck, VerifiedLedger, WorkspaceId,
+};
 
-use crate::auth::{Caller, Denied, Request, authenticate, decode_u64, ledger_hex};
+use crate::auth::{Caller, Denied, Request, authenticate, decode_u64, ledger_hex, remember_nonce, verify};
 use crate::limits::Limits;
+use crate::live::{Fanout, Socket, fan_out};
 use crate::store::{Store, Unavailable};
 
 const META: &str = "meta";
@@ -247,9 +250,48 @@ impl<S: Store, C: SignatureCheck> Workspace<S, C> {
 
     pub fn heads(&mut self, request: &Request<'_>) -> Result<Heads, SyncError> {
         self.member(request, |_| true)?;
+        self.current_heads()
+    }
+
+    fn current_heads(&mut self) -> Result<Heads, SyncError> {
         let meta = Meta::load(&self.store)?;
         let membership = self.ledger()?.map_or(0, VerifiedLedger::len) as u64;
         Ok(Heads { rows: meta.next_row - 1, bundles: meta.next_bundle - 1, membership })
+    }
+
+    /// Admits a device to the live channel: `GET .../live`, signed over an
+    /// empty body, with the credential as the subprotocol `token` and no
+    /// `Authorization` beside it. Signature and time are checked first,
+    /// writing nothing; only for a member of the verified log, of any role,
+    /// is the nonce remembered (a captured handshake opens nothing more)
+    /// and the workspace kept alive, so a stranger or a removed member
+    /// leaves no trace in the store.
+    pub fn live(&mut self, request: &Request<'_>, token: &str) -> Result<MemberKey, SyncError> {
+        if self.ledger()?.is_none() {
+            return Err(SyncError::NotFound);
+        }
+        if request.authorization.is_some() {
+            return Err(SyncError::Denied(Denied::Unauthenticated));
+        }
+        let credential = Credential::parse_token(token).ok_or(SyncError::Denied(Denied::Unauthenticated))?;
+        let Caller { key } = verify(&self.check, request, &credential)?;
+        if self.ledger()?.and_then(|ledger| ledger.workspace().role(&key)).is_none() {
+            return Err(SyncError::Denied(Denied::Forbidden));
+        }
+        remember_nonce(&mut self.store, &credential.nonce, request.now_ms)?;
+        self.touch(request)?;
+        Ok(key)
+    }
+
+    /// What the open sockets get after a write that `author` signed: the
+    /// heads for the members but the author, and a close for every key the
+    /// verified log no longer has (right after the record that removed it).
+    pub fn fanout(&mut self, open: &[Socket], author: &MemberKey) -> Result<Fanout, SyncError> {
+        let heads = self.current_heads()?;
+        let workspace = self.ledger()?.map(VerifiedLedger::workspace);
+        let (notify, close) =
+            fan_out(open, author, |key| workspace.is_some_and(|workspace| workspace.role(key).is_some()));
+        Ok(Fanout { heads, notify, close })
     }
 
     /// Records from sequence `from` on. A removed member may still read

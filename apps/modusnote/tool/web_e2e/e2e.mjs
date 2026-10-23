@@ -19,12 +19,16 @@ const root = fileURLToPath(new URL('../../build/web/', import.meta.url));
 const passphrase = 'correct horse battery staple';
 const noteText = 'Persisted under the CSP';
 const songTitle = 'Guide take';
+const livePath = `/api/w/${'0'.repeat(32)}/live`;
+// Shaped like the device's credential, mn1.<key>.<ms>.<nonce>.<signature>;
+// nothing here checks the signature.
+const liveToken = `mn1.${'A'.repeat(43)}.${Date.now()}.${'A'.repeat(22)}.${'A'.repeat(86)}`;
 
 function check(condition, message) {
   if (!condition) throw new Error(message);
 }
 
-async function scenario(browser, origin, mode) {
+async function scenario(browser, origin, handshakes, mode) {
   const context = await browser.newContext({ locale: 'en-US', permissions: ['microphone'] });
   const page = await context.newPage();
   const problems = [];
@@ -37,6 +41,16 @@ async function scenario(browser, origin, mode) {
   page.on('request', (request) => {
     const url = request.url();
     if (!url.startsWith(origin) && !url.startsWith(`blob:${origin}/`)) outside.push(url);
+  });
+  // The live channel is a WebSocket to the page's own origin (ws: or wss:);
+  // one anywhere else counts as a request outside it.
+  const sockets = [];
+  page.on('websocket', (socket) => {
+    sockets.push(socket.url());
+    const url = new URL(socket.url());
+    const own = new URL(origin);
+    const scheme = own.protocol === 'https:' ? 'wss:' : 'ws:';
+    if (url.protocol !== scheme || url.host !== own.host) outside.push(socket.url());
   });
   page.on('response', (response) => loaded.push(new URL(response.url()).pathname));
   const cdp = await context.newCDPSession(page);
@@ -306,6 +320,44 @@ async function scenario(browser, origin, mode) {
     `expected one committed recording, found ${JSON.stringify(leaks.blobs)}`,
   );
 
+  // The live channel, opened from the page as LiveLink does, under the
+  // served CSP and Trusted Types: the sync is off here, so the app opens
+  // none itself. The local server checks the handshake as the Worker does,
+  // apart from the signature, and answers with the live subprotocol.
+  const before = handshakes.length;
+  const live = await page.evaluate(async ({ path, token }) => {
+    let socket;
+    try {
+      socket = new WebSocket(`${location.origin.replace(/^http/, 'ws')}${path}`, [
+        'modusnote.live.v1',
+        token,
+      ]);
+    } catch (error) {
+      return { outcome: `refused: ${error.message}` };
+    }
+    const outcome = await new Promise((resolve) => {
+      socket.onopen = () => resolve('open');
+      socket.onerror = () => resolve('error');
+      socket.onclose = (event) => resolve(`closed ${event.code}`);
+    });
+    const protocol = socket.protocol;
+    socket.close();
+    return { outcome, protocol };
+  }, { path: livePath, token: liveToken });
+  check(
+    live.outcome === 'open' && live.protocol === 'modusnote.live.v1',
+    `the live channel did not open: ${JSON.stringify(live)}`,
+  );
+  check(
+    sockets.length === 1 && new URL(sockets[0]).host === new URL(origin).host,
+    `expected one WebSocket to the page's origin, saw ${JSON.stringify(sockets)}`,
+  );
+  const seen = handshakes.slice(before);
+  check(
+    seen.length === 1 && seen[0].path === livePath && seen[0].origin === origin,
+    `expected one live handshake from the page, the server saw ${JSON.stringify(seen)}`,
+  );
+
   const violations = await page.evaluate(() => window.__violations);
   check(violations.length === 0, `CSP violations: ${violations.join(', ')}`);
   check(problems.length === 0, problems.join('\n'));
@@ -330,7 +382,7 @@ async function scenario(browser, origin, mode) {
 }
 
 const fakeMicrophone = ['--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'];
-const { server, origin } = await serve(root);
+const { server, origin, handshakes } = await serve(root);
 const browser = await chromium.launch(
   process.env.CHROME_PATH
     ? { executablePath: process.env.CHROME_PATH, args: ['--no-sandbox', ...fakeMicrophone] }
@@ -339,8 +391,8 @@ const browser = await chromium.launch(
 let failed = false;
 for (const mode of ['wasm', 'js']) {
   try {
-    const bytes = await scenario(browser, origin, mode);
-    console.log(`ok ${mode}: vault created, note and recording saved, reloaded, unlocked, played, passkey set up and used; ${bytes} bytes stored, all ciphertext`);
+    const bytes = await scenario(browser, origin, handshakes, mode);
+    console.log(`ok ${mode}: vault created, note and recording saved, reloaded, unlocked, played, passkey set up and used, live channel opened; ${bytes} bytes stored, all ciphertext`);
   } catch (error) {
     failed = true;
     console.error(`FAIL ${mode}: ${error.message}`);

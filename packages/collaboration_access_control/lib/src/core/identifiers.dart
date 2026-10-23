@@ -5,6 +5,7 @@ import 'package:identity_cryptography/identity_cryptography.dart';
 import 'package:meta/meta.dart';
 
 import 'collaboration_exception.dart';
+import 'fingerprint.dart';
 
 /// Opaque, random workspace identifier; the only workspace data the sync
 /// server sees in clear.
@@ -54,6 +55,10 @@ extension type const MemberId(PublicSigningKey signingKey) {
   MemberId.of(PublicIdentity identity) : this(identity.signingKey);
 
   String get hex => signingKey.hex;
+
+  /// The start of the signing key, in four groups: devices have no names,
+  /// so this is how two screens are compared.
+  String get fingerprint => fingerprintOf(signingKey.bytes);
 }
 
 /// Generation of the GroupKey. It advances whenever someone leaves, so what

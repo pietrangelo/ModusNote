@@ -54,6 +54,7 @@ Future<AppHome> buildHome() async {
     SyncConfig.fromEnvironment(page: Uri.base),
     blake2b: (message) =>
         sodium.crypto.genericHash(message: message, outLen: 32),
+    identities: SodiumIdentityService(sodium),
   );
   final shelf = sqlite.open('/$shelfDatabaseName');
   final home = VaultShelfGate(
@@ -125,6 +126,8 @@ VaultGate _gate({
   return VaultGate(
     keeper: keeper,
     switcher: switcher,
+    live: cloud.live,
+    serviceNotices: cloud.serviceNotices,
     sharedBlobsFor: cloud.remoteBlobs == null
         ? null
         : (vault) {

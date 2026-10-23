@@ -38,8 +38,11 @@ export NO_PROXY=127.0.0.1 no_proxy=127.0.0.1
 python3 -I "$root/server/e2e/e2e.py" "http://127.0.0.1:$port"
 
 # The app's own domain and adapter against the same Worker, where Dart is
-# installed (the CI job installs it).
+# installed (the CI job installs it). It starts in a window of the write
+# limit of its own (wrangler dev enforces 60 a minute for 127.0.0.1, in
+# windows aligned to the clock): none of e2e.py's writes count against it.
 if command -v dart > /dev/null; then
+  sleep $((61 - $(date +%s) % 60))
   (cd "$root/packages/offline_sync_adapters" &&
     MODUSNOTE_SERVER="http://127.0.0.1:$port" dart test test/modus_e2e_test.dart)
 fi

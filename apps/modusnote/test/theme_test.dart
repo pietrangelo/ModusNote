@@ -54,6 +54,7 @@ void main() {
     });
 
     test('icons take their size from the spacing scale', () {
+      expect(Spacing.all, contains(IconSizes.badge));
       expect(Spacing.all, contains(IconSizes.inline));
       expect(Spacing.all, contains(IconSizes.prominent));
     });

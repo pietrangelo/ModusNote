@@ -39,6 +39,8 @@ pub enum Route {
     GetBlob(WorkspaceId, String),
     DeleteBlobs(WorkspaceId),
     PostOffer(WorkspaceId, String),
+    /// The live channel: a WebSocket that hears of every write.
+    Live(WorkspaceId),
     Offer(String),
     Answer(String),
     Answers(String),
@@ -62,7 +64,8 @@ impl Route {
             | Self::PutBlob(ws, _)
             | Self::GetBlob(ws, _)
             | Self::DeleteBlobs(ws)
-            | Self::PostOffer(ws, _) => Some(*ws),
+            | Self::PostOffer(ws, _)
+            | Self::Live(ws) => Some(*ws),
             _ => None,
         }
     }
@@ -102,7 +105,8 @@ impl Route {
     }
 
     /// A request that changes something; it is throttled more and its
-    /// nonce is remembered.
+    /// nonce is remembered. So is the live channel's handshake: a socket
+    /// costs more than a read, and its nonce is remembered too.
     pub fn writes(&self) -> bool {
         !matches!(
             self,
@@ -136,6 +140,8 @@ pub enum ApiError {
     CrossOrigin,
     /// The proof of work is missing, stale or short.
     Work,
+    /// Not a WebSocket upgrade to [`LIVE_PROTOCOL`].
+    UpgradeRequired,
     Unavailable,
 }
 
@@ -151,6 +157,7 @@ impl ApiError {
             Self::LengthRequired => 411,
             Self::TooLarge => 413,
             Self::Unprocessable => 422,
+            Self::UpgradeRequired => 426,
             Self::RateLimited => 429,
             Self::Unavailable => 503,
         }
@@ -172,6 +179,7 @@ impl ApiError {
             Self::RateLimited => "rate_limited",
             Self::CrossOrigin => "cross_origin",
             Self::Work => "proof_of_work",
+            Self::UpgradeRequired => "upgrade_required",
             Self::Unavailable => "unavailable",
         };
         format!(r#"{{"error":"{code}"}}"#)
@@ -269,6 +277,7 @@ pub fn route(method: &str, path: &str, query: Option<&str>) -> Result<Route, Api
             }
         }
         ["w", ws, "codes", lookup] => ("POST", Route::PostOffer(workspace(ws)?, code_lookup(lookup)?)),
+        ["w", ws, "live"] => ("GET", Route::Live(workspace(ws)?)),
         ["codes", lookup] => {
             let lookup = code_lookup(lookup)?;
             match method {
@@ -332,6 +341,26 @@ pub fn check_origin(origin: Option<&str>, own_origin: &str) -> Result<(), ApiErr
     match origin {
         Some(origin) if origin != own_origin => Err(ApiError::CrossOrigin),
         _ => Ok(()),
+    }
+}
+
+/// The live channel's subprotocol, the one the server answers with.
+pub const LIVE_PROTOCOL: &str = "modusnote.live.v1";
+/// How the credential is spelled among the offered subprotocols.
+const LIVE_TOKEN: &str = "mn1.";
+
+/// The credential of a live channel's handshake: a WebSocket upgrade that
+/// offers [`LIVE_PROTOCOL`] and exactly one `mn1.` token in
+/// `Sec-WebSocket-Protocol` (a browser cannot set `Authorization` there).
+pub fn live_token<'a>(upgrade: Option<&str>, protocols: Option<&'a str>) -> Result<&'a str, ApiError> {
+    let offered: Vec<&str> = protocols.map_or_else(Vec::new, |list| list.split(',').map(str::trim).collect());
+    if !upgrade.is_some_and(|value| value.trim().eq_ignore_ascii_case("websocket")) || !offered.contains(&LIVE_PROTOCOL)
+    {
+        return Err(ApiError::UpgradeRequired);
+    }
+    match offered.iter().filter(|value| value.starts_with(LIVE_TOKEN)).collect::<Vec<_>>().as_slice() {
+        [token] => Ok(token),
+        _ => Err(ApiError::Unauthenticated),
     }
 }
 
@@ -656,6 +685,38 @@ mod tests {
         assert_eq!(route("GET", "/api/codes/abc123", None), Err(ApiError::NotFound));
         assert_eq!(route("GET", "/api/codes/ABCI23", None), Err(ApiError::NotFound));
         assert_eq!(route("GET", "/api/w", None), Err(ApiError::NotFound));
+    }
+
+    #[test]
+    fn the_live_channel_is_a_get_upgrade_throttled_as_a_write() {
+        let live = route("GET", &format!("/api/w/{WS}/live"), None);
+
+        assert_eq!(live, Ok(Route::Live(ws())));
+        assert_eq!(live.as_ref().map(Route::workspace), Ok(Some(ws())));
+        assert!(live.as_ref().is_ok_and(|live| live.writes() && !live.takes_json()));
+        assert_eq!(route("POST", &format!("/api/w/{WS}/live"), None), Err(ApiError::MethodNotAllowed));
+        assert_eq!(route("GET", &format!("/api/w/{WS}/live"), Some("t=1")), Err(ApiError::NotFound));
+    }
+
+    #[test]
+    fn the_handshake_offers_our_protocol_and_exactly_one_token() {
+        let token = "mn1.k.1.n.s";
+        fn ours(protocols: &str) -> Result<&str, ApiError> {
+            live_token(Some("websocket"), Some(protocols))
+        }
+
+        assert_eq!(ours("modusnote.live.v1, mn1.k.1.n.s"), Ok(token));
+        assert_eq!(ours("mn1.k.1.n.s,modusnote.live.v1"), Ok(token));
+        assert_eq!(live_token(Some("WebSocket"), Some("modusnote.live.v1, mn1.k.1.n.s")), Ok(token));
+        assert_eq!(live_token(None, Some("modusnote.live.v1, mn1.k.1.n.s")), Err(ApiError::UpgradeRequired));
+        assert_eq!(live_token(Some("h2c"), Some("modusnote.live.v1, mn1.k.1.n.s")), Err(ApiError::UpgradeRequired));
+        assert_eq!(live_token(Some("websocket"), None), Err(ApiError::UpgradeRequired));
+        assert_eq!(ours("mn1.k.1.n.s"), Err(ApiError::UpgradeRequired));
+        assert_eq!(ours("modusnote.live.v2, mn1.k.1.n.s"), Err(ApiError::UpgradeRequired));
+        assert_eq!(ours("modusnote.live.v1"), Err(ApiError::Unauthenticated));
+        assert_eq!(ours("modusnote.live.v1, mn1.a, mn1.b"), Err(ApiError::Unauthenticated));
+        assert_eq!(ApiError::UpgradeRequired.status(), 426);
+        assert_eq!(ApiError::UpgradeRequired.body(0), r#"{"error":"upgrade_required"}"#);
     }
 
     #[test]

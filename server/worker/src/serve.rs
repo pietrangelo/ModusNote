@@ -3,14 +3,14 @@
 //! signed), the body's digest is taken there, and the use case answers.
 //! `runtime` only moves bytes in and out, and does what needs R2.
 
-use ledger::{MemberKey, SignatureCheck, WorkspaceId};
+use ledger::{Credential, MemberKey, SignatureCheck, WorkspaceId};
 use serde::Serialize;
-use sync::{Budget, Guard, Hasher, PowPurpose, Rendezvous, Request, Store, Workspace, pow_satisfied};
+use sync::{Budget, Guard, Hasher, Heads, PowPurpose, Rendezvous, Request, Socket, Store, Workspace, pow_satisfied};
 
 use crate::api::{
     self, AnswerBody, AnswersReply, ApiError, BlobReply, BlobsReply, BundleBody, BundleReply, BundlesReply,
     DeleteBlobsBody, FoundBody, HeadsReply, OfferBody, OfferReply, PositionReply, PositionsReply, PullReply, PushBody,
-    RecordBody, RecordsReply, Route, decode, encode, parse_json, pow_day_ok,
+    RecordBody, RecordsReply, Route, decode, encode, live_token, parse_json, pow_day_ok,
 };
 
 /// Where the Worker hands an owner's offer, already checked by the
@@ -22,6 +22,13 @@ pub const INTERNAL_SPEND: &str = "/internal/spend";
 /// The size of a blob about to be uploaded, from the Worker (the device's
 /// `Content-Length`): the upload's body goes to R2, not to the object.
 pub const BLOB_SIZE: &str = "X-Blob-Size";
+/// How the object closes a live socket: its key left the log, the
+/// workspace is gone, the key opened a fifth socket, or the device sent
+/// something other than `ping`.
+pub const CLOSE_REMOVED: u16 = 4403;
+pub const CLOSE_GONE: u16 = 4404;
+pub const CLOSE_EVICTED: u16 = 4409;
+pub const CLOSE_POLICY: u16 = 1008;
 
 /// BLAKE2b-256 for the use cases, as libsodium computes it.
 #[derive(Clone, Copy, Debug, Default)]
@@ -42,6 +49,9 @@ pub struct Incoming<'a> {
     pub authorization: Option<&'a str>,
     pub body: &'a [u8],
     pub blob_size: Option<&'a str>,
+    /// `Upgrade` and `Sec-WebSocket-Protocol`, for the live channel.
+    pub upgrade: Option<&'a str>,
+    pub protocols: Option<&'a str>,
     pub now_ms: u64,
 }
 
@@ -59,6 +69,15 @@ impl Incoming<'_> {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Done {
     Json(u16, String),
+    /// A write landed: the reply, and who signed it, so that the other
+    /// members' live sockets hear of it.
+    Wrote {
+        status: u16,
+        body: String,
+        author: MemberKey,
+    },
+    /// A member's handshake for the live channel, admitted.
+    Live(MemberKey),
     /// The workspace is gone; its blobs in R2 follow.
     Deleted,
     /// These blobs were released; their objects in R2 follow.
@@ -76,6 +95,37 @@ fn json(status: u16, body: &impl Serialize) -> Result<Done, ApiError> {
 
 fn empty(status: u16) -> Done {
     Done::Json(status, "{}".into())
+}
+
+/// A reply to a write, with the key that signed it. The use case has
+/// already checked the signature, so the header is there.
+fn wrote(incoming: &Incoming<'_>, done: Done) -> Done {
+    let author = incoming.authorization.and_then(Credential::parse).map(|credential| credential.key);
+    match (done, author) {
+        (Done::Json(status, body), Some(author)) => Done::Wrote { status, body, author },
+        (done, _) => done,
+    }
+}
+
+/// What a live socket receives after a write: the same numbers as `GET
+/// heads`, a hint to sync now.
+pub fn heads_message(heads: Heads) -> String {
+    format!(r#"{{"rows":{},"bundles":{},"membership":{}}}"#, heads.rows, heads.bundles, heads.membership)
+}
+
+/// A live socket's only tag: its key, in hex (64 characters, well within
+/// the platform's limits on tags).
+pub fn socket_tag(key: &MemberKey) -> String {
+    key.to_hex()
+}
+
+/// A socket from its tags, attachment (the time it was accepted; none
+/// counts as the oldest) and state, or None if the tags are not ours.
+pub fn socket_of(tags: &[String], accepted_ms: Option<u64>, open: bool) -> Option<Socket> {
+    match tags {
+        [tag] => MemberKey::parse_hex(tag).map(|key| Socket { key, accepted_ms: accepted_ms.unwrap_or(0), open }),
+        _ => None,
+    }
 }
 
 /// Serves one call in a workspace's object.
@@ -102,7 +152,8 @@ pub fn workspace<S: Store, C: SignatureCheck>(
                 .map(|text| decode(text))
                 .collect::<Result<Vec<_>, _>>()?;
             let created = space.found(&request, ws, &records)?;
-            Ok(Done::Json(if created { 201 } else { 200 }, format!(r#"{{"created":{created}}}"#)))
+            let reply = Done::Json(if created { 201 } else { 200 }, format!(r#"{{"created":{created}}}"#));
+            Ok(if created { wrote(incoming, reply) } else { reply })
         }
         Route::DeleteWorkspace(_) => {
             space.delete(&request)?;
@@ -116,7 +167,7 @@ pub fn workspace<S: Store, C: SignatureCheck>(
         Route::AppendRecord(_) => {
             let record = decode(&parse_json::<RecordBody>(body)?.record)?;
             space.append_record(&request, &record)?;
-            Ok(empty(201))
+            Ok(wrote(incoming, empty(201)))
         }
         Route::Bundles(_, after) => {
             let (bundles, more) = space.bundles(&request, after)?;
@@ -126,7 +177,7 @@ pub fn workspace<S: Store, C: SignatureCheck>(
         }
         Route::AppendBundle(_) => {
             let bundle = decode(&parse_json::<BundleBody>(body)?.bundle)?;
-            json(201, &PositionReply { position: space.append_bundle(&request, &bundle)? })
+            Ok(wrote(incoming, json(201, &PositionReply { position: space.append_bundle(&request, &bundle)? })?))
         }
         Route::Pull(_, after) => {
             let (rows, more) = space.pull(&request, after)?;
@@ -134,7 +185,7 @@ pub fn workspace<S: Store, C: SignatureCheck>(
         }
         Route::Push(_) => {
             let rows = parse_json::<PushBody>(body)?.rows()?;
-            json(201, &PositionsReply { positions: space.push(&request, &rows)? })
+            Ok(wrote(incoming, json(201, &PositionsReply { positions: space.push(&request, &rows)? })?))
         }
         Route::ListBlobs(_, after) => {
             let (blobs, more) = space.blobs(&request, after.as_deref())?;
@@ -162,6 +213,10 @@ pub fn workspace<S: Store, C: SignatureCheck>(
             let sealed = decode(&parse_json::<OfferBody>(body)?.offer)?;
             let poster = space.owner(&request)?;
             Ok(Done::Offer { poster, sealed })
+        }
+        Route::Live(_) => {
+            let token = live_token(incoming.upgrade, incoming.protocols)?;
+            Ok(Done::Live(space.live(&request, token)?))
         }
         Route::Info | Route::Offer(_) | Route::Answer(_) | Route::Answers(_) | Route::CloseCode(_) => {
             Err(ApiError::NotFound)
