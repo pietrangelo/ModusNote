@@ -45,6 +45,7 @@ class NoteLibraryScreen extends StatefulWidget {
     this.onPasskey,
     this.passkeyLabel,
     this.onBackup,
+    this.onNotices,
     this.journalSettings,
     this.noteTypes,
     this.clock = DateTime.now,
@@ -75,6 +76,10 @@ class NoteLibraryScreen extends StatefulWidget {
   /// Opens the backup and export sheet; null where files cannot be
   /// saved and picked.
   final VoidCallback? onBackup;
+
+  /// Opens the vault's notices, from the command palette; null where the
+  /// vault has none (no server).
+  final VoidCallback? onNotices;
 
   /// Opens the journal's settings (the daily reminder); null where there
   /// are none to change.
@@ -605,6 +610,12 @@ class _NoteLibraryScreenState extends State<NoteLibraryScreen> {
         run: () =>
             wide ? unawaited(_openBeside(null, trash: true)) : _openTrash(),
       ),
+      if (widget.onNotices case final onNotices?)
+        PaletteCommand(
+          icon: Icons.notifications_none_outlined,
+          label: l10n.noticesAction,
+          run: onNotices,
+        ),
       if (widget.onLock case final onLock?)
         PaletteCommand(
           icon: Icons.lock_outline,

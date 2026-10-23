@@ -211,7 +211,7 @@ void main() {
       expect(
         find.text(
           'Può leggere · impronta '
-          '${memberFingerprint(reader.member)}',
+          '${reader.member.fingerprint}',
         ),
         findsOneWidget,
       );

@@ -4,23 +4,30 @@ import 'package:offline_sync/offline_sync.dart';
 import 'package:offline_sync_adapters/offline_sync_adapters.dart';
 
 import '../l10n/generated/app_localizations.dart';
+import '../notices/notice_center.dart';
+import '../notices/notices_sheet.dart';
 import '../theme/golden_ratio.dart';
 import '../vault/auto_lock.dart';
 import 'members_sheet.dart';
 import 'sync_controller.dart';
 import '../theme/modus_palette.dart';
 
-/// The library's sync button: its icon tells the sync state, a tap opens
-/// [CloudSheet].
+/// The library's sync button: its icon tells the sync state, a badge how
+/// many notices are unread (in the error colour when one is about the
+/// vault's security), and a tap opens [CloudSheet].
 class CloudButton extends StatelessWidget {
   const CloudButton({
     required this.sync,
+    this.notices,
     this.onLinkDevice,
     this.onInvite,
     super.key,
   });
 
   final SyncController sync;
+
+  /// The vault's notices; null where there are none to show.
+  final NoticeCenter? notices;
 
   /// Opens the linking of another device; null where linking is not
   /// offered.
@@ -32,25 +39,42 @@ class CloudButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+    final notices = this.notices;
     return ListenableBuilder(
-      listenable: sync,
-      builder: (context, _) => IconButton(
-        key: const ValueKey('cloud'),
-        tooltip: l10n.cloudTooltip(sync.state.name),
-        onPressed: () => CloudSheet.show(
-          context,
-          sync,
-          onLinkDevice: onLinkDevice,
-          onInvite: onInvite,
-        ),
-        icon: Icon(switch (sync.state) {
-          SyncState.off => Icons.cloud_off_outlined,
-          SyncState.syncing => Icons.cloud_sync_outlined,
-          SyncState.synced => Icons.cloud_done_outlined,
-          SyncState.offline => Icons.cloud_off,
-          SyncState.failed => Icons.error_outline,
-        }),
-      ),
+      listenable: Listenable.merge([sync, ?notices]),
+      builder: (context, _) {
+        final security = notices?.unreadSecurity ?? 0;
+        final service = notices?.unreadService ?? 0;
+        final scheme = Theme.of(context).colorScheme;
+        return Badge(
+          isLabelVisible: security + service > 0,
+          backgroundColor: security > 0 ? scheme.error : null,
+          textColor: security > 0 ? scheme.onError : null,
+          label: Text('${security + service}'),
+          child: IconButton(
+            key: const ValueKey('cloud'),
+            tooltip: [
+              l10n.cloudTooltip(sync.state.name),
+              if (security > 0) l10n.cloudNoticesSecurity(security),
+              if (service > 0) l10n.cloudNotices(service),
+            ].join(' · '),
+            onPressed: () => CloudSheet.show(
+              context,
+              sync,
+              notices: notices,
+              onLinkDevice: onLinkDevice,
+              onInvite: onInvite,
+            ),
+            icon: Icon(switch (sync.state) {
+              SyncState.off => Icons.cloud_off_outlined,
+              SyncState.syncing => Icons.cloud_sync_outlined,
+              SyncState.synced => Icons.cloud_done_outlined,
+              SyncState.offline => Icons.cloud_off,
+              SyncState.failed => Icons.error_outline,
+            }),
+          ),
+        );
+      },
     );
   }
 }
@@ -60,24 +84,28 @@ class CloudButton extends StatelessWidget {
 class CloudSheet extends StatefulWidget {
   const CloudSheet({
     required this.sync,
+    this.notices,
     this.onLinkDevice,
     this.onInvite,
     super.key,
   });
 
   final SyncController sync;
+  final NoticeCenter? notices;
   final VoidCallback? onLinkDevice;
   final VoidCallback? onInvite;
 
   static Future<void> show(
     BuildContext context,
     SyncController sync, {
+    NoticeCenter? notices,
     VoidCallback? onLinkDevice,
     VoidCallback? onInvite,
   }) {
     final autoLock = AutoLockScope.maybeOf(context);
     final sheet = CloudSheet(
       sync: sync,
+      notices: notices,
       onLinkDevice: onLinkDevice,
       onInvite: onInvite,
     );
@@ -103,7 +131,7 @@ class _CloudSheetState extends State<CloudSheet> {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     return ListenableBuilder(
-      listenable: widget.sync,
+      listenable: Listenable.merge([widget.sync, ?widget.notices]),
       builder: (context, _) => Padding(
         padding: EdgeInsets.only(
           bottom: MediaQuery.viewInsetsOf(context).bottom,
@@ -235,6 +263,24 @@ class _CloudSheetState extends State<CloudSheet> {
         icon: const Icon(Icons.group_outlined),
         label: Text(l10n.membersAction),
       ),
+      if (widget.notices case final notices?) ...[
+        const SizedBox(height: Spacing.s),
+        OutlinedButton.icon(
+          key: const ValueKey('notices'),
+          onPressed: () => NoticesSheet.show(
+            context,
+            notices,
+            sync,
+            onInvite: widget.onInvite,
+          ),
+          icon: Badge(
+            isLabelVisible: notices.unread > 0,
+            label: Text('${notices.unread}'),
+            child: const Icon(Icons.notifications_none_outlined),
+          ),
+          label: Text(l10n.noticesAction),
+        ),
+      ],
       if (sync.managesMembers) ...[
         const SizedBox(height: Spacing.l),
         TextButton.icon(

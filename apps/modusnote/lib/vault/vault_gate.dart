@@ -22,6 +22,9 @@ import '../notes/note_library.dart';
 import '../notes/note_types.dart';
 import '../notes/schema_text.dart';
 import '../notes/journal/journal_settings_sheet.dart';
+import '../notices/notice_center.dart';
+import '../notices/notices_sheet.dart';
+import '../notices/security_banner.dart';
 import '../reminders/journal_reminder.dart';
 import '../reminders/password_reminders.dart';
 import '../sync/blob_sync.dart';
@@ -57,6 +60,8 @@ class VaultGate extends StatefulWidget {
     this.playbackFor,
     this.imagesFor,
     this.sharedBlobsFor,
+    this.live,
+    this.serviceNotices,
     this.autoLockFor,
     this.files,
     this.remindersFor,
@@ -97,6 +102,13 @@ class VaultGate extends StatefulWidget {
   /// Connects the open vault's recordings and pictures to the workspace's
   /// shared storage; null without a server, which keeps them on the device.
   final SharedBlobs Function(UnlockedVault vault)? sharedBlobsFor;
+
+  /// Tells an open vault that syncs when another device changed it; null
+  /// without a server, or where it has none.
+  final LiveChannel? live;
+
+  /// The operator's signed notices; null without a server.
+  final ServiceNoticeBoard? serviceNotices;
 
   /// Builds the auto-lock of an open vault; tests shorten its times.
   final AutoLock Function(VoidCallback onLock)? autoLockFor;
@@ -152,12 +164,16 @@ final class _Open extends _Stage {
     this.reminders,
     this.journal,
     this.types,
+    this.notices,
   );
 
   final UnlockedVault vault;
   final VaultNoteStore store;
   final AutoLock autoLock;
   final SyncController? sync;
+
+  /// The vault's notices, beside its sync; null without one.
+  final NoticeCenter? notices;
   final PasswordReminders? reminders;
 
   /// The journal's daily reminder; null where there are no reminders.
@@ -190,6 +206,13 @@ const _typesSetting = 'ui.types';
 /// Whether, and when, this device reminds its person to write in the
 /// journal.
 const _journalSetting = 'journal.reminder';
+
+/// How many records of the member log the person has seen among the
+/// notices (a [NoticeMark]).
+const _noticeMarkSetting = 'notices.ledger';
+
+/// The operator's notices the person closed in this vault.
+const _dismissedSetting = 'notices.service';
 
 enum _Problem {
   tooShort,
@@ -239,8 +262,10 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
       :final autoLock,
       :final sync,
       :final reminders,
+      :final notices,
     )) {
       reminders?.dispose();
+      notices?.dispose();
       sync?.dispose();
       autoLock.dispose();
       vault.lock();
@@ -310,12 +335,14 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
         store.onRelease = blobs.release;
       }
       final sync = await _connect(vault, store, blobs);
+      final notices = sync == null ? null : await _notices(vault, sync);
       final page = await _storedPage(vault);
       final types = _typesOf(vault, await _storedTypes(vault));
       final daily = widget.remindersFor == null
           ? const JournalReminder()
           : await _storedJournal(vault);
       if (!mounted) {
+        notices?.dispose();
         sync?.dispose();
         vault.lock();
         return;
@@ -352,6 +379,7 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
           reminders,
           journal,
           types,
+          notices,
         ),
       );
       sync?.start();
@@ -480,9 +508,69 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
       turnOn: () => keeper.saveSetting(vault, _enabledSetting, _present),
       retired: await _isRetired(vault),
       retire: () => keeper.saveSetting(vault, _retiredSetting, _present),
+      live: switch (widget.live) {
+        final live? => () => live.open(vault.workspace, vault.signer),
+        null => null,
+      },
     );
     store.onWrite = sync.changed;
     return sync;
+  }
+
+  /// The notices of the open vault. The mark of what the person saw is
+  /// written here, before the first sync, only when it is missing or
+  /// damaged: a vault opened for the first time since notices exist, or
+  /// just joined, shows no flood of old records, and what the first sync
+  /// brings is already news.
+  Future<NoticeCenter> _notices(
+    UnlockedVault vault,
+    SyncController sync,
+  ) async {
+    final keeper = widget.keeper;
+    NoticeMark? mark;
+    try {
+      if (await keeper.loadSetting(vault, _noticeMarkSetting)
+          case final bytes?) {
+        mark = NoticeMark.parse(bytes);
+      }
+    } on MalformedSyncDataException {
+      mark = null;
+    }
+    if (mark == null) {
+      mark = NoticeMark(vault.engine.ledger.records.length);
+      await keeper.saveSetting(vault, _noticeMarkSetting, mark.toBytes());
+    }
+    Set<int> dismissed;
+    try {
+      dismissed = switch (await keeper.loadSetting(vault, _dismissedSetting)) {
+        final bytes? => DismissedNotices.parse(bytes),
+        null => const {},
+      };
+    } on MalformedSyncDataException {
+      // Closed notices may show again: they say nothing that harms.
+      dismissed = const {};
+    }
+    return NoticeCenter(
+      engine: vault.engine,
+      sync: sync,
+      mark: mark,
+      saveMark: (mark) =>
+          keeper.saveSetting(vault, _noticeMarkSetting, mark.toBytes()),
+      board: widget.serviceNotices,
+      dismissed: dismissed,
+      saveDismissed: (serials) => keeper.saveSetting(
+        vault,
+        _dismissedSetting,
+        DismissedNotices.encode(serials),
+      ),
+    );
+  }
+
+  /// Opens the notices of the open vault.
+  void _showNotices() {
+    if (_stage case _Open(:final sync?, :final notices?)) {
+      NoticesSheet.show(context, notices, sync, onInvite: _invite);
+    }
   }
 
   /// Which blobs the server holds, and which ones to delete there, are
@@ -646,11 +734,13 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
       :final autoLock,
       :final sync,
       :final reminders,
+      :final notices,
     )) {
       _stopWatching();
       _detachAppearance();
       // The reminders already set stay with the system.
       reminders?.dispose();
+      notices?.dispose();
       // An undo offered on the way out would write with released keys.
       ScaffoldMessenger.maybeOf(context)?.clearSnackBars();
       // The sync stops before the keys it works with are released.
@@ -801,8 +891,12 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
       switch (state) {
         case AppLifecycleState.hidden || AppLifecycleState.paused:
           autoLock.hidden();
+          // A closed app hears nothing anyway, and mobile systems freeze
+          // its sockets.
+          sync?.pause();
         case AppLifecycleState.resumed:
           autoLock.shown();
+          sync?.resume();
           sync?.syncNow();
         case AppLifecycleState.inactive || AppLifecycleState.detached:
           break;
@@ -853,20 +947,32 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
       :final sync,
       :final journal,
       :final types,
+      :final notices,
     ) =>
       AutoLockScope(
         autoLock: autoLock,
         child: NoteLibraryScreen(
           schemas: widget.catalog.current,
           store: store,
-          notice: UnreadableNotice(store: store),
+          notice: notices == null
+              ? UnreadableNotice(store: store)
+              : Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    SecurityBanner(notices: notices, onOpen: _showNotices),
+                    UnreadableNotice(store: store),
+                  ],
+                ),
           cloud: sync == null
               ? null
               : CloudButton(
                   sync: sync,
+                  notices: notices,
                   onLinkDevice: _linkDevice,
                   onInvite: _invite,
                 ),
+          onNotices: notices == null ? null : _showNotices,
           onLock: _lock,
           onBackup: widget.files == null ? null : _backup,
           onPasskey: widget.keeper.offersPasskeys ? _passkeySettings : null,

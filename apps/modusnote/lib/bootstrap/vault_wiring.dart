@@ -10,6 +10,7 @@ import 'package:offline_sync_adapters/offline_sync_adapters.dart';
 import 'package:sodium/sodium_sumo.dart';
 import 'package:sqlite3/common.dart';
 
+import '../notices/operator_keys.dart';
 import '../sync/sync_config.dart';
 
 /// The vault as every platform builds it: libsodium for the crypto and one
@@ -40,28 +41,48 @@ VaultKeeper vaultKeeper({
   gateway: gateway,
 );
 
-/// The server the vaults sync with, and the shared storage of their
-/// recordings and pictures; both null in a build without one.
+/// The server the vaults sync with, the shared storage of their
+/// recordings and pictures, the live channel that tells a vault when
+/// another device changed it and the operator's signed notices; all null
+/// in a build without one.
 final class CloudWiring {
-  const CloudWiring({this.gateway, this.remoteBlobs});
+  const CloudWiring({
+    this.gateway,
+    this.remoteBlobs,
+    this.live,
+    this.serviceNotices,
+  });
 
   final SyncGateway? gateway;
 
   /// The blobs of an open vault's workspace on the server, every request
   /// signed by the vault's device.
   final RemoteBlobStore Function(UnlockedVault vault)? remoteBlobs;
+
+  final LiveChannel? live;
+  final ServiceNoticeBoard? serviceNotices;
 }
 
 /// Our server when the build names one, or the web page's own ([SyncConfig]).
 /// [blake2b] hashes the proof of work a new workspace and an answer to a
 /// code carry: plain Dart on native platforms, libsodium.js on the web.
+/// [identities] checks the operator's signature on service notices,
+/// against the keys the app pins ([operatorKeys]).
 CloudWiring cloudWiring(
   SyncConfig? config, {
   required Uint8List Function(Uint8List message) blake2b,
+  required IdentityService identities,
 }) {
   if (config == null) return const CloudWiring();
   return CloudWiring(
     gateway: ModusServer(origin: config.origin, blake2b: blake2b),
+    live: ModusLiveChannel(origin: config.origin),
+    serviceNotices: ServiceNoticeBoard(
+      source: ModusServiceNotices(origin: config.origin),
+      identities: identities,
+      keys: operatorKeys(),
+      clock: const SystemClock(),
+    ),
     remoteBlobs: (vault) => ModusRemoteBlobStore(
       origin: config.origin,
       workspace: vault.workspace.hex,

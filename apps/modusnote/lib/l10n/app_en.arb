@@ -2338,5 +2338,155 @@
   "cloudServerDeleted": "You deleted this vault's data from the server. The notes stay on this device, which no longer syncs.",
   "@cloudServerDeleted": {
     "description": "Sync sheet after the vault's data was deleted from the server."
+  },
+  "noticesAction": "Notices",
+  "@noticesAction": {
+    "description": "Sync sheet button, command palette entry and sheet title: the vault's notices."
+  },
+  "noticesEmpty": "No notices.",
+  "@noticesEmpty": {
+    "description": "Notices sheet with nothing to show."
+  },
+  "noticesDisclaimer": "Modus Notes notices will never ask you to install other apps, export or send notes, create a new vault, or reveal your passphrase or an invitation code.",
+  "@noticesDisclaimer": {
+    "description": "Notices sheet: fixed line under the operator's notices, so a forged one cannot lure the person."
+  },
+  "noticesSecurity": "Vault security",
+  "@noticesSecurity": {
+    "description": "Notices sheet: heading of the notices drawn from the vault's member log."
+  },
+  "noticeClose": "Close notice",
+  "@noticeClose": {
+    "description": "Tooltip of the button that closes one operator notice for good."
+  },
+  "noticeWarning": "Important",
+  "@noticeWarning": {
+    "description": "Screen reader label of the icon of an operator notice at warning level."
+  },
+  "noticeNew": "New",
+  "@noticeNew": {
+    "description": "Screen reader label of a security notice the person had not seen yet."
+  },
+  "noticeJoined": "{subject, select, me{This device joined the vault} other{A device joined the vault}} {role, select, owner{as an owner.} editor{and can edit notes.} other{and can read notes.}}",
+  "@noticeJoined": {
+    "description": "Security notice: a device was let into the vault, with its role.",
+    "placeholders": {
+      "subject": {
+        "type": "String"
+      },
+      "role": {
+        "type": "String"
+      }
+    }
+  },
+  "noticeRemoved": "A device was removed from the vault. {rotated, select, yes{Notes written from now on use a new key.} other{Waiting for the new key.}}",
+  "@noticeRemoved": {
+    "description": "Security notice: an owner removed another device; whether this device already has the key that the removed one never gets.",
+    "placeholders": {
+      "rotated": {
+        "type": "String"
+      }
+    }
+  },
+  "noticeRemovedThis": "This device was removed from the vault: it no longer syncs, and keeps the notes it has.",
+  "@noticeRemovedThis": {
+    "description": "Security notice: another device removed this one."
+  },
+  "noticeLeft": "{subject, select, me{This device left the vault.} other{A device left the vault.}}",
+  "@noticeLeft": {
+    "description": "Security notice: a device removed itself.",
+    "placeholders": {
+      "subject": {
+        "type": "String"
+      }
+    }
+  },
+  "noticeRoleChanged": "{subject, select, me{This device's role changed} other{A device's role changed}} from {from, select, owner{owner} editor{can edit} other{can read}} to {to, select, owner{owner.} editor{can edit.} other{can read.}}",
+  "@noticeRoleChanged": {
+    "description": "Security notice: an owner changed a device's role.",
+    "placeholders": {
+      "subject": {
+        "type": "String"
+      },
+      "from": {
+        "type": "String"
+      },
+      "to": {
+        "type": "String"
+      }
+    }
+  },
+  "noticeDevice": "Device {fingerprint}",
+  "@noticeDevice": {
+    "description": "Security notice: the device it is about, by the start of its key, as in Vault members.",
+    "placeholders": {
+      "fingerprint": {
+        "type": "String"
+      }
+    }
+  },
+  "noticeByThisDevice": "by this device",
+  "@noticeByThisDevice": {
+    "description": "Security notice: who wrote it, when it was this device."
+  },
+  "noticeBy": "by device {fingerprint}",
+  "@noticeBy": {
+    "description": "Security notice: who wrote it, by the start of its key.",
+    "placeholders": {
+      "fingerprint": {
+        "type": "String"
+      }
+    }
+  },
+  "noticeUnrecognized": "Don't recognize it? Open Vault members",
+  "@noticeUnrecognized": {
+    "description": "Security notice: action that opens the members sheet, to compare fingerprints or remove the device."
+  },
+  "noticesBanner": "{count, plural, =1{1 new security notice: the vault's members changed.} other{{count} new security notices: the vault's members changed.}}",
+  "@noticesBanner": {
+    "description": "Library banner: other devices changed who belongs to the vault.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "noticesBannerAction": "View",
+  "@noticesBannerAction": {
+    "description": "Library banner: opens the notices."
+  },
+  "cloudNoticesSecurity": "{count, plural, =1{1 security notice} other{{count} security notices}}",
+  "@cloudNoticesSecurity": {
+    "description": "Sync button tooltip, after the state: unread notices, at least one about security.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "cloudNotices": "{count, plural, =1{1 notice} other{{count} notices}}",
+  "@cloudNotices": {
+    "description": "Sync button tooltip, after the state: unread operator notices.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "membersLedger": "Member log: {records, plural, =1{1 record} other{{records} records}} · {signature}",
+  "@membersLedger": {
+    "description": "Members sheet: how many records the member log has and the start of the last signature, which covers all of them.",
+    "placeholders": {
+      "records": {
+        "type": "int"
+      },
+      "signature": {
+        "type": "String"
+      }
+    }
+  },
+  "membersLedgerBody": "All your devices should show the same line. A different one means the server is holding changes back from one of them.",
+  "@membersLedgerBody": {
+    "description": "Members sheet: what the member log line is for."
   }
 }

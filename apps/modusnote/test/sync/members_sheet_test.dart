@@ -105,11 +105,29 @@ void main() {
     expect(find.text('Questo dispositivo'), findsOneWidget);
     expect(find.text('Dispositivo'), findsOneWidget);
     expect(
-      find.text('Proprietario · impronta ${memberFingerprint(phone.member)}'),
+      find.text('Proprietario · impronta ${phone.member.fingerprint}'),
       findsOneWidget,
     );
     expect(remove(phone.member), findsNothing);
     expect(remove(browser.member), findsOneWidget);
+  });
+
+  testWidgets('shows the member log in a line both devices can compare', (
+    tester,
+  ) async {
+    await twoDevices();
+    await showMembers(tester, phoneSync);
+
+    final fingerprint = phone.engine.ledger.fingerprint;
+    expect(browser.engine.ledger.fingerprint, fingerprint);
+    expect(
+      find.text('Registro dei membri: 2 record · ${fingerprint.signature}'),
+      findsOneWidget,
+    );
+    expect(
+      find.textContaining('Tutti i tuoi dispositivi dovrebbero mostrare'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('removing a device after confirming rotates the key', (
@@ -121,10 +139,7 @@ void main() {
     await tester.tap(remove(browser.member));
     await tester.pumpAndSettle();
     expect(find.text('Rimuovere questo dispositivo?'), findsOneWidget);
-    expect(
-      find.textContaining(memberFingerprint(browser.member)),
-      findsNWidgets(2),
-    );
+    expect(find.textContaining(browser.member.fingerprint), findsNWidgets(2));
     await tester.tap(find.byKey(const ValueKey('remove-confirm')));
     await tester.pumpAndSettle();
 
