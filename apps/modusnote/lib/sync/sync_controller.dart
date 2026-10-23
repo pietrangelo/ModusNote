@@ -7,6 +7,8 @@ import 'package:flutter/foundation.dart';
 import 'package:offline_sync/offline_sync.dart';
 import 'package:offline_sync_adapters/offline_sync_adapters.dart';
 
+import 'live_link.dart';
+
 enum SyncState {
   /// The sync is not turned on, or the vault left the server: edits stay
   /// queued on the device.
@@ -52,6 +54,12 @@ enum SyncProblem {
 /// one slows down to every [maxQuietTicks] + 1 intervals. One sync runs at a time; a request while
 /// one runs makes it go round once more.
 ///
+/// Where the server offers a live channel, it opens after the first sync
+/// that reached the server ([LiveLink]): another device's change syncs at
+/// once, and while the channel is open the periodic sync only checks every
+/// [livePolling]. A device removed or no longer admitted, and a vault
+/// deleted from the server, close it until the next unlock.
+///
 /// Created on unlock and disposed on lock, before the keys are released:
 /// whatever an in-flight sync does after that is ignored.
 final class SyncController extends ChangeNotifier {
@@ -66,8 +74,23 @@ final class SyncController extends ChangeNotifier {
     this._retire,
     this._debounce = const Duration(seconds: 2),
     this._interval = const Duration(minutes: 1),
+    Stream<LiveSignal> Function()? live,
+    LiveTimings liveTimings = const LiveTimings(),
+    this._livePolling = const Duration(minutes: 30),
+    Random? random,
     DateTime Function()? clock,
-  }) : _clock = clock ?? DateTime.now;
+  }) : _clock = clock ?? DateTime.now {
+    if (live != null) {
+      _live = LiveLink(
+        connect: live,
+        sync: syncNow,
+        lastSynced: () => _lastSynced,
+        timings: liveTimings,
+        random: random,
+        clock: _clock,
+      );
+    }
+  }
 
   final SyncEngine _engine;
   final Future<void> Function() _onPulled;
@@ -86,7 +109,11 @@ final class SyncController extends ChangeNotifier {
   final Future<void> Function()? _retire;
   final Duration _debounce;
   final Duration _interval;
+
+  /// How often the periodic sync checks while the live channel is open.
+  final Duration _livePolling;
   final DateTime Function() _clock;
+  LiveLink? _live;
 
   /// Periodic ticks skipped at most after syncs that moved nothing.
   static const maxQuietTicks = 4;
@@ -121,9 +148,20 @@ final class SyncController extends ChangeNotifier {
   /// pushed and pulled there, so syncing again would send none of its notes.
   bool get retired => _retired;
 
+  /// Whether the live channel is open: the server tells this device when
+  /// another one changes the vault.
+  bool get liveOpen => _live?.isOpen ?? false;
+
   void start() {
     _periodic = Timer.periodic(_interval, (_) {
-      if (_skip > 0) {
+      if (liveOpen) {
+        // The channel says when something changed: a check now and then
+        // covers a signal the server did not send.
+        final last = _lastSynced;
+        if (last == null || _clock().difference(last) >= _livePolling) {
+          unawaited(syncNow());
+        }
+      } else if (_skip > 0) {
         _skip--;
       } else {
         unawaited(syncNow());
@@ -131,6 +169,13 @@ final class SyncController extends ChangeNotifier {
     });
     unawaited(syncNow());
   }
+
+  /// The app went to the background: the live channel closes.
+  void pause() => _live?.pause();
+
+  /// The app is back in the foreground: the live channel opens again, if
+  /// it was open.
+  void resume() => _live?.resume();
 
   /// An edit was saved: sync once edits stop coming for a moment.
   void changed() {
@@ -159,6 +204,7 @@ final class SyncController extends ChangeNotifier {
       await running;
     }
     await _engine.deleteFromServer();
+    _live?.stop();
     _retired = true;
     await _retire?.call();
     _set(SyncState.off);
@@ -167,6 +213,10 @@ final class SyncController extends ChangeNotifier {
   /// Who belongs to the vault, in the order they joined.
   List<WorkspaceMember> get members =>
       _engine.ledger.workspace.members.values.toList();
+
+  /// The line two devices compare to learn that the server shows them the
+  /// same member log.
+  LedgerFingerprint get ledgerFingerprint => _engine.ledger.fingerprint;
 
   /// This device, among [members].
   MemberId get me => _engine.me;
@@ -232,6 +282,7 @@ final class SyncController extends ChangeNotifier {
       if (_disposed) return;
       _lastSynced = _clock();
       _set(SyncState.synced);
+      _live?.start();
     } on SyncServerRejectedException catch (e) {
       _fail(e.status == 413 ? SyncProblem.full : SyncProblem.refused);
     } on RemoteBlobUnavailableException {
@@ -262,6 +313,9 @@ final class SyncController extends ChangeNotifier {
 
   void _fail(SyncProblem problem) {
     if (_disposed) return;
+    if (problem == SyncProblem.removed || problem == SyncProblem.notAdmitted) {
+      _live?.stop();
+    }
     _problem = problem;
     _set(SyncState.failed);
   }
@@ -276,6 +330,7 @@ final class SyncController extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    _live?.dispose();
     _soon?.cancel();
     _periodic?.cancel();
     super.dispose();
