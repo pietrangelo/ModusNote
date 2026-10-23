@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/gestures.dart';
@@ -407,6 +408,30 @@ void main() {
       expect(passkeySettings, findsNothing);
       await lock(tester);
       expect(passkeyButton, findsNothing);
+    });
+
+    testWidgets('the vault stays open while the person is at the '
+        'authenticator', (tester) async {
+      final waiting = passkeys.atAuthenticator = Completer<void>();
+      await pumpApp(
+        tester,
+        gateOn(database, autoLock: quickLock, passkeys: passkeys),
+      );
+      await create(tester, 'frase lunga', 'frase lunga');
+      await tester.tap(passkeySettings);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Attiva la passkey'));
+      await tester.pump();
+
+      await tester.pump(const Duration(minutes: 2));
+      expect(find.byTooltip('Blocca'), findsOneWidget);
+      waiting.complete();
+      await tester.pumpAndSettle();
+      expect(find.byTooltip('Blocca'), findsOneWidget);
+
+      await tester.pump(const Duration(minutes: 2));
+      await tester.pumpAndSettle();
+      expect(find.byTooltip('Blocca'), findsNothing, reason: 'idle again');
     });
 
     testWidgets('a passkey set up in the library unlocks the next time', (

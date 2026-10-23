@@ -44,13 +44,22 @@ final class EntrySearch {
 
   /// Lower case without the accents of Latin scripts, so "citta" finds
   /// "Città" and the other way round.
+  ///
+  /// Every accented letter folded here is one UTF-16 unit from U+00C0 up,
+  /// so text below it (most of what people type) is only lowered, and
+  /// the rest is folded unit by unit, in one pass either way.
   static String fold(String text) {
-    final buffer = StringBuffer();
-    for (final rune in text.toLowerCase().runes) {
-      final char = String.fromCharCode(rune);
-      buffer.write(_unaccented[char] ?? char);
+    final lower = text.toLowerCase();
+    var start = 0;
+    while (start < lower.length && lower.codeUnitAt(start) < 0xC0) {
+      start++;
     }
-    return buffer.toString();
+    if (start == lower.length) return lower;
+    final units = List.of(lower.codeUnits);
+    for (var i = start; i < units.length; i++) {
+      if (_unaccented[units[i]] case final plain?) units[i] = plain;
+    }
+    return String.fromCharCodes(units);
   }
 
   static final _unaccented = {
@@ -66,6 +75,6 @@ final class EntrySearch {
       ('y', 'ýÿ'),
       ('z', 'źżž'),
     ])
-      for (final char in accented.split('')) char: plain,
+      for (final char in accented.codeUnits) char: plain.codeUnitAt(0),
   };
 }

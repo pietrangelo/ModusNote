@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:blob_storage_media/blob_storage_media.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:modusnote/attachments/note_images.dart';
 import 'package:modusnote/vault/vault_note_store.dart';
@@ -594,5 +595,83 @@ void main() {
         throwsArgumentError,
       );
     });
+  });
+
+  group('conflict copies', () {
+    late VaultNoteStore store;
+
+    DynamicEntry page(String title) => switch (DynamicEntry.create(
+      schema: SeedSchemas.documentV1,
+      id: EntryId(first),
+      attributes: {
+        FieldKey('title'): TextValue(title),
+        FieldKey('body'): const TextValue('Testo'),
+      },
+      at: DateTime.utc(2026, 10, 23),
+    )) {
+      Valid(:final value) => value,
+      Invalid(:final violations) => throw StateError('$violations'),
+    };
+
+    LostEdit lost(DynamicEntry entry, {String record = first}) => LostEdit(
+      record: RecordId.parse(record),
+      contents: RevisionContents(
+        RecordedNoteCodec.encode(RecordedNote.of(entry)),
+      ),
+      writtenAt: DateTime.utc(2026, 10, 23),
+    );
+
+    setUp(() async {
+      final database = memoryDatabase();
+      addTearDown(database.close);
+      final vault = await keeperOn(database).create(passphrase('frase lunga'));
+      addTearDown(vault.lock);
+      store = await VaultNoteStore.open(
+        vault.engine,
+        catalog: SeedSchemas.catalog,
+        copyTitle: (title) => '$title (copia)',
+      );
+    });
+
+    test('an edit that lost is kept as a note of its own', () async {
+      await store.save(page('Vinta'));
+
+      final kept = await store.keepLost([lost(page('Persa'))]);
+
+      expect(kept, 1);
+      final copy = store.entries.singleWhere((e) => e.id.value != first);
+      expect(copy.valueOf(FieldKey('title')), const TextValue('Persa (copia)'));
+      expect(copy.valueOf(FieldKey('body')), const TextValue('Testo'));
+      expect(copy.id.value, matches(RegExp(r'^[0-9a-f]{32}$')));
+      expect(
+        store.entryOf(EntryId(first))!.valueOf(FieldKey('title')),
+        const TextValue('Vinta'),
+      );
+    });
+
+    test('a title too long for a suffix stays as it was', () async {
+      final long = 'x' * 200;
+
+      await store.keepLost([lost(page(long))]);
+
+      expect(store.entries.single.valueOf(FieldKey('title')), TextValue(long));
+    });
+
+    test(
+      'bytes under another record\'s id, or not a note, keep nothing',
+      () async {
+        final kept = await store.keepLost([
+          lost(page('Altrove'), record: second),
+          LostEdit(
+            record: RecordId.parse(first),
+            contents: RevisionContents(utf8.encode('rumore')),
+            writtenAt: DateTime.utc(2026, 10, 23),
+          ),
+        ]);
+
+        expect(kept, 0);
+        expect(store.entries, isEmpty);
+      },
+    );
   });
 }

@@ -25,6 +25,7 @@ import 'documents/page_index.dart';
 import 'documents/page_index_section.dart';
 import 'journal/journal_days.dart';
 import 'journal/on_this_day_section.dart';
+import 'draft_merge.dart';
 import 'dynamic_form_renderer.dart';
 import 'editor/markdown_commands.dart';
 import 'editor/markdown_controller.dart';
@@ -172,6 +173,14 @@ class NoteEditorScreenState extends State<NoteEditorScreen>
   Future<SaveState>? _saving;
   var _focused = false;
 
+  /// Bumped when the draft is replaced from outside (another device saved
+  /// the note), so the fields show the new values.
+  var _generation = 0;
+
+  /// The editor is going away by itself: what the store says no longer
+  /// matters.
+  var _leaving = false;
+
   /// Whether only the title and the text show.
   bool get focused => _focused;
 
@@ -186,6 +195,60 @@ class NoteEditorScreenState extends State<NoteEditorScreen>
     super.initState();
     _newIn = widget.category;
     WidgetsBinding.instance.addObserver(this);
+    widget.store.addListener(_storeChanged);
+  }
+
+  /// Another device's edit reached the open note (a sync read the notes
+  /// again): the draft takes it in, field by field, instead of saving
+  /// over it at the next key. Where both sides changed a field the draft
+  /// keeps its own, and the other version is kept as a copy first. A note
+  /// deleted or put in the trash elsewhere closes, unless something is
+  /// being typed: saving that keeps it.
+  void _storeChanged() {
+    final saved = _saved;
+    if (saved == null || _saving != null || _leaving || !mounted) return;
+    final latest = widget.store.entryOf(_id);
+    if (latest == null) {
+      if (_dirty) return;
+      _leaving = true;
+      _timer?.cancel();
+      scheduleMicrotask(() {
+        if (mounted) _close();
+      });
+      return;
+    }
+    if (latest.audit == saved.audit) return;
+    // A note upgraded to a new version of its type is shown as it was.
+    if (latest.schemaId != _schema.id) return;
+    final merge = DraftMerge.of(
+      base: saved.attributes,
+      mine: _draft.values,
+      theirs: latest.attributes,
+    );
+    // Before the copy: making it notifies again.
+    _saved = latest;
+    if (merge.clashes.isNotEmpty) {
+      unawaited(widget.store.keepConflictCopy(_id));
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        SnackBar(
+          content: Text(AppLocalizations.of(context).editorChangedElsewhere),
+        ),
+      );
+    }
+    if (!mapEquals(merge.values, _draft.values)) {
+      setState(() {
+        _draft = FormDraft(merge.values, _draft.unreadable);
+        _generation++;
+      });
+      _words.value = _countWords();
+      _day.value = _dayOf(_draft.values);
+    }
+    if (mapEquals(merge.values, latest.attributes) &&
+        _draft.unreadable.isEmpty) {
+      _timer?.cancel();
+      _dirty = false;
+      _show(SaveState.saved);
+    }
   }
 
   @override
@@ -271,6 +334,8 @@ class NoteEditorScreenState extends State<NoteEditorScreen>
       }
       if (state != SaveState.saving) break;
     }
+    // What another device saved while this one was saving.
+    _storeChanged();
     return _dirty ? state : SaveState.saved;
   }
 
@@ -431,6 +496,7 @@ class NoteEditorScreenState extends State<NoteEditorScreen>
       _close();
       return;
     }
+    _leaving = true;
     await store.moveToTrash(_id);
     final id = _id;
     // The undo must show now, not queued behind an older message.
@@ -620,6 +686,7 @@ class NoteEditorScreenState extends State<NoteEditorScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    widget.store.removeListener(_storeChanged);
     // Closed from outside (the vault locking): what was not saved goes,
     // since the keys to save it are being released.
     _timer?.cancel();
@@ -822,7 +889,7 @@ class NoteEditorScreenState extends State<NoteEditorScreen>
                             DynamicFormRenderer(
                               // A new type is a new page, filled with what was
                               // carried over.
-                              key: ValueKey(_schema.id),
+                              key: ValueKey((_schema.id, _generation)),
                               schema: _schema,
                               values: _draft.values,
                               violations: _violations,

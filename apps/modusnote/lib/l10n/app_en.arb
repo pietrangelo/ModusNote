@@ -571,6 +571,24 @@
   "@cloudStateRefused": {
     "description": "Sync sheet: the server rejected a request."
   },
+  "conflictCopyTitle": "{title} (conflict copy)",
+  "@conflictCopyTitle": {
+    "description": "Title of a note kept because another device changed the same note at the same time.",
+    "placeholders": {"title": {"type": "String"}}
+  },
+  "conflictCopyUntitled": "Conflict copy",
+  "@conflictCopyUntitled": {
+    "description": "Title of a conflict copy of a note that had no title."
+  },
+  "conflictCopiesKept": "{count, plural, =1{Another device changed a note at the same time as this one: this device's version is kept as a copy.} other{Another device changed {count} notes at the same time as this one: this device's versions are kept as copies.}}",
+  "@conflictCopiesKept": {
+    "description": "Snackbar after a sync: edits of this device lost to concurrent edits and were kept as conflict copies.",
+    "placeholders": {"count": {"type": "int"}}
+  },
+  "editorChangedElsewhere": "This note changed on another device too. Where you both wrote, your version stays; the other one is kept as a copy.",
+  "@editorChangedElsewhere": {
+    "description": "Snackbar in the editor: another device changed the same fields of the open note; its version was kept as a conflict copy."
+  },
   "cloudStateBlobRefused": "Your notes are synced, but the server did not accept a recording or a picture: it is too large, or this vault's space for files is full. The others went up.",
   "@cloudStateBlobRefused": {
     "description": "Sync sheet: the notes synced but the server refused one recording or picture."
