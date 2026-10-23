@@ -6,11 +6,11 @@ mod support;
 
 use crypto::StrictEd25519;
 use ledger::MemberKey;
-use modusnote_server::api::{ApiError, Route};
+use modusnote_server::api::{ApiError, LIVE_PROTOCOL, Route};
 use modusnote_server::serve::{self, Blake2b, Done, INTERNAL_OFFER, INTERNAL_SPEND, Incoming};
 use serde_json::{Value, json};
 use support::*;
-use sync::{Budget, Guard, Hasher, Limits, MemoryStore, PowPurpose, Rendezvous, pow_satisfied};
+use sync::{Budget, Guard, Hasher, Heads, Limits, MemoryStore, PowPurpose, Rendezvous, Socket, pow_satisfied};
 
 /// A call `by` signs, as the object receives it.
 fn send<'a>(signed: &'a Call, body: &'a [u8], blob_size: Option<&'a str>) -> Incoming<'a> {
@@ -25,6 +25,8 @@ fn send<'a>(signed: &'a Call, body: &'a [u8], blob_size: Option<&'a str>) -> Inc
         authorization: signed.header.as_deref(),
         body,
         blob_size,
+        upgrade: None,
+        protocols: None,
         now_ms: NOW,
     }
 }
@@ -37,7 +39,9 @@ fn serve_json(space: &mut Space, by: &Device, method: &str, target: &str, body: 
 
 fn parsed(done: Done) -> (u16, Value) {
     match done {
-        Done::Json(status, text) => (status, serde_json::from_str(&text).unwrap()),
+        Done::Json(status, text) | Done::Wrote { status, body: text, .. } => {
+            (status, serde_json::from_str(&text).unwrap())
+        }
         other => panic!("not JSON: {other:?}"),
     }
 }
@@ -74,6 +78,88 @@ fn rows_go_in_and_come_out_as_json() {
     assert_eq!(heads, json!({"rows": 1, "bundles": 0, "membership": 1}));
     let (_, log) = parsed(serve_json(&mut space, &alice, "GET", &path("/membership?from=0"), Value::Null).unwrap());
     assert_eq!(log["records"].as_array().unwrap().len(), 1);
+}
+
+/// The subprotocols a device offers: ours, then its credential as a token.
+fn offered(signed: &Call) -> String {
+    format!("{LIVE_PROTOCOL}, {}", signed.header.as_deref().unwrap().replacen("MN1 ", "mn1.", 1))
+}
+
+/// The live channel's handshake as the object receives it.
+fn handshake<'a>(signed: &'a Call, protocols: &'a str) -> Incoming<'a> {
+    Incoming { authorization: None, upgrade: Some("websocket"), protocols: Some(protocols), ..send(signed, b"", None) }
+}
+
+#[test]
+fn a_member_opens_the_live_channel_with_its_credential_as_a_subprotocol() {
+    let alice = Device::new(1);
+    let mut space = founded_by(&alice);
+    let signed = call(&alice, "GET", &path("/live"), b"");
+    let protocols = offered(&signed);
+
+    let opened = serve::workspace(&mut space, &Blake2b, &handshake(&signed, &protocols));
+    assert_eq!(opened, Ok(Done::Live(alice.member())));
+    let again = serve::workspace(&mut space, &Blake2b, &handshake(&signed, &protocols));
+    assert_eq!(again, Err(ApiError::Unauthenticated), "replayed");
+}
+
+#[test]
+fn a_live_handshake_that_is_no_upgrade_or_carries_two_credentials_is_refused() {
+    let alice = Device::new(1);
+    let mallory = Device::new(9);
+    let mut space = founded_by(&alice);
+    let plain = call(&alice, "GET", &path("/live"), b"");
+    let both = call(&alice, "GET", &path("/live"), b"");
+    let stranger = call(&mallory, "GET", &path("/live"), b"");
+    let (plain_offer, both_offer, stranger_offer) = (offered(&plain), offered(&both), offered(&stranger));
+
+    let not_upgraded = Incoming { upgrade: None, ..handshake(&plain, &plain_offer) };
+    assert_eq!(serve::workspace(&mut space, &Blake2b, &not_upgraded), Err(ApiError::UpgradeRequired));
+    let with_header = Incoming { authorization: both.header.as_deref(), ..handshake(&both, &both_offer) };
+    assert_eq!(serve::workspace(&mut space, &Blake2b, &with_header), Err(ApiError::Unauthenticated));
+    let by_stranger = handshake(&stranger, &stranger_offer);
+    assert_eq!(serve::workspace(&mut space, &Blake2b, &by_stranger), Err(ApiError::Forbidden));
+    let only_token = offered(&plain).replace(&format!("{LIVE_PROTOCOL}, "), "");
+    let unlabelled = handshake(&plain, &only_token);
+    assert_eq!(serve::workspace(&mut space, &Blake2b, &unlabelled), Err(ApiError::UpgradeRequired));
+}
+
+#[test]
+fn writes_name_their_author_so_the_other_members_hear_of_them() {
+    let alice = Device::new(1);
+    let bob = Device::new(2);
+    let mut space = founded_by(&alice);
+    let genesis = record(WS, 0, &alice, None, Change::Founded(&alice));
+    let invite = record(WS, 1, &alice, Some(signature_of(&genesis)), Change::Invited(&bob, 2));
+    let grant = bundle(WS, 1, &alice, &[(0, &bob)]);
+    let push = json!({"rows": [{"record": hex::encode([7u8; 16]), "ciphertext": b64(b"s"), "supersedes": 0}]});
+    let author = |done: Result<Done, ApiError>| match done {
+        Ok(Done::Wrote { status: 201, author, .. }) => author,
+        other => panic!("not a write: {other:?}"),
+    };
+
+    let invited = serve_json(&mut space, &alice, "POST", &path("/membership"), json!({"record": b64(&invite)}));
+    assert_eq!(author(invited), alice.member());
+    let granted = serve_json(&mut space, &alice, "POST", &path("/bundles"), json!({"bundle": b64(&grant)}));
+    assert_eq!(author(granted), alice.member());
+    assert_eq!(author(serve_json(&mut space, &bob, "POST", &path("/rows"), push)), bob.member());
+    let heads = serve_json(&mut space, &bob, "GET", &path("/heads"), Value::Null).unwrap();
+    let Done::Json(200, text) = heads else { panic!("heads: {heads:?}") };
+    assert_eq!(serve::heads_message(Heads { rows: 1, bundles: 1, membership: 2 }), text);
+    assert_eq!(text, r#"{"rows":1,"bundles":1,"membership":2}"#);
+}
+
+#[test]
+fn a_socket_carries_its_key_as_its_tag() {
+    let key = Device::new(1).member();
+    let tag = serve::socket_tag(&key);
+
+    assert_eq!(tag.len(), 64);
+    assert_eq!(serve::socket_of(std::slice::from_ref(&tag), Some(5)), Some(Socket { key, accepted_ms: 5 }));
+    assert_eq!(serve::socket_of(std::slice::from_ref(&tag), None), Some(Socket { key, accepted_ms: 0 }));
+    assert_eq!(serve::socket_of(&[], Some(5)), None);
+    assert_eq!(serve::socket_of(&["zz".into()], Some(5)), None);
+    assert_eq!(serve::socket_of(&[tag.clone(), tag], Some(5)), None);
 }
 
 #[test]
@@ -134,6 +220,8 @@ fn only_an_owner_posts_an_offer_and_only_they_read_the_answers() {
         authorization: None,
         body: &handed,
         blob_size: None,
+        upgrade: None,
+        protocols: None,
         now_ms: NOW,
     };
     assert_eq!(serve::rendezvous(&mut meeting, &Blake2b, &internal), Ok((201, "{}".into())));
@@ -186,6 +274,8 @@ fn the_guard_spends_through_its_internal_call() {
         authorization: None,
         body: &body,
         blob_size: None,
+        upgrade: None,
+        protocols: None,
         now_ms: NOW,
     };
 

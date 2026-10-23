@@ -6,6 +6,7 @@
 //! - [`Workspace`]: one workspace's verified membership log, key bundles,
 //!   sealed rows with compaction, blob reservations and quotas, and who may
 //!   call: a request counts only if a member of the verified log signed it.
+//!   Its members' open WebSockets hear of every write ([`Fanout`]).
 //! - [`Rendezvous`]: where an owner's offer under a code's lookup meets the
 //!   answers of the devices that know the code, for fifteen minutes.
 //! - [`Guard`]: daily ceilings for the whole service, so that free keys
@@ -16,6 +17,7 @@
 mod auth;
 mod guard;
 mod limits;
+mod live;
 mod pow;
 mod rendezvous;
 mod store;
@@ -24,6 +26,7 @@ mod workspace;
 pub use auth::{Caller, Denied, Request, SKEW_MS};
 pub use guard::{Budget, Guard};
 pub use limits::Limits;
+pub use live::{Fanout, SOCKETS_PER_KEY, SOCKETS_PER_WORKSPACE, Socket, admit_socket};
 pub use pow::{PowPurpose, pow_satisfied};
 pub use rendezvous::{Rendezvous, RendezvousError};
 pub use store::{MemoryStore, Store, Unavailable};
