@@ -48,7 +48,13 @@ Future<AppHome> buildHome() async {
   final passkeys = await WebAuthnPasskeyPrf.isSupported()
       ? WebAuthnPasskeyPrf(sodium)
       : null;
-  final cloud = cloudWiring(SyncConfig.fromEnvironment());
+  // The page's own origin serves the sync too. Proof of work hashes with
+  // libsodium.js: the plain Dart BLAKE2b needs 64-bit integers.
+  final cloud = cloudWiring(
+    SyncConfig.fromEnvironment(page: Uri.base),
+    blake2b: (message) =>
+        sodium.crypto.genericHash(message: message, outLen: 32),
+  );
   final shelf = sqlite.open('/$shelfDatabaseName');
   final home = VaultShelfGate(
     store: SqliteShelfStore(shelf),
@@ -66,7 +72,7 @@ Future<AppHome> buildHome() async {
         sodium: sodium,
         database: database,
         kdf: KdfParameters.moderate,
-        server: cloud.server,
+        gateway: cloud.gateway,
         passkeys: passkeys,
       );
       return ShelfVault(
@@ -118,12 +124,11 @@ VaultGate _gate({
   );
   return VaultGate(
     keeper: keeper,
-    account: cloud.account,
     switcher: switcher,
     sharedBlobsFor: cloud.remoteBlobs == null
         ? null
-        : (engine) {
-            final remote = cloud.remoteBlobs!(engine.ledger.workspace.id.hex);
+        : (vault) {
+            final remote = cloud.remoteBlobs!(vault);
             return (
               replication: BlobReplication(
                 local: blobStore,

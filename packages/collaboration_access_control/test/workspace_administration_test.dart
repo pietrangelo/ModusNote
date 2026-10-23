@@ -254,6 +254,43 @@ void main() {
       expect(read(alice, write(alice, 'ok', 'n1'), 'n1'), utf8Bytes('ok'));
     });
 
+    test('a payload sealed again under its first epoch opens as before, '
+        'for those who held that key', () {
+      invite(carol, Role.editor);
+      final first = write(carol, 'Prima della rotazione', 'n1');
+      final update = administration.revoke(
+        alice.ledger,
+        alice.keyring,
+        owner: alice.identity,
+        member: carol.id,
+      );
+      alice.ledger = update.ledger;
+
+      final again = contents.sealAt(
+        read(alice, first, 'n1'),
+        epoch: KeyEpoch.initial,
+        keyring: alice.keyring,
+        recordId: 'n1',
+      );
+
+      expect(again.epoch, KeyEpoch.initial);
+      expect(read(carol, again, 'n1'), utf8Bytes('Prima della rotazione'));
+      expect(
+        () => read(carol, again, 'n2'),
+        throwsA(isA<CryptographyException>()),
+        reason: 'still bound to its record',
+      );
+      expect(
+        () => contents.sealAt(
+          utf8Bytes('x'),
+          epoch: KeyEpoch(7),
+          keyring: alice.keyring,
+          recordId: 'n1',
+        ),
+        throwsA(isA<MissingGroupKeyException>()),
+      );
+    });
+
     test('rotating twice for the same epoch is refused', () {
       expect(
         () => administration.rotate(
@@ -671,6 +708,107 @@ void main() {
       expect(
         () => write(alice, 'x', 'n1'),
         throwsA(isA<MissingGroupKeyException>()),
+      );
+    });
+  });
+
+  group('checking a bundle without opening it, as the server does', () {
+    KeyBundle signedBy(
+      Device issuer,
+      KeyBundle genuine,
+      List<GroupKeyGrant> grants,
+    ) => KeyBundle(
+      workspace: genuine.workspace,
+      atSequence: genuine.atSequence,
+      issuer: issuer.id,
+      grants: grants,
+      signature: identities.sign(
+        KeyBundle.signable(
+          workspace: genuine.workspace,
+          atSequence: genuine.atSequence,
+          issuer: issuer.id,
+          grants: grants,
+        ),
+        signer: issuer.identity,
+      ),
+    );
+
+    test('a genuine bundle passes', () {
+      invite(bob, Role.editor);
+
+      expect(
+        () =>
+            administration.verify(server.keyBundles.last, ledger: alice.ledger),
+        returnsNormally,
+      );
+    });
+
+    test('a grant to someone who was not a member there is refused', () {
+      invite(bob, Role.editor);
+      final genuine = server.keyBundles.last;
+      final toCarol = signedBy(alice, genuine, [
+        GroupKeyGrant(
+          recipient: carol.id,
+          epoch: KeyEpoch.initial,
+          sealedKey: genuine.grants.single.sealedKey,
+        ),
+      ]);
+
+      expect(
+        () => administration.verify(toCarol, ledger: alice.ledger),
+        throwsA(tampered('grant beyond authority')),
+      );
+    });
+
+    test('a grant for an epoch that did not exist there is refused', () {
+      invite(bob, Role.editor);
+      final genuine = server.keyBundles.last;
+      final ahead = signedBy(alice, genuine, [
+        GroupKeyGrant(
+          recipient: bob.id,
+          epoch: KeyEpoch(1),
+          sealedKey: genuine.grants.single.sealedKey,
+        ),
+      ]);
+
+      expect(
+        () => administration.verify(ahead, ledger: alice.ledger),
+        throwsA(tampered('grant beyond authority')),
+      );
+    });
+
+    test('an editor\'s bundle and a forged signature are refused', () {
+      invite(bob, Role.editor);
+      final genuine = server.keyBundles.last;
+
+      expect(
+        () => administration.verify(
+          signedBy(bob, genuine, genuine.grants),
+          ledger: alice.ledger,
+        ),
+        throwsA(tampered('issuer is not an owner')),
+      );
+      final wire = genuine.toBytes()..[genuine.toBytes().length - 1] ^= 1;
+      expect(
+        () =>
+            administration.verify(KeyBundle.parse(wire), ledger: alice.ledger),
+        throwsA(tampered('bad bundle signature')),
+      );
+    });
+
+    test('a bundle naming a record the log does not have is refused', () {
+      final genuine = server.keyBundles.last;
+      final beyond = KeyBundle(
+        workspace: genuine.workspace,
+        atSequence: 5,
+        issuer: alice.id,
+        grants: genuine.grants,
+        signature: genuine.signature,
+      );
+
+      expect(
+        () => administration.verify(beyond, ledger: alice.ledger),
+        throwsA(tampered('unknown log position')),
       );
     });
   });

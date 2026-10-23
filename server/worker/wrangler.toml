@@ -1,0 +1,72 @@
+# ModusNote: the web client and the sync server on one origin (Workers Static Assets).
+name = "modusnote"
+main = "build/worker/shim.mjs"
+compatibility_date = "2026-09-15"
+
+# Production origin (phase 5, Pietrangelo's go-ahead of 2026-10-23). The custom domain
+# needs modus.serv.run detached from the old Pages project and no CNAME left for it.
+routes = [{ pattern = "modus.serv.run", custom_domain = true }]
+workers_dev = false
+
+[build]
+command = "cargo install -q worker-build@0.8.7 --locked && worker-build --release"
+
+# The Flutter web build (flutter build web --wasm --csp --no-web-resources-cdn, then
+# dart run tool/finalize_web_build.dart), with its _headers; only /api/* runs the Worker.
+[assets]
+directory = "../../apps/modusnote/build/web"
+run_worker_first = ["/api/*"]
+
+# Changes only with a new server whose data starts empty: a device that sees another id
+# in GET /api/info publishes its vault again (sealed setting sync.server).
+[vars]
+SERVER_ID = "19db5d93fea537fd28671d60ac95cbff"
+# Daily ceilings for everyone together (the guard object); 429 to all once reached.
+DAILY_WORKSPACES = "500"
+DAILY_UPLOAD_BYTES = "21474836480"
+
+# Encrypted blobs, under <workspace>/<blob>.enc, in the EU. Create the bucket once:
+#   npx wrangler r2 bucket create modusnote-blobs-eu --jurisdiction eu
+[[r2_buckets]]
+binding = "BLOBS"
+bucket_name = "modusnote-blobs-eu"
+jurisdiction = "eu"
+
+# One object per workspace (named by its id), one per code's lookup, one for the daily
+# ceilings; all created by name in the EU jurisdiction. Only this Worker reaches them.
+[[durable_objects.bindings]]
+name = "WORKSPACES"
+class_name = "ModusWorkspace"
+
+[[durable_objects.bindings]]
+name = "CODES"
+class_name = "ModusRendezvous"
+
+[[durable_objects.bindings]]
+name = "GUARD"
+class_name = "ModusGuard"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["ModusWorkspace", "ModusRendezvous", "ModusGuard"]
+
+# Every API call is throttled per client address, IPv6 by /64 (kept in memory by
+# Cloudflare, never stored by us); writes and reads each have their own allowance.
+[[ratelimits]]
+name = "WRITE_LIMITER"
+namespace_id = "7401"
+simple = { limit = 60, period = 60 }
+
+# IPv6 writes also count per /48, ten clients' worth.
+[[ratelimits]]
+name = "NETWORK_WRITE_LIMITER"
+namespace_id = "7402"
+simple = { limit = 600, period = 60 }
+
+[[ratelimits]]
+name = "READ_LIMITER"
+namespace_id = "7403"
+simple = { limit = 120, period = 60 }
+
+[observability]
+enabled = false

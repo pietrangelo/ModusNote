@@ -1,5 +1,5 @@
-/// The workspace's shared blob storage: Cloudflare R2 behind presigned
-/// URLs from the `blob-url` Edge Function. Works on every platform.
+/// The workspace's shared blob storage: our Worker, which keeps the bytes
+/// on Cloudflare R2. Works on every platform.
 library;
 
-export 'src/r2_remote_blob_store.dart';
+export 'src/modus_remote_blob_store.dart';

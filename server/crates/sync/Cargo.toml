@@ -1,0 +1,21 @@
+[package]
+name = "sync"
+description = "The sync server's use cases over a key-value port: who may call, the log, key bundles, rows with compaction, blobs, quotas, codes"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+ledger.workspace = true
+
+[dev-dependencies]
+crypto.workspace = true
+ed25519-dalek = { version = "2.2", default-features = false }
+serde_json = "1"
+hex = "0.4"
+
+[lints]
+workspace = true

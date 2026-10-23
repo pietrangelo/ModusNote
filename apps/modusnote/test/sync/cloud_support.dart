@@ -1,145 +1,162 @@
-import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:collaboration_access_control/collaboration_access_control.dart';
-import 'package:http/http.dart' as http;
-import 'package:http/testing.dart';
+import 'package:identity_cryptography/identity_cryptography.dart';
 import 'package:offline_sync/offline_sync.dart';
 import 'package:offline_sync_adapters/offline_sync_adapters.dart';
 
-/// The token Supabase Auth hands out in these tests: it must never reach
-/// the database file unsealed.
-const issuedToken = 'access-token-7f3a9c';
-const goodCode = '123456';
-
-/// The token hash in [goodLink], which also signs in: the link a default
-/// Supabase email carries in place of the code.
-/// The account [goodLink] was sent to.
-const linkEmail = 'pietro@example.com';
-
-const goodLinkHash = '9d3a5f0b7c1e2d4f6a8b0c2e4f6a8b0c2e4f6a8b0c2e4f6a8b0c2e4f';
-const goodLink =
-    'https://project.supabase.co/auth/v1/verify?token=$goodLinkHash'
-    '&type=magiclink&redirect_to=http://localhost:3000';
-
-/// The account id the fake gives [email]: a UUID, as Supabase's are.
-String accountIdOf(String email) =>
-    '00000000-0000-4000-8000-'
-    '${(email.hashCode & 0xffffffffffff).toRadixString(16).padLeft(12, '0')}';
-
-/// Supabase Auth over a fake HTTP client: any address gets a code, only
-/// [goodCode] signs in.
-final class FakeAuthServer {
-  final requests = <String>[];
-
-  /// Answers every request with this status instead.
-  int? failWith;
-
-  late final client = MockClient((request) async {
-    requests.add(request.url.path);
-    if (failWith case final status?) return http.Response('', status);
-    final body = request.body.isEmpty
-        ? const <String, Object?>{}
-        : jsonDecode(request.body) as Map<String, Object?>;
-    return switch (request.url.path) {
-      '/auth/v1/otp' => http.Response('{}', 200),
-      '/auth/v1/verify'
-          when body['token'] == goodCode ||
-              body['token_hash'] == goodLinkHash =>
-        http.Response(
-          jsonEncode({
-            'access_token': issuedToken,
-            'refresh_token': 'refresh-token-2b8e',
-            'expires_in': 3600,
-            // A link carries no email: the server knows whose it is.
-            'user': {
-              'id': accountIdOf('${body['email'] ?? linkEmail}'),
-              'email': body['email'] ?? linkEmail,
-            },
-          }),
-          200,
-        ),
-      '/auth/v1/verify' => http.Response('{}', 403),
-      '/auth/v1/logout' => http.Response('', 204),
-      '/functions/v1/delete-account' when body['confirm'] == 'delete-account' =>
-        http.Response('{"deleted":true}', 200),
-      _ => http.Response('', 404),
-    };
-  });
-
-  SyncAccount account() => SyncAccount(
-    SupabaseAuth(
-      projectUrl: Uri.parse('https://project.supabase.co'),
-      anonKey: 'publishable-key',
-      client: client,
-    ),
-  );
-}
-
 /// The zero-knowledge server in memory, shared by every device of a test.
-/// Each call first asks for the account's token, as PostgREST would, so a
-/// signed-out device sees it as unreachable. Like Supabase, it also relays
-/// device links and invites, and keeps which account each member uses.
-final class MemorySyncServer
-    implements SyncServer, DeviceLinkChannel, InviteChannel, MemberAccounts {
-  MemorySyncServer(this.token);
-
-  final Future<String> Function() token;
+/// Each device reaches it through [server], signing every request as the
+/// real adapter does; like the Worker, it lets in only the members of the
+/// log it holds (a removed member still reads the log), and relays codes.
+final class MemorySyncServer implements SyncGateway {
   var online = true;
 
-  /// Fails every call as if the server refused the account.
+  /// Fails every call as if the server refused it.
   int? refuseWith;
 
+  /// Every call waits for it first.
+  Future<void>? hold;
+
   final workspaces = <WorkspaceId>{};
+
+  /// Which server this is; another id is a new server.
+  var id = 'modus-1';
+  final deleted = <WorkspaceId>{};
   final rows = <SealedRow>[];
   final membershipLog = <MembershipRecord>[];
   final bundles = <KeyBundle>[];
-  final offers = <LinkOffer>[];
-  final answered = <LinkAnswer>[];
-  final invites = <InviteOffer>[];
+  final offers = <InviteOffer>[];
   final inviteAnswered = <InviteAnswer>[];
+  final closed = <String>{};
 
-  /// The accounts let in, and whether each manages.
-  final accounts = <AccountId?, bool>{};
+  /// Every request the devices signed, as `METHOD path`.
+  final signed = <String>[];
+
+  var headsAsked = 0;
+
+  @override
+  SyncServer server(RequestSigner signer) => _DeviceServer(this, signer);
+
+  @override
+  InviteChannel invites(RequestSigner? signer) => _Codes(this, signer);
 
   Future<void> _check() async {
+    if (hold case final hold?) await hold;
     if (!online) throw const ServerUnavailableException();
-    await token();
     if (refuseWith case final status?) {
       throw SyncServerRejectedException(status);
     }
   }
 
+  Set<PublicSigningKey> get _members {
+    final members = <PublicSigningKey>{};
+    for (final record in membershipLog) {
+      switch (record.change) {
+        case WorkspaceFounded(:final founder):
+          members.add(founder.signingKey);
+        case MemberInvited(:final identity):
+          members.add(identity.signingKey);
+        case MemberRevoked(:final member):
+          members.remove(member.signingKey);
+        case RoleChanged():
+          break;
+      }
+    }
+    return members;
+  }
+
+  bool _wasMember(PublicSigningKey key) => membershipLog.any(
+    (record) => switch (record.change) {
+      WorkspaceFounded(:final founder) => founder.signingKey == key,
+      MemberInvited(:final identity) => identity.signingKey == key,
+      _ => false,
+    },
+  );
+}
+
+final class _DeviceServer implements SyncServer {
+  _DeviceServer(this._backend, this._signer);
+
+  final MemorySyncServer _backend;
+  final RequestSigner _signer;
+
+  /// Signs as the real adapter does, so a released identity fails here.
+  Future<void> _sign(String method, String path) async {
+    await _backend._check();
+    await _signer.authorize(method, '/api/w/$path', Uint8List(0));
+    _backend.signed.add('$method $path');
+  }
+
+  Future<void> _admitted(String method, String path) async {
+    await _sign(method, path);
+    if (!_backend._members.contains(_signer.key)) {
+      throw const NotAdmittedException();
+    }
+  }
+
   @override
-  Future<void> createWorkspace(WorkspaceId workspace) async {
-    await _check();
-    workspaces.add(workspace);
+  Future<String> serverId() async {
+    await _backend._check();
+    return _backend.id;
+  }
+
+  @override
+  Future<void> createWorkspace(List<MembershipRecord> start) async {
+    final genesis = start.first;
+    await _sign('POST', 'workspace');
+    final admitted = start.any(
+      (record) => switch (record.change) {
+        WorkspaceFounded(:final founder) => founder.signingKey == _signer.key,
+        MemberInvited(:final identity) => identity.signingKey == _signer.key,
+        _ => false,
+      },
+    );
+    if (!admitted || _backend.deleted.contains(genesis.workspace)) {
+      throw const NotAdmittedException();
+    }
+    if (_backend.membershipLog.firstOrNull case final held?) {
+      if (held != genesis) throw const LedgerRollbackException();
+      return;
+    }
+    _backend.workspaces.add(genesis.workspace);
+    _backend.membershipLog.addAll(start);
+  }
+
+  @override
+  Future<void> deleteWorkspace(WorkspaceId workspace) async {
+    await _admitted('DELETE', 'workspace');
+    _backend
+      ..workspaces.remove(workspace)
+      ..deleted.add(workspace)
+      ..rows.clear()
+      ..membershipLog.clear()
+      ..bundles.clear();
   }
 
   @override
   Future<void> appendMembership(MembershipRecord record) async {
-    await _check();
-    if (record.sequence != membershipLog.length) {
-      throw const SyncServerRejectedException(409);
+    await _admitted('POST', 'membership');
+    if (record.sequence != _backend.membershipLog.length) {
+      throw const LedgerRollbackException();
     }
-    membershipLog.add(record);
+    _backend.membershipLog.add(record);
   }
 
   @override
   Future<void> push(WorkspaceId workspace, List<SealedRow> rows) async {
-    await _check();
-    this.rows.addAll(rows);
+    await _admitted('POST', 'rows');
+    _backend.rows.addAll(rows);
   }
-
-  var headsAsked = 0;
 
   @override
   Future<SyncHeads?> heads(WorkspaceId workspace) async {
-    headsAsked++;
-    await _check();
+    _backend.headsAsked++;
+    await _admitted('GET', 'heads');
     return SyncHeads(
-      rows: rows.length,
-      keyBundles: bundles.length,
-      membership: membershipLog.length,
+      rows: _backend.rows.length,
+      keyBundles: _backend.bundles.length,
+      membership: _backend.membershipLog.length,
     );
   }
 
@@ -148,7 +165,8 @@ final class MemorySyncServer
     WorkspaceId workspace, {
     required int after,
   }) async {
-    await _check();
+    await _admitted('GET', 'rows');
+    final rows = _backend.rows;
     return [
       for (var i = after; i < rows.length; i++)
         PulledRow(cursor: i + 1, row: rows[i]),
@@ -160,10 +178,10 @@ final class MemorySyncServer
     WorkspaceId workspace, {
     required int from,
   }) async {
-    await _check();
-    return from >= membershipLog.length
-        ? const []
-        : membershipLog.sublist(from);
+    await _sign('GET', 'membership');
+    if (!_backend._wasMember(_signer.key)) throw const NotAdmittedException();
+    final log = _backend.membershipLog;
+    return from >= log.length ? const [] : log.sublist(from);
   }
 
   @override
@@ -171,92 +189,71 @@ final class MemorySyncServer
     WorkspaceId workspace, {
     required int after,
   }) async {
-    await _check();
+    await _admitted('GET', 'bundles');
+    final bundles = _backend.bundles;
     return [for (var i = after; i < bundles.length; i++) (i + 1, bundles[i])];
   }
 
   @override
   Future<void> appendKeyBundle(KeyBundle bundle) async {
-    await _check();
-    bundles.add(bundle);
+    await _admitted('POST', 'bundles');
+    _backend.bundles.add(bundle);
   }
+}
+
+final class _Codes implements InviteChannel {
+  _Codes(this._backend, this._signer);
+
+  final MemorySyncServer _backend;
+  final RequestSigner? _signer;
+
+  RequestSigner get _owner =>
+      _signer ?? (throw StateError('posting a code needs the owner'));
 
   @override
-  Future<void> postOffer(LinkOffer offer) async {
-    await _check();
-    offers.add(offer);
-  }
-
-  @override
-  Future<LinkOffer?> latestOffer() async {
-    await _check();
-    return offers.lastOrNull;
-  }
-
-  @override
-  Future<void> postAnswer(LinkAnswer answer) async {
-    await _check();
-    answered.add(answer);
-  }
-
-  @override
-  Future<List<LinkAnswer>> answers(LinkId link) async {
-    await _check();
-    return [...answered.where((answer) => answer.id == link)];
-  }
-
-  @override
-  Future<void> close(LinkId link) async {
-    await _check();
-    offers.removeWhere((offer) => offer.id == link);
-    answered.removeWhere((answer) => answer.id == link);
-  }
-
-  @override
-  Future<void> postInvite(InviteOffer offer) async {
-    await _check();
-    invites.add(offer);
+  Future<void> postInvite(WorkspaceId workspace, InviteOffer offer) async {
+    await _backend._check();
+    await _owner.authorize('POST', '/api/codes', Uint8List(0));
+    final held = _backend.offers.any((held) => held.lookup == offer.lookup);
+    if (held && !_backend.closed.contains(offer.lookup)) {
+      throw const LookupTakenException();
+    }
+    _backend
+      ..closed.remove(offer.lookup)
+      ..offers.add(offer);
   }
 
   @override
   Future<InviteOffer?> invite(String lookup) async {
-    await _check();
-    return invites.where((offer) => offer.lookup == lookup).lastOrNull;
+    await _backend._check();
+    if (_backend.closed.contains(lookup)) return null;
+    return _backend.offers.where((offer) => offer.lookup == lookup).lastOrNull;
   }
 
   @override
   Future<void> postInviteAnswer(InviteAnswer answer) async {
-    await _check();
-    inviteAnswered.add(answer);
+    await _backend._check();
+    if (_backend.closed.contains(answer.lookup)) {
+      throw const LinkExpiredException();
+    }
+    _backend.inviteAnswered.add(answer);
   }
 
   @override
   Future<List<InviteAnswer>> inviteAnswers(String lookup) async {
-    await _check();
-    return [...inviteAnswered.where((answer) => answer.lookup == lookup)];
+    await _backend._check();
+    await _owner.authorize('GET', '/api/codes', Uint8List(0));
+    return [
+      ..._backend.inviteAnswered.where((answer) => answer.lookup == lookup),
+    ];
   }
 
   @override
   Future<void> closeInvite(String lookup) async {
-    await _check();
-    invites.removeWhere((offer) => offer.lookup == lookup);
-    inviteAnswered.removeWhere((answer) => answer.lookup == lookup);
-  }
-
-  @override
-  Future<void> admitMember(
-    WorkspaceId workspace,
-    MemberId member, {
-    AccountId? account,
-    bool manages = false,
-    bool writes = true,
-  }) async {
-    await _check();
-    accounts[account] = (accounts[account] ?? false) || manages;
-  }
-
-  @override
-  Future<void> removeMember(WorkspaceId workspace, MemberId member) async {
-    await _check();
+    await _backend._check();
+    await _owner.authorize('DELETE', '/api/codes', Uint8List(0));
+    _backend
+      ..closed.add(lookup)
+      ..inviteAnswered.removeWhere((answer) => answer.lookup == lookup);
   }
 }

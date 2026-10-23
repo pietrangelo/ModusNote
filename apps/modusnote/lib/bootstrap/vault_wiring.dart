@@ -1,4 +1,5 @@
 import 'dart:math';
+import 'dart:typed_data';
 
 import 'package:blob_storage_media/blob_storage_media.dart';
 import 'package:blob_storage_media_adapters/remote_blobs.dart';
@@ -10,24 +11,24 @@ import 'package:sodium/sodium_sumo.dart';
 import 'package:sqlite3/common.dart';
 
 import '../sync/sync_config.dart';
-import '../vault/offline_server.dart';
 
 /// The vault as every platform builds it: libsodium for the crypto and one
 /// SQLite database (a file on mobile, IndexedDB in the browser) holding the
 /// sealed header, the member log and the record envelopes. [passkeys] is
-/// the second way in where the platform has one (WebAuthn in the browser).
+/// the second way in where the platform has one (WebAuthn in the browser);
+/// without a [gateway] the vault never syncs.
 VaultKeeper vaultKeeper({
   required SodiumSumo sodium,
   required CommonDatabase database,
   required KdfParameters kdf,
-  SyncServer server = const OfflineSyncServer(),
+  SyncGateway? gateway,
   PasskeyPrf? passkeys,
 }) => VaultKeeper(
   vaults: SqliteVaultStore(database),
   records: (workspace) =>
       SqliteLocalRecordStore(database, workspace: workspace),
-  server: server,
   identities: SodiumIdentityService(sodium),
+  hasher: SodiumContentHasher(sodium),
   keys: SodiumKeyDerivationService(sodium),
   subkeys: SodiumSubkeyDerivationService(sodium),
   envelopes: SodiumEnvelopeEncryptor(sodium),
@@ -36,59 +37,45 @@ VaultKeeper vaultKeeper({
   random: Random.secure(),
   kdf: kdf,
   passkeys: passkeys,
-  // A server that can relay device links (Supabase) offers linking.
-  links: switch (server) {
-    final DeviceLinkChannel links => links,
-    _ => null,
-  },
-  // And invites another account, keeping its list of accounts in step.
-  invites: switch (server) {
-    final InviteChannel invites => invites,
-    _ => null,
-  },
-  accounts: switch (server) {
-    final MemberAccounts accounts => accounts,
-    _ => null,
-  },
+  gateway: gateway,
 );
 
-/// The server the vault syncs with and the account that opens it.
+/// The server the vaults sync with, and the shared storage of their
+/// recordings and pictures; both null in a build without one.
 final class CloudWiring {
-  const CloudWiring({required this.server, this.account, this.remoteBlobs});
+  const CloudWiring({this.gateway, this.remoteBlobs});
 
-  final SyncServer server;
+  final SyncGateway? gateway;
 
-  /// Null in a build without a Supabase project: no sign-in is offered.
-  final SyncAccount? account;
-
-  /// The shared blob storage of a workspace (its id in hex); null without
-  /// a server, which keeps recordings on the device.
-  final RemoteBlobStore Function(String workspace)? remoteBlobs;
+  /// The blobs of an open vault's workspace on the server, every request
+  /// signed by the vault's device.
+  final RemoteBlobStore Function(UnlockedVault vault)? remoteBlobs;
 }
 
-/// Supabase when the build names a project ([SyncConfig]); otherwise a
-/// server that is never reachable, so edits stay queued and sealed.
-CloudWiring cloudWiring(SyncConfig? config) {
-  if (config == null) {
-    return const CloudWiring(server: OfflineSyncServer());
-  }
-  final account = SyncAccount(
-    SupabaseAuth(projectUrl: config.projectUrl, anonKey: config.anonKey),
-  );
+/// Our server when the build names one, or the web page's own ([SyncConfig]).
+/// [blake2b] hashes the proof of work a new workspace and an answer to a
+/// code carry: plain Dart on native platforms, libsodium.js on the web.
+CloudWiring cloudWiring(
+  SyncConfig? config, {
+  required Uint8List Function(Uint8List message) blake2b,
+}) {
+  if (config == null) return const CloudWiring();
   return CloudWiring(
-    server: SupabaseSyncServer(
-      projectUrl: config.projectUrl,
-      anonKey: config.anonKey,
-      accessToken: account.accessToken,
-    ),
-    account: account,
-    remoteBlobs: (workspace) => R2RemoteBlobStore(
-      projectUrl: config.projectUrl,
-      anonKey: config.anonKey,
-      workspace: workspace,
-      accessToken: account.accessToken,
+    gateway: ModusServer(origin: config.origin, blake2b: blake2b),
+    remoteBlobs: (vault) => ModusRemoteBlobStore(
+      origin: config.origin,
+      workspace: vault.workspace.hex,
+      authorize: vault.signer.authorize,
+      serverTime: vault.signer.adjustClock,
     ),
   );
+}
+
+final class SystemClock implements Clock {
+  const SystemClock();
+
+  @override
+  DateTime now() => DateTime.now().toUtc();
 }
 
 /// The device's list of vaults, beside their databases.

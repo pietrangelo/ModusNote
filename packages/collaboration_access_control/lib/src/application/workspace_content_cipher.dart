@@ -43,6 +43,28 @@ final class WorkspaceContentCipher {
     );
   }
 
+  /// Seals again, under [epoch], a payload that was first sealed then: a
+  /// revision already signed by its author, carried to a new server. It
+  /// adds nothing a member could not already read under that epoch.
+  /// Throws [MissingGroupKeyException] when this device lacks the key.
+  WorkspaceCiphertext sealAt(
+    Uint8List plaintext, {
+    required KeyEpoch epoch,
+    required GroupKeyring keyring,
+    required String recordId,
+  }) => WorkspaceCiphertext(
+    epoch: epoch,
+    envelope: _envelopes.seal(
+      plaintext,
+      key: keyring.keyFor(epoch),
+      associatedData: WorkspaceCiphertext.associatedData(
+        keyring.workspace,
+        epoch,
+        recordId,
+      ),
+    ),
+  );
+
   Uint8List open(
     WorkspaceCiphertext ciphertext, {
     required GroupKeyring keyring,

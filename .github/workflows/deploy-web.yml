@@ -1,13 +1,15 @@
 name: Deploy web
 
-# Publishes the web client to Cloudflare Pages once CI has passed on main.
-# The bundle is rebuilt from the same commit with the sync project fixed in
-# (its URL and publishable key are public: they ship in every client), and
-# its SHA-256 list goes in the job summary, so anyone can compare what
-# modus.serv.run serves with what this commit builds.
+# Publishes the web client and the sync server, one Worker (server/worker,
+# the client as its Static Assets), once CI has passed on main. The bundle
+# is rebuilt from the same commit and its SHA-256 list goes in the job
+# summary, so anyone can compare what modus.serv.run serves with what this
+# commit builds. The client talks to its own origin, so nothing about the
+# server is compiled into it.
 #
 # Needs two secrets of the GitHub environment `production`, open to main
-# only: CLOUDFLARE_API_TOKEN (Pages: Edit, nothing else) and
+# only: CLOUDFLARE_API_TOKEN (Workers Scripts: Edit, Workers R2 Storage:
+# Read, and Workers Routes: Edit on the serv.run zone, nothing else) and
 # CLOUDFLARE_ACCOUNT_ID. Never repository secrets: a workflow pushed on any
 # branch, or run by hand from it, could read those and publish its own
 # bundle on modus.serv.run.
@@ -27,10 +29,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  PAGES_PROJECT: modusnote
   WRANGLER: ${{ github.workspace }}/tool/deploy/node_modules/.bin/wrangler
-  SUPABASE_URL: https://oobxqzjzauhmurvxvhuo.supabase.co
-  SUPABASE_PUBLISHABLE_KEY: sb_publishable_OTXiD1NZMG56ALSGasr2zQ_aeCsZYYy
 
 jobs:
   deploy:
@@ -56,21 +55,24 @@ jobs:
         with:
           node-version: 22.22.0
 
+      - name: Rust toolchain
+        run: |
+          rustup toolchain install stable --profile minimal --target wasm32-unknown-unknown
+          rustup default stable
+
       - name: Resolve workspace
         run: flutter pub get
 
       # Wrangler and every package under it come from the committed lockfile
-      # (integrity hashes), never resolved afresh with the Pages token around.
+      # (integrity hashes), never resolved afresh with the token around.
       - name: Install wrangler
         working-directory: tool/deploy
         run: npm ci --ignore-scripts --no-audit --no-fund
 
-      - name: Build
+      - name: Build the web client
         working-directory: apps/modusnote
         run: |
-          flutter build web --wasm --csp --no-web-resources-cdn \
-            --dart-define=MODUSNOTE_SUPABASE_URL="$SUPABASE_URL" \
-            --dart-define=MODUSNOTE_SUPABASE_ANON_KEY="$SUPABASE_PUBLISHABLE_KEY"
+          flutter build web --wasm --csp --no-web-resources-cdn
           dart run tool/finalize_web_build.dart > build/web-sha256sums.txt
           {
             echo "### Web bundle SHA-256 ($(git rev-parse --short HEAD))"
@@ -79,21 +81,12 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Create the Pages project the first time
+      # wrangler.toml builds the Worker (worker-build, pinned) and uploads it
+      # with the bundle above as its assets.
+      - name: Deploy the Worker
+        working-directory: server/worker
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: |
-          if ! "$WRANGLER" pages project list | grep -qw "$PAGES_PROJECT"; then
-            "$WRANGLER" pages project create "$PAGES_PROJECT" --production-branch=main
-          fi
-
-      - name: Deploy to Cloudflare Pages
-        working-directory: apps/modusnote
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: |
-          "$WRANGLER" pages deploy build/web \
-            --project-name="$PAGES_PROJECT" --branch=main \
-            --commit-hash="$(git rev-parse HEAD)" --commit-dirty=false
+          WRANGLER_SEND_METRICS: 'false'
+        run: '"$WRANGLER" deploy'

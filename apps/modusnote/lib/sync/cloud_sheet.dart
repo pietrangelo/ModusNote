@@ -1,3 +1,4 @@
+import 'package:collaboration_access_control/collaboration_access_control.dart';
 import 'package:flutter/material.dart';
 import 'package:offline_sync/offline_sync.dart';
 import 'package:offline_sync_adapters/offline_sync_adapters.dart';
@@ -6,7 +7,6 @@ import '../l10n/generated/app_localizations.dart';
 import '../theme/golden_ratio.dart';
 import '../vault/auto_lock.dart';
 import 'members_sheet.dart';
-import 'sign_in_form.dart';
 import 'sync_controller.dart';
 import '../theme/modus_palette.dart';
 
@@ -44,7 +44,7 @@ class CloudButton extends StatelessWidget {
           onInvite: onInvite,
         ),
         icon: Icon(switch (sync.state) {
-          SyncState.signedOut => Icons.cloud_off_outlined,
+          SyncState.off => Icons.cloud_off_outlined,
           SyncState.syncing => Icons.cloud_sync_outlined,
           SyncState.synced => Icons.cloud_done_outlined,
           SyncState.offline => Icons.cloud_off,
@@ -55,8 +55,8 @@ class CloudButton extends StatelessWidget {
   }
 }
 
-/// Signs in with a code sent by email, then shows how the sync is doing
-/// and, where it is offered, links another device of the same account.
+/// Turns the sync on, then shows how it is doing and, for an owner, links
+/// another device, invites a person or deletes the vault from the server.
 class CloudSheet extends StatefulWidget {
   const CloudSheet({
     required this.sync,
@@ -95,6 +95,7 @@ class CloudSheet extends StatefulWidget {
 }
 
 class _CloudSheetState extends State<CloudSheet> {
+  var _enabling = false;
   var _deleting = false;
   String? _deleteProblem;
 
@@ -110,44 +111,62 @@ class _CloudSheetState extends State<CloudSheet> {
         child: SafeArea(
           child: SingleChildScrollView(
             padding: const EdgeInsets.all(Spacing.l),
-            child: widget.sync.retired
-                ? Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: widget.sync.retired
+                  ? [
                       _title(context),
                       const SizedBox(height: Spacing.m),
                       Text(
-                        l10n.cloudAccountDeleted,
+                        l10n.cloudServerDeleted,
                         key: const ValueKey('cloud-retired'),
                         style: Theme.of(context).textTheme.bodyMedium,
                       ),
-                    ],
-                  )
-                : widget.sync.signedIn
-                ? Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: _status(context),
-                  )
-                : SignInForm(
-                    title: l10n.cloudSync,
-                    body: l10n.cloudSignInBody,
-                    sendCode: widget.sync.sendCode,
-                    signIn: widget.sync.signIn,
-                    onTyped: () => AutoLockScope.maybeOf(context)?.touch(),
-                  ),
+                    ]
+                  : widget.sync.enabled
+                  ? _status(context)
+                  : _off(context),
+            ),
           ),
         ),
       ),
     );
   }
 
+  /// A new vault stays on the device until its person turns the sync on.
+  List<Widget> _off(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return [
+      _title(context),
+      const SizedBox(height: Spacing.m),
+      Text(l10n.cloudOffBody, style: Theme.of(context).textTheme.bodyMedium),
+      const SizedBox(height: Spacing.l),
+      FilledButton.icon(
+        key: const ValueKey('cloud-enable'),
+        onPressed: _enabling ? null : _enable,
+        icon: const Icon(Icons.cloud_upload_outlined),
+        label: Text(l10n.cloudEnable),
+      ),
+    ];
+  }
+
+  Future<void> _enable() async {
+    setState(() => _enabling = true);
+    try {
+      await widget.sync.enable();
+    } on VaultLockedException {
+      // Locked meanwhile: the sheet closes with the vault.
+    } finally {
+      if (mounted) setState(() => _enabling = false);
+    }
+  }
+
   List<Widget> _status(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final sync = widget.sync;
     final state = switch (sync.state) {
-      SyncState.signedOut || SyncState.syncing => l10n.cloudStateSyncing,
+      SyncState.off || SyncState.syncing => l10n.cloudStateSyncing,
       SyncState.synced => l10n.cloudStateSynced(
         MaterialLocalizations.of(context)
             .formatTimeOfDay(TimeOfDay.fromDateTime(sync.lastSynced!)),
@@ -157,6 +176,7 @@ class _CloudSheetState extends State<CloudSheet> {
         SyncProblem.untrusted => l10n.cloudStateUntrusted,
         SyncProblem.full => l10n.cloudStateFull,
         SyncProblem.removed => l10n.cloudStateRemoved,
+        SyncProblem.notAdmitted => l10n.cloudStateNotAdmitted,
         SyncProblem.refused || null => l10n.cloudStateRefused,
       },
     };
@@ -164,11 +184,6 @@ class _CloudSheetState extends State<CloudSheet> {
     return [
       _title(context),
       const SizedBox(height: Spacing.m),
-      Text(
-        l10n.cloudSignedInAs(sync.email ?? ''),
-        style: Theme.of(context).textTheme.bodyMedium,
-      ),
-      const SizedBox(height: Spacing.s),
       Semantics(
         liveRegion: true,
         child: Text(
@@ -188,7 +203,7 @@ class _CloudSheetState extends State<CloudSheet> {
         label: Text(l10n.cloudSyncNow),
       ),
       const SizedBox(height: Spacing.s),
-      if (widget.onLinkDevice case final link?) ...[
+      if (widget.onLinkDevice case final link? when sync.managesMembers) ...[
         const SizedBox(height: Spacing.s),
         OutlinedButton.icon(
           key: const ValueKey('link-device'),
@@ -219,33 +234,30 @@ class _CloudSheetState extends State<CloudSheet> {
         icon: const Icon(Icons.group_outlined),
         label: Text(l10n.membersAction),
       ),
-      const SizedBox(height: Spacing.s),
-      OutlinedButton(
-        onPressed: syncing || _deleting ? null : sync.signOut,
-        child: Text(l10n.cloudSignOut),
-      ),
-      const SizedBox(height: Spacing.l),
-      TextButton.icon(
-        key: const ValueKey('delete-account'),
-        style: TextButton.styleFrom(
-          foregroundColor: Theme.of(context).colorScheme.error,
+      if (sync.managesMembers) ...[
+        const SizedBox(height: Spacing.l),
+        TextButton.icon(
+          key: const ValueKey('delete-server'),
+          style: TextButton.styleFrom(
+            foregroundColor: Theme.of(context).colorScheme.error,
+          ),
+          onPressed: _deleting ? null : _deleteFromServer,
+          icon: _deleting
+              ? const SizedBox.square(
+                  dimension: Spacing.m,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.delete_forever_outlined),
+          label: Text(l10n.cloudDeleteServer),
         ),
-        onPressed: _deleting ? null : _deleteAccount,
-        icon: _deleting
-            ? const SizedBox.square(
-                dimension: Spacing.m,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              )
-            : const Icon(Icons.person_remove_outlined),
-        label: Text(l10n.cloudDeleteAccount),
-      ),
+      ],
       if (_deleteProblem case final problem?) ...[
         const SizedBox(height: Spacing.s),
         Semantics(
           liveRegion: true,
           child: Text(
             problem,
-            key: const ValueKey('delete-account-problem'),
+            key: const ValueKey('delete-server-problem'),
             style: Theme.of(context).textTheme.bodyMedium
                 ?.copyWith(color: Theme.of(context).colorScheme.error),
           ),
@@ -254,29 +266,29 @@ class _CloudSheetState extends State<CloudSheet> {
     ];
   }
 
-  /// Asks first: nothing brings the account or the server's copy back.
-  /// The notes stay on this device.
-  Future<void> _deleteAccount() async {
+  /// Asks first: nothing brings the server's copy back. The notes stay on
+  /// the devices.
+  Future<void> _deleteFromServer() async {
     final l10n = AppLocalizations.of(context);
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        icon: const Icon(Icons.person_remove_outlined),
-        title: Text(l10n.cloudDeleteAccountTitle),
-        content: Text(l10n.cloudDeleteAccountBody(widget.sync.email ?? '')),
+        icon: const Icon(Icons.delete_forever_outlined),
+        title: Text(l10n.cloudDeleteServerTitle),
+        content: Text(l10n.cloudDeleteServerBody),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
             child: Text(l10n.cancel),
           ),
           FilledButton(
-            key: const ValueKey('delete-account-confirm'),
+            key: const ValueKey('delete-server-confirm'),
             style: FilledButton.styleFrom(
               backgroundColor: Theme.of(context).colorScheme.error,
               foregroundColor: Theme.of(context).colorScheme.onError,
             ),
             onPressed: () => Navigator.of(context).pop(true),
-            child: Text(l10n.cloudDeleteAccountConfirm),
+            child: Text(l10n.cloudDeleteServerConfirm),
           ),
         ],
       ),
@@ -291,11 +303,17 @@ class _CloudSheetState extends State<CloudSheet> {
     final release = AutoLockScope.maybeOf(context)?.hold();
     String? problem;
     try {
-      await widget.sync.deleteAccount();
+      await widget.sync.deleteFromServer();
     } on ServerUnavailableException {
-      problem = l10n.cloudDeleteAccountOffline;
-    } on SupabaseAuthRejectedException {
-      problem = l10n.cloudDeleteAccountRefused;
+      problem = l10n.cloudDeleteServerOffline;
+    } on SyncServerRejectedException {
+      problem = l10n.cloudDeleteServerRefused;
+    } on NotAdmittedException {
+      problem = l10n.cloudDeleteServerRefused;
+    } on NotAuthorizedException {
+      problem = l10n.cloudDeleteServerRefused;
+    } on VaultLockedException {
+      return;
     } finally {
       release?.call();
     }

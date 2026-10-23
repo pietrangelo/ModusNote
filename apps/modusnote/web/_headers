@@ -1,4 +1,4 @@
-# Cloudflare Pages response headers for the web client.
+# Response headers for the web client, served as Workers Static Assets.
 # The page holds decrypted notes and keys in memory, so only code from this
 # origin may run: no inline scripts, no eval, no third-party hosts.
 # 'wasm-unsafe-eval' lets the browser compile our own WebAssembly
@@ -6,11 +6,12 @@
 # elements Flutter's engine inserts, whose text differs per browser (Chrome,
 # Edge, Firefox, Safari) and per build (WebAssembly or JavaScript), plus the
 # empty one SelectionArea (the Markdown preview) creates and then fills
-# through CSSOM. The page talks to two other hosts only: the Supabase
-# project (sync, sign-in, presigned URLs) and the R2 endpoint of the account
-# holding the encrypted recordings; both see ciphertext only. test/platform/web_headers_test.dart checks it.
+# through CSSOM. The page talks to its own origin only: the same Worker
+# serves the app and the sync (/api), which sees ciphertext only and streams
+# the encrypted recordings to and from R2. test/platform/web_headers_test.dart
+# checks it.
 /*
-  Content-Security-Policy: default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self' blob:; connect-src 'self' https://oobxqzjzauhmurvxvhuo.supabase.co https://9bc65f198cf14dc51e892d6657550260.r2.cloudflarestorage.com; img-src 'self' blob:; font-src 'self'; style-src 'self' 'sha256-quEZTjRzgvQYGviYWByjJgKZ/NbzuCmZuJz4oKH92lc=' 'sha256-yfIPOfm2j+95mdSFRKtHD+weGaJNlJyzgEhboQ4WsDA=' 'sha256-JhCALKydFD/KDoHJoYDYk6RJ1PyHhs/4Z1vg0SSYlB0=' 'sha256-6tz5KaDTtT27CkH8jwURBGFVg0EroGZuBSIz43PtMvc=' 'sha256-yCUW4koEXyTEtXHcibpmLkGupCpf96nZmfjrppqC6W8=' 'sha256-NXp0I0W9d503w9W9X7Nls6Nbif2UiE3ng8U/9vCnWVQ=' 'sha256-9Du661+dty+iqEZOH0h1B6XZJRkZy0Ru81NceU6pRqA=' 'sha256-OkETx7zUr4u5F6C7j7A6fUsn/6Kby8jvlZJNPDPikqk=' 'sha256-cgINIZw4iKgU7zccO2vPeZdQJIMlKEchLZG6hpkP+8k=' 'sha256-2hxujCU6WzSO6ycZznxFKlHE++BDsDuMYXT/O0zl8rM=' 'sha256-Z559gOnHVh853tD2n0VTBSlLSRQIIlugZG83UOLIjyA=' 'sha256-+v7hPyQa8w+VVy7nD6CDwXylJztbUntj5nwL8we5gLI=' 'sha256-s4yQAruZSjIEYHkPO8ehTfzlcsl7trhH8zHgKmbVxp8=' 'sha256-fZHbopTuEB9rOa4sFajsL99Oz43fhnOFJ4Zj62iJRiU=' 'sha256-VEH2FxdW2Q4z1unMJqqt0UH0BHh5vEfAYRSvZ8RBw6c=' 'sha256-CCNlQB4n2yV+kpblVxCg1CPdS/azQfc966N89UgaYs4=' 'sha256-47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU='; manifest-src 'self'; media-src 'self' blob:; base-uri 'self'; form-action 'none'; frame-ancestors 'none'; object-src 'none'; require-trusted-types-for 'script'; trusted-types flutter-js default
+  Content-Security-Policy: default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self' blob:; connect-src 'self'; img-src 'self' blob:; font-src 'self'; style-src 'self' 'sha256-quEZTjRzgvQYGviYWByjJgKZ/NbzuCmZuJz4oKH92lc=' 'sha256-yfIPOfm2j+95mdSFRKtHD+weGaJNlJyzgEhboQ4WsDA=' 'sha256-JhCALKydFD/KDoHJoYDYk6RJ1PyHhs/4Z1vg0SSYlB0=' 'sha256-6tz5KaDTtT27CkH8jwURBGFVg0EroGZuBSIz43PtMvc=' 'sha256-yCUW4koEXyTEtXHcibpmLkGupCpf96nZmfjrppqC6W8=' 'sha256-NXp0I0W9d503w9W9X7Nls6Nbif2UiE3ng8U/9vCnWVQ=' 'sha256-9Du661+dty+iqEZOH0h1B6XZJRkZy0Ru81NceU6pRqA=' 'sha256-OkETx7zUr4u5F6C7j7A6fUsn/6Kby8jvlZJNPDPikqk=' 'sha256-cgINIZw4iKgU7zccO2vPeZdQJIMlKEchLZG6hpkP+8k=' 'sha256-2hxujCU6WzSO6ycZznxFKlHE++BDsDuMYXT/O0zl8rM=' 'sha256-Z559gOnHVh853tD2n0VTBSlLSRQIIlugZG83UOLIjyA=' 'sha256-+v7hPyQa8w+VVy7nD6CDwXylJztbUntj5nwL8we5gLI=' 'sha256-s4yQAruZSjIEYHkPO8ehTfzlcsl7trhH8zHgKmbVxp8=' 'sha256-fZHbopTuEB9rOa4sFajsL99Oz43fhnOFJ4Zj62iJRiU=' 'sha256-VEH2FxdW2Q4z1unMJqqt0UH0BHh5vEfAYRSvZ8RBw6c=' 'sha256-CCNlQB4n2yV+kpblVxCg1CPdS/azQfc966N89UgaYs4=' 'sha256-47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU='; manifest-src 'self'; media-src 'self' blob:; base-uri 'self'; form-action 'none'; frame-ancestors 'none'; object-src 'none'; require-trusted-types-for 'script'; trusted-types flutter-js default
   Cross-Origin-Opener-Policy: same-origin
   Cross-Origin-Embedder-Policy: require-corp
   Cross-Origin-Resource-Policy: same-origin
