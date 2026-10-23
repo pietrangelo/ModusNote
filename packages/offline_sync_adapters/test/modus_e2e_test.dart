@@ -106,6 +106,10 @@ void main() {
         secret(utf8.encode('frase di Alice, lunga')),
       );
       addTearDown(alice.lock);
+      await aliceKeeper.confirm(
+        alice,
+        secret(utf8.encode('frase di Alice, lunga')),
+      );
       await alice.engine.write(note, RevisionContents(utf8.encode('da Alice')));
       final first = await alice.engine.sync();
       expect(first.offline, isFalse);

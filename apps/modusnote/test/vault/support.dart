@@ -41,10 +41,14 @@ final class FakePasskeys implements PasskeyPrf {
   /// Answers with an unrelated secret, as another authenticator would.
   bool impostor = false;
 
+  /// How many passkeys were made.
+  var registered = 0;
+
   @override
   Future<RegisteredPasskey> register({required PrfSalt salt}) async {
     await atAuthenticator?.future;
     _maybeFail();
+    registered++;
     final credential = PasskeyCredentialId.fromBytes(
       sodium.randombytes.buf(32),
     );
