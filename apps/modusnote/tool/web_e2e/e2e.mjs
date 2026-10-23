@@ -38,6 +38,14 @@ async function scenario(browser, origin, mode) {
     const url = request.url();
     if (!url.startsWith(origin) && !url.startsWith(`blob:${origin}/`)) outside.push(url);
   });
+  // The live channel is a WebSocket to the page's own origin (ws: or wss:);
+  // one anywhere else counts as a request outside it.
+  page.on('websocket', (socket) => {
+    const url = new URL(socket.url());
+    const own = new URL(origin);
+    const scheme = own.protocol === 'https:' ? 'wss:' : 'ws:';
+    if (url.protocol !== scheme || url.host !== own.host) outside.push(socket.url());
+  });
   page.on('response', (response) => loaded.push(new URL(response.url()).pathname));
   const cdp = await context.newCDPSession(page);
   await cdp.send('WebAuthn.enable', { enableUI: false });
