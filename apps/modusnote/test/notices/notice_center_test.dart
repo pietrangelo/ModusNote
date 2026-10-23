@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:blob_storage_media/blob_storage_media.dart';
 import 'package:collaboration_access_control/collaboration_access_control.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:modusnote/notices/notice_center.dart';
@@ -187,6 +188,30 @@ void main() {
         expect(dismissals.single, {2, 7});
       },
     );
+
+    test('are read once the rows reached the server, even when the '
+        'recordings could not follow', () async {
+      for (final error in const [
+        RemoteBlobRejectedException(413),
+        RemoteBlobUnavailableException(),
+      ]) {
+        final source = FakeNoticeSource([signed(4)]);
+        final sync = SyncController(
+          engine: fleet.phone.vault.engine,
+          onPulled: () async {},
+          afterSync: (_) => Future.error(error),
+          enabled: true,
+        );
+        addTearDown(sync.dispose);
+        final center = centerOf(fleet.phone, board: board(source), sync: sync);
+
+        await sync.syncNow();
+        await pumpEventQueue();
+
+        expect(source.fetches, 1, reason: '$error');
+        expect(center.service.map((n) => n.serial), [4], reason: '$error');
+      }
+    });
 
     test('a vault whose sync is off asks for nothing', () async {
       final source = FakeNoticeSource([signed(4)]);

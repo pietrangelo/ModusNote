@@ -48,8 +48,9 @@ final class SecurityNotice {
 /// server can delay them but never invent one; those after the sealed
 /// [NoticeMark] and written by another device are unread. Service notices
 /// are the operator's, signed by a key the app pins ([ServiceNoticeBoard]),
-/// read only while the vault syncs: after the first sync of the unlock,
-/// then at most every six hours. The person closes them one by one.
+/// read only while the vault syncs: after the first sync of the unlock
+/// that reached the server, then at most every six hours. The person
+/// closes them one by one.
 ///
 /// Lives while the vault is open, beside its [SyncController].
 final class NoticeCenter extends ChangeNotifier {
@@ -84,6 +85,9 @@ final class NoticeCenter extends ChangeNotifier {
   List<SecurityNotice> _security = const [];
   List<ServiceNotice> _service = const [];
   DateTime? _fetched;
+
+  /// [SyncController.lastSynced] when this center last looked.
+  DateTime? _reached;
   var _fetching = false;
   var _disposed = false;
 
@@ -158,7 +162,12 @@ final class NoticeCenter extends ChangeNotifier {
       _security = security;
       notifyListeners();
     }
-    if (_sync.state == SyncState.synced) unawaited(_fetchService());
+    // A sync that reached the server, even if a recording did not follow.
+    final reached = _sync.lastSynced;
+    if (reached != null && reached != _reached) {
+      _reached = reached;
+      unawaited(_fetchService());
+    }
   }
 
   /// Only for a vault that syncs, and seldom: a notice is not urgent.
