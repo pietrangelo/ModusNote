@@ -187,8 +187,23 @@ async function scenario(browser, origin, mode) {
   // The encrypted backup downloads as ciphertext and restores into the
   // same vault, adding nothing; the Markdown export is in clear, after a
   // warning.
+  // Actions that give lasting access ask for the passphrase again, unless
+  // an earlier confirmation still lasts.
+  const confirmIfAsked = async () => {
+    const asked = await page
+      .getByText("Confirm it's you")
+      .first()
+      .waitFor({ timeout: 3000 })
+      .then(() => true, () => false);
+    if (!asked) return;
+    await typeInto('Passphrase', passphrase);
+    await page.getByRole('button', { name: 'Confirm', exact: true }).click();
+    await page.getByText("Confirm it's you").first().waitFor({ state: 'detached', timeout: 60000 });
+    await settle();
+  };
   const backupSheet = async (item) => {
     await page.getByRole('button', { name: 'Backup and export' }).click();
+    await confirmIfAsked();
     await settle();
     await page.getByText(item).click();
     await settle();
@@ -232,6 +247,7 @@ async function scenario(browser, origin, mode) {
   // A passkey replaces the passphrase after the next reload.
   await page.getByRole('button', { name: 'Passkey unlock' }).click();
   await page.getByRole('button', { name: 'Set up passkey' }).click();
+  await confirmIfAsked();
   // The snackbar's text, not Flutter's aria-live announcement of it, which
   // may or may not still be in the page.
   await page
