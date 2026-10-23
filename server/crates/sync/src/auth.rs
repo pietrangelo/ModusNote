@@ -1,7 +1,8 @@
 //! Who is calling: a request counts only with a valid `MN1` signature, made
 //! within [`SKEW_MS`] of the server's clock, by a key the workspace then
 //! looks up in its verified log. A write's nonce is remembered for as long
-//! as its time is accepted, so a captured write cannot be sent again.
+//! as its time is accepted, so a captured write cannot be sent again; so is
+//! a live channel's handshake, once its key is known to be a member.
 
 use ledger::{Credential, MemberKey, SignatureCheck, signable_request};
 
@@ -63,6 +64,20 @@ pub fn authenticate(
     request: &Request<'_>,
 ) -> Result<Caller, Denied> {
     let credential = request.authorization.and_then(Credential::parse).ok_or(Denied::Unauthenticated)?;
+    let caller = verify(check, request, &credential)?;
+    if request.writes() {
+        remember_nonce(store, &credential.nonce, request.now_ms)?;
+    }
+    Ok(caller)
+}
+
+/// Checks the signature and the time, and writes nothing: whoever signed
+/// may still be no member, and a stranger must not fill the store.
+pub(crate) fn verify(
+    check: &impl SignatureCheck,
+    request: &Request<'_>,
+    credential: &Credential,
+) -> Result<Caller, Denied> {
     if credential.millis.abs_diff(request.now_ms) > SKEW_MS {
         return Err(Denied::Clock);
     }
@@ -72,13 +87,10 @@ pub fn authenticate(
     if !check.verifies(&credential.key, &signable, &credential.signature) {
         return Err(Denied::Unauthenticated);
     }
-    if request.writes() {
-        remember_nonce(store, &credential.nonce, request.now_ms)?;
-    }
     Ok(Caller { key: credential.key })
 }
 
-fn remember_nonce(store: &mut impl Store, nonce: &[u8; 16], now_ms: u64) -> Result<(), Denied> {
+pub(crate) fn remember_nonce(store: &mut impl Store, nonce: &[u8; 16], now_ms: u64) -> Result<(), Denied> {
     for (key, expiry) in store.list(NONCES, None, usize::MAX)? {
         if decode_u64(&expiry) < now_ms {
             store.delete(&key)?;

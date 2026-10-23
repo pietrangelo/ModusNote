@@ -1,7 +1,10 @@
+import 'dart:typed_data';
+
 import 'package:collaboration_access_control/collaboration_access_control.dart';
 import 'package:identity_cryptography/identity_cryptography.dart';
 
 import '../core/invite.dart';
+import '../core/live_signal.dart';
 import '../core/outbox.dart';
 import '../core/passkey_slot.dart';
 import '../core/record_revision.dart';
@@ -102,6 +105,30 @@ abstract interface class SyncGateway {
   /// device has no workspace yet); posting one, reading its answers and
   /// closing it need [signer], the owner's.
   InviteChannel invites(RequestSigner? signer);
+}
+
+/// Port: a live line to the server about one workspace, so a change
+/// written on another device reaches this one in seconds instead of at
+/// the next poll. The device stays the one that asks: each signal only
+/// makes it sync sooner, signing every request as always.
+abstract interface class LiveChannel {
+  /// Connects as [signer]'s device when listened to; cancelling the
+  /// subscription closes the channel. Emits [LiveOpened] once the server
+  /// accepts, then [LiveChanged] for each change, and ends with
+  /// [LiveClosed] once an open channel closes. A channel that never opens
+  /// (refused, unreachable, too slow) ends with a
+  /// [ServerUnavailableException] instead; one whose vault was locked
+  /// before it could sign just ends.
+  Stream<LiveSignal> open(WorkspaceId workspace, RequestSigner signer);
+}
+
+/// Port: where the app reads the operator's signed service notices
+/// (`notices.json` on its own origin), unsigned and unchecked: the
+/// [ServiceNoticeBoard] checks every one.
+abstract interface class ServiceNoticeSource {
+  /// The envelopes as published; never throws: anything that goes wrong
+  /// is no notices.
+  Future<List<Uint8List>> fetch();
 }
 
 enum SyncStream {

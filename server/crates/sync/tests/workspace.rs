@@ -559,3 +559,263 @@ mod retention {
         assert_eq!(space.last_seen_ms(), Ok(Some(later)));
     }
 }
+
+mod live {
+    use ledger::MemberKey;
+    use sync::{SOCKETS_HELD, SOCKETS_PER_KEY, SOCKETS_PER_WORKSPACE, Socket, admit_socket};
+
+    use super::*;
+
+    fn nonces(space: &Space) -> usize {
+        space.store().keys().filter(|key| key.starts_with("nonce/")).count()
+    }
+
+    fn everything(space: &Space) -> Vec<(String, Vec<u8>)> {
+        space.store().keys().map(|key| (key.clone(), sync::Store::get(space.store(), key).unwrap().unwrap())).collect()
+    }
+
+    /// Alice founds, Bob edits, Carol views; then Alice removes Carol.
+    fn carol_removed() -> (Space, Device, Device, Device) {
+        let (mut space, alice, bob, invite) = with_bob(EDITOR, Limits::default());
+        let carol = Device::new(3);
+        let invited = record(WS, 2, &alice, Some(signature_of(&invite)), Change::Invited(&carol, VIEWER));
+        space.append_record(&call(&alice, "POST", &path("/membership"), &invited).request(), &invited).unwrap();
+        let revoke = record(WS, 3, &alice, Some(signature_of(&invited)), Change::Revoked(&carol));
+        space.append_record(&call(&alice, "POST", &path("/membership"), &revoke).request(), &revoke).unwrap();
+        (space, alice, bob, carol)
+    }
+
+    #[test]
+    fn a_member_of_any_role_opens_the_channel_once() {
+        let (mut space, _, bob, _) = with_bob(VIEWER, Limits::default());
+        let handshake = live(&bob);
+        let before = nonces(&space);
+
+        assert_eq!(space.live(&handshake.request(), &handshake.token), Ok(bob.member()));
+        assert_eq!(nonces(&space), before + 1, "the handshake's nonce is remembered");
+        assert_eq!(
+            space.live(&handshake.request(), &handshake.token),
+            Err(SyncError::Denied(Denied::Replayed)),
+            "a captured handshake cannot open another socket"
+        );
+    }
+
+    #[test]
+    fn a_stranger_with_a_valid_signature_writes_nothing() {
+        let (mut space, _, _, _) = with_bob(EDITOR, Limits::default());
+        let mallory = Device::new(9);
+        let before = everything(&space);
+        let handshake = live(&mallory);
+
+        forbidden(space.live(&handshake.request(), &handshake.token));
+        assert_eq!(everything(&space), before);
+    }
+
+    #[test]
+    fn a_removed_member_with_a_valid_signature_writes_nothing() {
+        let (mut space, _, _, carol) = carol_removed();
+        let before = everything(&space);
+        let handshake = live(&carol);
+
+        forbidden(space.live(&handshake.request(), &handshake.token));
+        assert_eq!(everything(&space), before);
+    }
+
+    #[test]
+    fn a_bad_signature_clock_path_or_second_credential_is_refused_without_writing() {
+        let (mut space, alice, _, _) = with_bob(EDITOR, Limits::default());
+        let before = everything(&space);
+        let mut tampered = live(&alice);
+        let end = tampered.token.len();
+        tampered.token.replace_range(end - 3..end - 1, "AA");
+        let late = live_at(&alice, NOW - SKEW_MS - 1, NOW);
+        let heads = call(&alice, "GET", &path("/heads"), b"");
+        let elsewhere = heads.header.as_deref().unwrap().replacen("MN1 ", "mn1.", 1);
+        let as_header = live(&alice);
+        let both = live(&alice);
+
+        assert_eq!(space.live(&tampered.request(), &tampered.token), Err(SyncError::Denied(Denied::Unauthenticated)));
+        assert_eq!(space.live(&late.request(), &late.token), Err(SyncError::Denied(Denied::Clock)));
+        assert_eq!(
+            space.live(&live(&alice).request(), &elsewhere),
+            Err(SyncError::Denied(Denied::Unauthenticated)),
+            "signed for another path"
+        );
+        assert_eq!(
+            space.live(&as_header.request(), as_header.call.header.as_deref().unwrap()),
+            Err(SyncError::Denied(Denied::Unauthenticated)),
+            "the header's spelling is not a token"
+        );
+        assert_eq!(
+            space.live(&both.call.request(), &both.token),
+            Err(SyncError::Denied(Denied::Unauthenticated)),
+            "a header and a token are two credentials"
+        );
+        assert_eq!(everything(&space), before);
+    }
+
+    #[test]
+    fn an_unknown_workspace_is_not_found() {
+        let alice = Device::new(1);
+        let mut space = space(Limits::default());
+        let handshake = live(&alice);
+
+        assert_eq!(space.live(&handshake.request(), &handshake.token), Err(SyncError::NotFound));
+        assert!(space.store().is_empty());
+    }
+
+    #[test]
+    fn a_handshake_keeps_the_workspace_alive_like_a_read() {
+        let limits = Limits { idle_days: 10, ..Limits::default() };
+        let alice = Device::new(1);
+        let (mut space, _) = founded(&alice, limits);
+        let later = NOW + 9 * 86_400_000;
+        let handshake = live_at(&alice, later, later);
+
+        space.live(&handshake.request(), &handshake.token).unwrap();
+        assert_eq!(space.last_seen_ms(), Ok(Some(later)));
+    }
+
+    fn socket(key: &Device, accepted_ms: u64) -> Socket {
+        Socket { key: key.member(), accepted_ms, open: true }
+    }
+
+    /// One the object closed that the peer has not answered yet.
+    fn closing(key: &Device, accepted_ms: u64) -> Socket {
+        Socket { open: false, ..socket(key, accepted_ms) }
+    }
+
+    /// What the object would admit with nothing else held.
+    fn admit(open: &[Socket], key: &MemberKey) -> Result<Vec<usize>, SyncError> {
+        admit_socket(open, open.len(), key)
+    }
+
+    #[test]
+    fn after_a_write_members_hear_the_heads_but_not_the_author() {
+        let (mut space, alice, bob, _) = with_bob(EDITOR, Limits::default());
+        space.push(&call(&bob, "POST", &path("/rows"), b"r").request(), &[row(1, 10, 0)]).unwrap();
+        let open = [socket(&alice, 1), socket(&bob, 2), socket(&alice, 3)];
+
+        let fanout = space.fanout(&open, &bob.member()).unwrap();
+        assert_eq!(fanout.heads, Heads { rows: 1, bundles: 0, membership: 2 });
+        assert_eq!(fanout.notify, vec![0, 2]);
+        assert!(fanout.close.is_empty());
+    }
+
+    #[test]
+    fn after_a_removal_the_removed_keys_sockets_close() {
+        let (mut space, alice, bob, carol) = carol_removed();
+        let stranger = MemberKey([9; 32]);
+        let open = [
+            socket(&carol, 1),
+            socket(&bob, 2),
+            socket(&alice, 3),
+            Socket { key: stranger, accepted_ms: 4, open: true },
+        ];
+
+        let fanout = space.fanout(&open, &alice.member()).unwrap();
+        assert_eq!(fanout.heads.membership, 4);
+        assert_eq!(fanout.notify, vec![1]);
+        assert_eq!(fanout.close, vec![0, 3]);
+    }
+
+    #[test]
+    fn a_member_who_leaves_closes_its_own_sockets() {
+        let (mut space, alice, bob, invite) = with_bob(EDITOR, Limits::default());
+        let leave = record(WS, 2, &bob, Some(signature_of(&invite)), Change::Revoked(&bob));
+        space.append_record(&call(&bob, "POST", &path("/membership"), &leave).request(), &leave).unwrap();
+        let open = [socket(&alice, 1), socket(&bob, 2)];
+
+        let fanout = space.fanout(&open, &bob.member()).unwrap();
+        assert_eq!((fanout.notify, fanout.close), (vec![0], vec![1]));
+    }
+
+    #[test]
+    fn a_fifth_socket_of_a_key_pushes_out_its_oldest() {
+        let (alice, bob) = (Device::new(1), Device::new(2));
+        let open = [socket(&alice, 40), socket(&alice, 10), socket(&bob, 5), socket(&alice, 30), socket(&alice, 20)];
+
+        assert_eq!(SOCKETS_PER_KEY, 4);
+        assert_eq!(admit(&open, &alice.member()), Ok(vec![1]));
+        assert_eq!(admit(&open, &bob.member()), Ok(vec![]));
+        assert_eq!(admit(&open[..4], &alice.member()), Ok(vec![]));
+        let more = [&open[..], &[socket(&alice, 50)]].concat();
+        assert_eq!(admit(&more, &alice.member()), Ok(vec![1, 4]), "two past the limit, after a restart");
+    }
+
+    #[test]
+    fn a_workspace_holds_at_most_256_sockets() {
+        let (alice, bob) = (Device::new(1), Device::new(2));
+        let mut open: Vec<Socket> = (0..SOCKETS_PER_WORKSPACE)
+            .map(|i| Socket { key: MemberKey([(i / SOCKETS_PER_KEY) as u8 + 10; 32]), accepted_ms: 7, open: true })
+            .collect();
+
+        assert_eq!(admit(&open, &alice.member()), Err(SyncError::Throttled));
+        assert_eq!(admit(&open[1..], &alice.member()), Ok(vec![]));
+        // A key at its own limit makes room for itself.
+        open.splice(..4, (0..4).map(|i| socket(&bob, i)));
+        assert_eq!(admit(&open, &bob.member()), Ok(vec![0]));
+    }
+
+    #[test]
+    fn closing_sockets_are_never_heard_from_or_closed_again() {
+        let (mut space, alice, bob, carol) = carol_removed();
+        let open = [closing(&alice, 1), socket(&alice, 2), closing(&carol, 3), socket(&carol, 4)];
+
+        let fanout = space.fanout(&open, &bob.member()).unwrap();
+        assert_eq!((fanout.notify, fanout.close), (vec![1], vec![3]));
+    }
+
+    #[test]
+    fn a_keys_closing_sockets_hold_room_and_are_never_pushed_out() {
+        let (alice, bob) = (Device::new(1), Device::new(2));
+        let full = [socket(&alice, 10), socket(&alice, 20), socket(&alice, 30), socket(&alice, 40)];
+        let behind = [closing(&alice, 1), closing(&alice, 2), closing(&alice, 3)];
+        let held = [&behind[..], &full[..]].concat();
+
+        assert_eq!(
+            admit(&held, &alice.member()),
+            Ok(vec![3]),
+            "an open one goes, the closing ones are left as they are"
+        );
+        let stuck = [&held[..], &[closing(&alice, 4)]].concat();
+        assert_eq!(
+            admit(&stuck, &alice.member()),
+            Err(SyncError::Throttled),
+            "a key whose peer never answers its closes cannot pile up more"
+        );
+        assert_eq!(admit(&stuck, &bob.member()), Ok(vec![]), "nor does it hold back another key");
+        let replaced =
+            [&full[..], &[closing(&alice, 1), closing(&alice, 2), closing(&alice, 3), closing(&alice, 4)]].concat();
+        assert_eq!(admit(&replaced[4..], &alice.member()), Ok(vec![]), "closing ones alone leave room to open");
+    }
+
+    #[test]
+    fn closing_sockets_count_toward_the_workspace() {
+        let alice = Device::new(1);
+        let open: Vec<Socket> = (0..SOCKETS_PER_WORKSPACE)
+            .map(|i| Socket {
+                key: MemberKey([(i / SOCKETS_PER_KEY) as u8 + 10; 32]),
+                accepted_ms: 7,
+                open: i % 2 == 0,
+            })
+            .collect();
+
+        assert_eq!(admit(&open, &alice.member()), Err(SyncError::Throttled));
+    }
+
+    #[test]
+    fn past_a_hard_bound_on_everything_held_nothing_more_is_accepted() {
+        let alice = Device::new(1);
+        let open = [socket(&alice, 1)];
+
+        assert_eq!(SOCKETS_HELD, 512);
+        assert_eq!(admit_socket(&open, SOCKETS_HELD - 1, &alice.member()), Ok(vec![]));
+        assert_eq!(
+            admit_socket(&open, SOCKETS_HELD, &alice.member()),
+            Err(SyncError::Throttled),
+            "sockets the runtime lists that are not ours, or not readable, count too"
+        );
+        assert_eq!(admit_socket(&[], SOCKETS_HELD, &alice.member()), Err(SyncError::Throttled));
+    }
+}

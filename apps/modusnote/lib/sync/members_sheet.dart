@@ -8,17 +8,11 @@ import '../vault/auto_lock.dart';
 import 'sync_controller.dart';
 import '../theme/modus_palette.dart';
 
-/// The start of a member's public signing key, in four groups: devices
-/// have no names, so this is how two screens are compared.
-String memberFingerprint(MemberId member) {
-  final hex = member.hex.substring(0, 16).toUpperCase();
-  return [for (var i = 0; i < hex.length; i += 4) hex.substring(i, i + 4)]
-      .join(' ');
-}
-
 /// Who belongs to the vault, and, for an owner, removing a device: the
 /// vault's key is rotated, so the removed device reads nothing written
-/// from then on.
+/// from then on. Devices have no names: each shows the start of its key
+/// ([MemberId.fingerprint]), and the member log its own line
+/// ([VerifiedLedger.fingerprint]), so two screens can be compared.
 class MembersSheet extends StatefulWidget {
   const MembersSheet({required this.sync, this.onInvite, super.key});
 
@@ -80,6 +74,22 @@ class _MembersSheetState extends State<MembersSheet> {
                 const SizedBox(height: Spacing.m),
                 for (final member in sync.members)
                   _row(context, member, manages: manages),
+                const SizedBox(height: Spacing.m),
+                Text(
+                  l10n.membersLedger(
+                    sync.ledgerFingerprint.records,
+                    sync.ledgerFingerprint.signature,
+                  ),
+                  key: const ValueKey('ledger-fingerprint'),
+                  style: theme.textTheme.bodyMedium,
+                ),
+                const SizedBox(height: Spacing.xs),
+                Text(
+                  l10n.membersLedgerBody,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: ModusPalette.of(context).muted,
+                  ),
+                ),
                 if (widget.onInvite case final invite? when manages) ...[
                   const SizedBox(height: Spacing.s),
                   OutlinedButton.icon(
@@ -141,9 +151,7 @@ class _MembersSheetState extends State<MembersSheet> {
         color: mine ? ModusPalette.of(context).primary : null,
       ),
       title: Text(mine ? l10n.membersThisDevice : l10n.membersDevice),
-      subtitle: Text(
-        l10n.membersFingerprint(role, memberFingerprint(member.id)),
-      ),
+      subtitle: Text(l10n.membersFingerprint(role, member.id.fingerprint)),
       trailing: mine || !manages
           ? null
           : removing
@@ -168,7 +176,7 @@ class _MembersSheetState extends State<MembersSheet> {
       builder: (context) => AlertDialog(
         icon: const Icon(Icons.person_remove_outlined),
         title: Text(l10n.membersRemoveTitle),
-        content: Text(l10n.membersRemoveBody(memberFingerprint(member))),
+        content: Text(l10n.membersRemoveBody(member.fingerprint)),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),

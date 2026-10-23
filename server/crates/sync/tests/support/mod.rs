@@ -130,6 +130,29 @@ impl Call {
     }
 }
 
+/// The live channel's handshake: `GET .../live` signed over an empty body,
+/// with the credential as the subprotocol token instead of the header.
+pub struct Handshake {
+    pub call: Call,
+    pub token: String,
+}
+
+impl Handshake {
+    pub fn request(&self) -> Request<'_> {
+        Request { authorization: None, ..self.call.request() }
+    }
+}
+
+pub fn live(by: &Device) -> Handshake {
+    live_at(by, NOW, NOW)
+}
+
+pub fn live_at(by: &Device, signed_at: u64, now: u64) -> Handshake {
+    let call = call_at(by, "GET", &path("/live"), b"", signed_at, now);
+    let token = call.header.as_deref().unwrap().replacen("MN1 ", "mn1.", 1);
+    Handshake { call, token }
+}
+
 static NONCE: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
 
 pub fn call(by: &Device, method: &str, path: &str, body: &[u8]) -> Call {

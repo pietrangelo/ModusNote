@@ -180,6 +180,8 @@ void main() {
       var opened = 0;
       await showMembers(tester, sync, onInvite: () => opened++);
 
+      await tester.ensureVisible(find.byKey(const ValueKey('invite')));
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('invite')));
       expect(opened, 1);
     });
@@ -211,7 +213,7 @@ void main() {
       expect(
         find.text(
           'Può leggere · impronta '
-          '${memberFingerprint(reader.member)}',
+          '${reader.member.fingerprint}',
         ),
         findsOneWidget,
       );

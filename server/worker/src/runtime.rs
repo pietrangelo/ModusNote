@@ -7,21 +7,31 @@
 //! that owns it, which verifies the signature against its log. Blob bodies
 //! never pass through an object: once the workspace's object has said yes,
 //! the Worker streams them between the device and R2.
+//!
+//! The live channel is the one call the Worker hands over as it came, with
+//! its upgrade headers: the workspace's object accepts the WebSocket with
+//! the Hibernation API (the key as its tag, the time in its attachment, the
+//! `ping` answered without waking it) and, after every write, tells the
+//! other members' sockets the heads; nothing about them is kept in memory.
 
 use std::cell::RefCell;
 
 use crypto::StrictEd25519;
 use js_sys::{Array, Object, Reflect, Uint8Array};
-use ledger::WorkspaceId;
-use sync::{Budget, Guard, Limits, Rendezvous, Store, Unavailable, Workspace};
+use ledger::{MemberKey, WorkspaceId};
+use sync::{Budget, Guard, Limits, Rendezvous, Socket, Store, Unavailable, Workspace, admit_socket};
 use wasm_bindgen::prelude::*;
 use worker::{
     Bucket, Context, Data, Date, DurableObject, Env, Headers, Method, ObjectNamespace, Range, Request, RequestInit,
-    Response, ResponseBody, Result, ScheduledTime, State, Stub, durable_object, event,
+    Response, ResponseBody, ResponseBuilder, Result, ScheduledTime, State, Stub, WebSocket, WebSocketIncomingMessage,
+    WebSocketPair, WebSocketRequestResponsePair, durable_object, event,
 };
 
-use crate::api::{self, ApiError, InfoReply, POW_BITS, Route};
-use crate::serve::{self, BLOB_SIZE, Blake2b, Done, INTERNAL_OFFER, INTERNAL_SPEND, Incoming};
+use crate::api::{self, ApiError, InfoReply, LIVE_PROTOCOL, POW_BITS, Route};
+use crate::serve::{
+    self, BLOB_SIZE, Blake2b, CLOSE_EVICTED, CLOSE_GONE, CLOSE_POLICY, CLOSE_REMOVED, Done, INTERNAL_OFFER,
+    INTERNAL_SPEND, Incoming,
+};
 
 /// Every object is created in the EU.
 const JURISDICTION: &str = "eu";
@@ -260,6 +270,8 @@ struct Received {
     query: Option<String>,
     authorization: Option<String>,
     blob_size: Option<String>,
+    upgrade: Option<String>,
+    protocols: Option<String>,
     body: Vec<u8>,
 }
 
@@ -272,6 +284,8 @@ impl Received {
             query: url.query().map(str::to_owned),
             authorization: req.headers().get("Authorization")?,
             blob_size: req.headers().get(BLOB_SIZE)?,
+            upgrade: req.headers().get("Upgrade")?,
+            protocols: req.headers().get("Sec-WebSocket-Protocol")?,
             body: req.bytes().await?,
         })
     }
@@ -284,6 +298,8 @@ impl Received {
             authorization: self.authorization.as_deref(),
             body: &self.body,
             blob_size: self.blob_size.as_deref(),
+            upgrade: self.upgrade.as_deref(),
+            protocols: self.protocols.as_deref(),
             now_ms,
         }
     }
@@ -325,8 +341,10 @@ enum Idle {
 
 /// One workspace: its log, bundles, rows, blob reservations and nonces, in
 /// the object's own SQLite storage; an alarm deletes it after
-/// [`Limits::idle_days`] without a signed request.
-#[durable_object(alarm)]
+/// [`Limits::idle_days`] without a signed request. Its members' live
+/// sockets are hibernatable WebSockets: bare `#[durable_object]` binds the
+/// alarm and the WebSocket handlers together.
+#[durable_object]
 pub struct ModusWorkspace {
     state: State,
     env: Env,
@@ -361,6 +379,83 @@ impl ModusWorkspace {
             self.state.storage().set_alarm(at(now_ms() + RETRY_MS)).await?;
         }
         Ok(())
+    }
+
+    /// Every live socket the object still holds, with the key, time and
+    /// state each carries, and how many the runtime lists in all. A socket
+    /// the object closed stays held, closing, until the peer answers, and
+    /// counts until then; a closed one no longer does.
+    fn sockets(&self) -> (Vec<(WebSocket, Socket)>, usize) {
+        const OPEN: u16 = 1;
+        const CLOSED: u16 = 3;
+        let all = self.state.get_websockets();
+        let held = all.len();
+        let sockets = all
+            .into_iter()
+            .filter_map(|ws| {
+                let state = AsRef::<worker::web_sys::WebSocket>::as_ref(&ws).ready_state();
+                if state == CLOSED {
+                    return None;
+                }
+                let accepted = ws.deserialize_attachment::<u64>().ok().flatten();
+                let socket = serve::socket_of(&self.state.get_tags(&ws), accepted, state == OPEN)?;
+                Some((ws, socket))
+            })
+            .collect();
+        (sockets, held)
+    }
+
+    /// Accepts a member's live socket, after pushing out its key's oldest
+    /// past the limit; 429 when the workspace holds too many, before the
+    /// runtime is asked (its own limit would end the object).
+    fn open_live(&self, key: &MemberKey) -> Result<Response> {
+        let (sockets, held) = self.sockets();
+        let listed: Vec<Socket> = sockets.iter().map(|(_, socket)| *socket).collect();
+        let evicted = match admit_socket(&listed, held, key) {
+            Ok(evicted) => evicted,
+            Err(error) => return fail(error.into()),
+        };
+        for i in evicted {
+            let _ = sockets[i].0.close(Some(CLOSE_EVICTED), Some("evicted"));
+        }
+        let pair = WebSocketPair::new()?;
+        self.state.set_websocket_auto_response(&WebSocketRequestResponsePair::new("ping", "pong")?);
+        self.state.accept_websocket_with_tags(&pair.server, &[&serve::socket_tag(key)]);
+        if pair.server.serialize_attachment(now_ms()).is_err() {
+            let _ = pair.server.close(Some(1011), Some("unavailable"));
+            return fail(ApiError::Unavailable);
+        }
+        Ok(ResponseBuilder::new()
+            .with_status(101)
+            .with_websocket(pair.client)
+            .with_header("Sec-WebSocket-Protocol", LIVE_PROTOCOL)?
+            .empty())
+    }
+
+    /// After a write: the heads to the other members, a close to every
+    /// socket whose key the log no longer has. Nothing here can fail the
+    /// write, which has landed.
+    fn fan_out(&self, author: &MemberKey) {
+        let (sockets, _) = self.sockets();
+        if sockets.is_empty() {
+            return;
+        }
+        let listed: Vec<Socket> = sockets.iter().map(|(_, socket)| *socket).collect();
+        let Ok(fanout) = self.with_space(|space| space.fanout(&listed, author)) else { return };
+        let message = serve::heads_message(fanout.heads);
+        for i in fanout.notify {
+            let _ = sockets[i].0.send_with_str(&message);
+        }
+        for i in fanout.close {
+            let _ = sockets[i].0.close(Some(CLOSE_REMOVED), Some("removed"));
+        }
+    }
+
+    /// The workspace is gone: every socket closes.
+    fn close_all(&self) {
+        for ws in self.state.get_websockets() {
+            let _ = ws.close(Some(CLOSE_GONE), Some("gone"));
+        }
     }
 
     async fn keep_alarm(&self) -> Result<()> {
@@ -398,7 +493,13 @@ impl DurableObject for ModusWorkspace {
         self.keep_alarm().await?;
         match done {
             Done::Json(status, body) => respond(status, body),
+            Done::Wrote { status, body, author } => {
+                self.fan_out(&author);
+                respond(status, body)
+            }
+            Done::Live(key) => self.open_live(&key),
             Done::Deleted => {
+                self.close_all();
                 self.purge(&workspace).await?;
                 respond(200, "{}".into())
             }
@@ -434,12 +535,39 @@ impl DurableObject for ModusWorkspace {
             })
         });
         match (outcome, name) {
-            (Ok(Idle::Expired), Some(workspace)) => self.purge(&workspace).await?,
+            (Ok(Idle::Expired), Some(workspace)) => {
+                self.close_all();
+                self.purge(&workspace).await?
+            }
             (Ok(Idle::Until(next)), _) => self.state.storage().set_alarm(at(next.max(now + 1))).await?,
             (Err(_), _) => self.state.storage().set_alarm(at(now + RETRY_MS)).await?,
             _ => {}
         }
         Response::ok("")
+    }
+
+    /// A device sends nothing but `ping`, which the runtime answers without
+    /// waking the object; anything else closes that socket, unread.
+    async fn websocket_message(&self, ws: WebSocket, _message: WebSocketIncomingMessage) -> Result<()> {
+        let _ = ws.close(Some(CLOSE_POLICY), Some("policy"));
+        Ok(())
+    }
+
+    /// A device's close is answered (the runtime does not, at this
+    /// compatibility date); one the object started is already closing, and
+    /// closing again fails harmlessly.
+    async fn websocket_close(&self, ws: WebSocket, _code: usize, _reason: String, _clean: bool) -> Result<()> {
+        let _ = ws.close(Some(1000), Some("bye"));
+        Ok(())
+    }
+
+    async fn websocket_error(&self, _ws: WebSocket, _error: worker::Error) -> Result<()> {
+        Ok(())
+    }
+
+    /// Bare `#[durable_object]` binds TCP connections too; nothing opens one.
+    async fn connect(&self, _socket: worker::Socket) -> Result<()> {
+        Err(worker::Error::RustError("no connections".into()))
     }
 }
 
@@ -703,6 +831,11 @@ async fn handle(req: &mut Request, env: &Env) -> std::result::Result<Response, A
         None => url.path().to_owned(),
     };
     match &route {
+        // The upgrade headers must reach the object: the request goes as it came.
+        Route::Live(ws) => {
+            api::live_token(header(req, "Upgrade").as_deref(), header(req, "Sec-WebSocket-Protocol").as_deref())?;
+            Ok(stub(env, WORKSPACES, &ws.to_hex())?.fetch_with_request(req.clone()?).await?)
+        }
         Route::PutBlob(ws, id) => put_blob(env, req, &target, ws, id).await,
         Route::GetBlob(ws, id) => get_blob(env, req, &target, ws, id).await,
         Route::PostOffer(ws, lookup) => post_offer(env, req, &target, ws, lookup, &body).await,

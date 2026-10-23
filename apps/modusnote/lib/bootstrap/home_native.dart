@@ -41,7 +41,11 @@ Future<AppHome> buildHome() async {
   final sodium = await SodiumSumoInit.init();
   final directory = (await getApplicationSupportDirectory()).path;
   final player = SoloudRecordingPlayer();
-  final cloud = cloudWiring(SyncConfig.fromEnvironment(), blake2b: blake2b256);
+  final cloud = cloudWiring(
+    SyncConfig.fromEnvironment(),
+    blake2b: blake2b256,
+    identities: SodiumIdentityService(sodium),
+  );
   // The fingerprint (or face) is the passkey of Android; none on iOS yet.
   final passkeys = Platform.isAndroid && await AndroidBiometricPrf.isSupported()
       ? AndroidBiometricPrf(sodium, words: _promptWords)
@@ -128,6 +132,8 @@ VaultGate _gate({
   return VaultGate(
     keeper: keeper,
     switcher: switcher,
+    live: cloud.live,
+    serviceNotices: cloud.serviceNotices,
     secondFactor: SecondFactor.biometric,
     sharedBlobsFor: cloud.remoteBlobs == null
         ? null

@@ -47,6 +47,13 @@ void main() {
     expect(html, contains('Garante per la protezione dei dati personali'));
   });
 
+  test('says what a syncing app reads and keeps open on the server', () {
+    expect(html, contains('avvisi del gestore firmati'));
+    expect(html, contains('connessione aperta'));
+    expect(html, contains("operator's signed notices"));
+    expect(html, contains('open connection'));
+  });
+
   test('explains account deletion where the store listing links', () {
     expect(html, contains('id="elimina-account"'));
     expect(html, contains('id="delete-account"'));

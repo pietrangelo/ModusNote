@@ -111,6 +111,36 @@ void main() {
     expect(find.text('Idea per un riff'), findsWidgets);
   });
 
+  testWidgets('opens the notices, where the vault has them', (tester) async {
+    var opened = 0;
+    await pumpApp(
+      tester,
+      NoteLibraryScreen(
+        schemas: SeedSchemas.all,
+        store: store,
+        onNotices: () => opened++,
+      ),
+    );
+
+    await ctrlP(tester);
+    await query(tester, 'avvisi');
+    await press(tester, LogicalKeyboardKey.enter);
+
+    expect(opened, 1);
+  });
+
+  testWidgets('offers no notices without them', (tester) async {
+    await openLibrary(tester, wide: false);
+
+    await ctrlP(tester);
+    await query(tester, 'avvisi');
+
+    expect(
+      find.descendant(of: palette, matching: find.text('Avvisi')),
+      findsNothing,
+    );
+  });
+
   group('page appearance', () {
     late AppearanceSettings appearance;
     setUp(() => appearance = AppearanceSettings());
