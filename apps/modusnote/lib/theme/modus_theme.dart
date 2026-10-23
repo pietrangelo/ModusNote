@@ -59,7 +59,7 @@ abstract final class ModusTheme {
         backgroundColor: palette.primary,
         textColor: palette.onAccent,
         smallSize: Spacing.s,
-        largeSize: Spacing.m,
+        largeSize: IconSizes.badge,
         padding: const EdgeInsets.symmetric(horizontal: Spacing.xxs),
         textStyle: textTheme.labelSmall?.copyWith(
           fontWeight: FontWeight.w600,

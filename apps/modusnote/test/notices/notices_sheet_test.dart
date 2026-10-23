@@ -204,6 +204,120 @@ void main() {
     expect(tester.widget<Badge>(find.byType(Badge)).isLabelVisible, isFalse);
   });
 
+  /// A vault nobody else joined, with one operator notice unread.
+  Future<NoticeCenter> onlyServiceNotice(WidgetTester tester) async {
+    fleet = await Fleet.found();
+    final operator = TestOperator();
+    final center = centerOf(
+      fleet.phone,
+      board: operator.board(FakeNoticeSource([operator.signed(3)])),
+    );
+    await tester.runAsync(() async {
+      await fleet.phone.sync.syncNow();
+      await pumpEventQueue();
+    });
+    expect(center.unreadService, 1);
+    expect(center.unreadSecurity, 0);
+    return center;
+  }
+
+  Finder shieldOnBadge() => find.descendant(
+    of: find.byType(Badge),
+    matching: find.byIcon(Icons.shield_outlined),
+  );
+
+  testWidgets('the sync button marks security notices with a shield, not '
+      'only with a colour', (tester) async {
+    final (center, _, _) = await admittedElsewhere();
+    await pumpApp(
+      tester,
+      Scaffold(
+        body: CloudButton(sync: fleet.phone.sync, notices: center),
+      ),
+    );
+
+    expect(shieldOnBadge(), findsOneWidget);
+    expect(
+      tester.getSize(shieldOnBadge()).height,
+      lessThanOrEqualTo(tester.getSize(find.byType(Badge)).height),
+    );
+  });
+
+  testWidgets('the sync button shows no shield for operator notices', (
+    tester,
+  ) async {
+    final center = await onlyServiceNotice(tester);
+    await pumpApp(
+      tester,
+      Scaffold(
+        body: CloudButton(sync: fleet.phone.sync, notices: center),
+      ),
+    );
+
+    expect(
+      find.descendant(of: find.byType(Badge), matching: find.text('1')),
+      findsOneWidget,
+    );
+    expect(shieldOnBadge(), findsNothing);
+  });
+
+  testWidgets('a screen reader hears the sync button once, with the count '
+      'and the kind of notices', (tester) async {
+    final semantics = tester.ensureSemantics();
+    final (center, _, _) = await admittedElsewhere();
+    await pumpApp(
+      tester,
+      Scaffold(
+        body: CloudButton(sync: fleet.phone.sync, notices: center),
+      ),
+    );
+
+    expect(
+      find.bySemanticsLabel(RegExp(r'^\s*1\s*$')),
+      findsNothing,
+      reason: 'the bare count says nothing on its own',
+    );
+    expect(
+      tester.getSemantics(find.byKey(const ValueKey('cloud'))),
+      isSemantics(
+        label: 'Sincronizzazione: aggiornato · 1 avviso di sicurezza',
+        isButton: true,
+        hasTapAction: true,
+      ),
+    );
+
+    tester.semantics.tap(
+      find.semantics.byLabel(
+        'Sincronizzazione: aggiornato · 1 avviso di sicurezza',
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byType(CloudSheet), findsOneWidget);
+    semantics.dispose();
+  });
+
+  testWidgets('a screen reader hears what the count on the notices button '
+      'counts', (tester) async {
+    final semantics = tester.ensureSemantics();
+    final (center, _, _) = await admittedElsewhere();
+    await pumpApp(
+      tester,
+      Scaffold(
+        body: CloudSheet(sync: fleet.phone.sync, notices: center),
+      ),
+    );
+
+    expect(
+      tester.getSemantics(find.byKey(const ValueKey('notices'))),
+      isSemantics(
+        label: 'Avvisi · 1 avviso di sicurezza',
+        isButton: true,
+        hasTapAction: true,
+      ),
+    );
+    semantics.dispose();
+  });
+
   testWidgets('the sync sheet opens the notices after the members', (
     tester,
   ) async {

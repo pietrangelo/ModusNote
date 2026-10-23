@@ -57,6 +57,8 @@ abstract final class Extents {
 }
 
 abstract final class IconSizes {
+  /// Beside the count of a badge, as tall as the badge itself.
+  static const double badge = Spacing.m;
   static const double inline = Spacing.l;
   static const double prominent = Spacing.xl;
 }
