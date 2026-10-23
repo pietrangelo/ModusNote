@@ -30,6 +30,8 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, BiometricKeys.CHANNEL)
+            .setMethodCallHandler(BiometricKeys(this))
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "run.serv.modus/clipboard")
             .setMethodCallHandler { call, result ->
                 val text = call.argument<String>("text")

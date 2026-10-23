@@ -476,6 +476,14 @@
   "@biometricUnsupported": {
     "description": "No strong biometric is available."
   },
+  "biometricPromptTitle": "Open Modus Notes",
+  "@biometricPromptTitle": {
+    "description": "Title of the system fingerprint prompt."
+  },
+  "biometricPromptSubtitle": "Confirm with your fingerprint or face",
+  "@biometricPromptSubtitle": {
+    "description": "Subtitle of the system fingerprint prompt."
+  },
   "dialogClose": "Close",
   "@dialogClose": {
     "description": "Generic button that closes a dialog without doing anything."

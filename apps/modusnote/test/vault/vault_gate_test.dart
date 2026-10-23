@@ -12,6 +12,7 @@ import 'package:modusnote/appearance/page_appearance.dart';
 import 'package:modusnote/notes/note_editor.dart';
 import 'package:modusnote/notes/note_library.dart';
 import 'package:modusnote/vault/auto_lock.dart';
+import 'package:modusnote/vault/second_factor.dart';
 import 'package:modusnote/vault/vault_gate.dart';
 import 'package:offline_sync/offline_sync.dart';
 import 'package:schema_dynamic_content/schema_dynamic_content.dart';
@@ -27,12 +28,14 @@ Widget gateOn(
   AutoLock Function(VoidCallback)? autoLock,
   PasskeyPrf? passkeys,
   FileExchange? files,
+  SecondFactor secondFactor = SecondFactor.passkey,
 }) => VaultGate(
   keeper: keeperOn(database, passkeys: passkeys),
   passwordFrom: (bytes) => SodiumPasswordSecret.fromUtf8Bytes(sodium, bytes),
   catalog: SeedSchemas.catalog,
   autoLockFor: autoLock,
   files: files,
+  secondFactor: secondFactor,
 );
 
 /// The real policy with times short enough for a widget test.
@@ -496,6 +499,29 @@ void main() {
       await tester.tap(find.byTooltip('Backup ed esportazione'));
       await confirmWith(tester, 'frase lunga');
       expect(find.text('Scarica un backup cifrato'), findsOneWidget);
+    });
+
+    testWidgets('on Android the passkey is the fingerprint', (tester) async {
+      await pumpApp(
+        tester,
+        gateOn(
+          database,
+          passkeys: passkeys,
+          secondFactor: SecondFactor.biometric,
+        ),
+      );
+      await create(tester, 'frase lunga', 'frase lunga');
+
+      await tester.tap(find.byTooltip("Sblocco con l'impronta"));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Attiva'));
+      await confirmWith(tester, 'frase lunga');
+      expect(find.text("Sblocco con l'impronta attivo."), findsOneWidget);
+      await lock(tester);
+      await tester.tap(find.text("Sblocca con l'impronta"));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(NoteLibraryScreen), findsOneWidget);
     });
 
     testWidgets('a passkey set up in the library unlocks the next time', (
