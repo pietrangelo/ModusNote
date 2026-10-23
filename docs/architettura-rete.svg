@@ -1,6 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="980" viewBox="0 0 1200 980" role="img" aria-labelledby="t d">
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1100" viewBox="0 0 1200 1100" role="img" aria-labelledby="t d">
   <title id="t">Modus Notes · architettura di rete</title>
-  <desc id="d">Dispositivi Android, iOS e browser con le chiavi; Cloudflare Pages, Supabase e Cloudflare R2 vedono solo ciphertext; GitHub Actions costruisce e pubblica.</desc>
+  <desc id="d">Dispositivi Android, iOS e browser con le chiavi; un solo Worker Cloudflare su modus.serv.run serve il client web e l'API, con Durable Objects e R2 nella giurisdizione UE, e vede solo ciphertext; GitHub Actions costruisce e pubblica.</desc>
   <defs>
     <style>
       text { font-family: Inter, "Segoe UI", Helvetica, Arial, sans-serif; fill: #F8FAFC; }
@@ -22,13 +22,13 @@
     <marker id="ag" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#8F9CAE"/></marker>
   </defs>
 
-  <rect width="1200" height="980" fill="#090C15"/>
+  <rect width="1200" height="1100" fill="#090C15"/>
 
   <text x="30" y="48" class="h1">Modus Notes · <tspan fill="#EBB448">architettura di rete</tspan></text>
-  <text x="30" y="72" class="sub">Le chiavi e il testo in chiaro restano sui dispositivi. Pages, Supabase e R2 ricevono e restituiscono solo ciphertext prodotto dalle buste del dominio.</text>
+  <text x="30" y="72" class="sub">Le chiavi e il testo in chiaro restano sui dispositivi. Un solo Worker su modus.serv.run serve l'app e la sincronizzazione, e riceve solo ciphertext e richieste firmate.</text>
 
   <!-- ============ Dispositivi (zona fidata) ============ -->
-  <rect x="20" y="100" width="440" height="620" rx="13" fill="none" stroke="#EBB448" stroke-width="1.5" stroke-dasharray="8 5"/>
+  <rect x="20" y="100" width="440" height="640" rx="13" fill="none" stroke="#EBB448" stroke-width="1.5" stroke-dasharray="8 5"/>
   <text x="38" y="124" class="zone" fill="#EBB448">DISPOSITIVI · CHIAVI E TESTO IN CHIARO</text>
 
   <rect x="38" y="140" width="404" height="262" rx="8" class="card"/>
@@ -41,13 +41,13 @@
   <text x="68" y="266" class="li">XChaCha20-Poly1305, Ed25519, X-Wing</text>
   <text x="56" y="286" class="li">• Microfono PCM → libopus (FFI) → Ogg Opus,</text>
   <text x="68" y="302" class="li">cifrato a chunk mentre registra: nessun file in chiaro</text>
-  <text x="56" y="322" class="li">• Riproduzione in memoria (flutter_soloud)</text>
-  <text x="56" y="342" class="li">• Notifiche locali per la scadenza delle password</text>
-  <text x="56" y="362" class="li">• FLAG_SECURE (Android), copertura privacy (iOS)</text>
-  <text x="56" y="382" class="li">• Vault fuori dai backup di Android</text>
+  <text x="56" y="322" class="li">• Notifiche locali: scadenza delle password, diario</text>
+  <text x="56" y="342" class="li">• FLAG_SECURE (Android), copertura privacy (iOS)</text>
+  <text x="56" y="362" class="li">• Vault fuori dai backup di Android e iCloud</text>
+  <text x="56" y="382" class="li">• Server fissato alla build: <tspan class="mono">MODUSNOTE_SERVER</tspan></text>
 
-  <rect x="38" y="418" width="404" height="286" rx="8" class="card"/>
-  <rect x="38" y="418" width="5" height="286" fill="#EBB448"/>
+  <rect x="38" y="418" width="404" height="306" rx="8" class="card"/>
+  <rect x="38" y="418" width="5" height="306" fill="#EBB448"/>
   <text x="56" y="444" class="h2">Browser · modus.serv.run</text>
   <text x="56" y="462" class="lblm">Flutter Web WebAssembly (ricade su dart2js senza WasmGC)</text>
   <text x="56" y="488" class="li">• SQLite WASM su IndexedDB <tspan class="mono">/vault.sqlite</tspan></text>
@@ -55,122 +55,123 @@
   <text x="56" y="528" class="li">• libsodium.js sumo servito dalla nostra origine</text>
   <text x="56" y="548" class="li">• WebCodecs Opus (o WAV) · riproduzione Web Audio</text>
   <text x="56" y="568" class="li">• Sblocco con passphrase o passkey WebAuthn + PRF</text>
-  <text x="56" y="588" class="li">• CSP rigorosa, Trusted Types, SRI sugli script,</text>
-  <text x="68" y="604" class="li">COOP/COEP/CORP, nessun service worker né CDN</text>
+  <text x="56" y="588" class="li">• CSP rigorosa (<tspan class="mono">connect-src 'self'</tspan>), Trusted Types,</text>
+  <text x="68" y="604" class="li">SRI, COOP/COEP/CORP, nessun service worker né CDN</text>
   <text x="56" y="624" class="li">• Backup cifrato .mnbackup ed export Markdown</text>
-  <rect x="56" y="642" width="370" height="46" rx="5" fill="#1C1A12" stroke="#EBB448" stroke-opacity="0.5"/>
+  <rect x="56" y="642" width="370" height="66" rx="5" fill="#1C1A12" stroke="#EBB448" stroke-opacity="0.5"/>
   <text x="68" y="662" class="lbl" fill="#EBB448">Passphrase → Argon2id → MasterKey: mai inviata.</text>
-  <text x="68" y="679" class="lblm">Login Supabase separato (codice email), mai la passphrase.</text>
+  <text x="68" y="680" class="lblm">Nessun account, email né password del server: ogni dispositivo</text>
+  <text x="68" y="694" class="lblm">entra con la propria chiave di firma, viva solo a vault aperto.</text>
 
-  <!-- ============ Servizi ============ -->
-  <text x="650" y="124" class="zone" fill="#00A3FF">SERVIZI · ZERO-KNOWLEDGE</text>
+  <!-- ============ Cloudflare ============ -->
+  <rect x="640" y="100" width="540" height="656" rx="13" fill="none" stroke="#00A3FF" stroke-opacity="0.6" stroke-width="1.5" stroke-dasharray="8 5"/>
+  <text x="656" y="124" class="zone" fill="#00A3FF">CLOUDFLARE · WORKER modusnote · ZERO-KNOWLEDGE</text>
 
-  <!-- Cloudflare Pages -->
-  <rect x="650" y="140" width="520" height="96" rx="8" class="card"/>
-  <rect x="650" y="140" width="5" height="96" fill="#8F9CAE"/>
-  <text x="668" y="166" class="h2">Cloudflare Pages · modus.serv.run</text>
-  <text x="668" y="188" class="li">Solo file statici: il bundle dell'app, <tspan class="mono">_headers</tspan> con CSP e isolamento,</text>
-  <text x="668" y="206" class="li"><tspan class="mono">privacy.html</tspan>. Nessuna funzione che riscrive l'HTML (SRI resta valida).</text>
-  <text x="668" y="224" class="lblm">Pubblicato da deploy-web.yml con wrangler; SHA-256 del bundle nel riepilogo del job.</text>
-
-  <!-- Supabase -->
-  <rect x="650" y="252" width="520" height="312" rx="8" class="card"/>
-  <rect x="650" y="252" width="5" height="312" fill="#00A3FF"/>
-  <text x="668" y="278" class="h2">Supabase · PostgreSQL + Auth <tspan class="lblm">(eu-central-1)</tspan></text>
-
-  <rect x="668" y="290" width="486" height="48" rx="5" class="inner"/>
-  <text x="680" y="310" class="h3">Auth (GoTrue) <tspan class="mono">/otp</tspan> <tspan class="mono">/verify</tspan></text>
-  <text x="680" y="328" class="li">Codice o magic link per email → sessione JWT. Vede solo l'email.</text>
-
-  <rect x="668" y="346" width="486" height="118" rx="5" class="inner"/>
-  <text x="680" y="366" class="h3">PostgREST <tspan class="mono">/rest/v1</tspan> + PostgreSQL · RLS su ogni tabella</text>
-  <text x="680" y="386" class="li">Append-only: <tspan class="mono">sync_rows</tspan> · <tspan class="mono">membership_records</tspan> · <tspan class="mono">key_bundles</tspan></text>
-  <text x="680" y="404" class="li">Accessi: <tspan class="mono">workspaces</tspan> · <tspan class="mono">workspace_accounts</tspan></text>
-  <text x="680" y="422" class="li">Collegamento dispositivi: <tspan class="mono">device_links</tspan> (15 minuti)</text>
-  <text x="680" y="440" class="li">Trigger: compattazione delle revisioni superate, quote</text>
-  <text x="680" y="456" class="lblm">Vede id opachi, posizioni, epoche, dimensioni, orari di sync. Mai titoli, tipi, tag, schemi.</text>
-
-  <rect x="668" y="472" width="486" height="80" rx="5" class="inner"/>
-  <text x="680" y="492" class="h3">Edge Functions (verify JWT) · nessuna chiave di servizio</text>
-  <text x="680" y="512" class="li"><tspan class="mono">blob-url</tspan>: membro? (come il chiamante) → URL firmato 5 min</text>
-  <text x="692" y="528" class="li">GET · PUT; DELETE e LIST eseguiti dalla funzione</text>
-  <text x="680" y="546" class="li"><tspan class="mono">delete-account</tspan>: pulisce R2, poi <tspan class="mono">delete_account()</tspan></text>
+  <!-- Static Assets -->
+  <rect x="656" y="140" width="508" height="88" rx="8" class="card"/>
+  <rect x="656" y="140" width="5" height="88" fill="#8F9CAE"/>
+  <text x="674" y="164" class="h2">Static Assets · il client web</text>
+  <text x="674" y="186" class="li">Il bundle dell'app con <tspan class="mono">_headers</tspan> (CSP, isolamento), <tspan class="mono">privacy.html</tspan>,</text>
+  <text x="674" y="204" class="li"><tspan class="mono">terms.html</tspan>. Nessuna funzione che riscrive l'HTML (SRI resta valida).</text>
+  <text x="674" y="220" class="lblm">Solo /api/* esegue il Worker (run_worker_first): una sola origine, niente CORS.</text>
 
   <!-- R2 -->
-  <rect x="650" y="590" width="520" height="130" rx="8" class="card"/>
-  <rect x="650" y="590" width="5" height="130" fill="#8B3FD6"/>
-  <text x="668" y="616" class="h2">Cloudflare R2 · bucket <tspan class="mono" style="font-size:13px">modusnote-blobs</tspan></text>
-  <text x="668" y="638" class="li">Oggetti <tspan class="mono">&lt;workspace&gt;/&lt;blob&gt;.enc</tspan>: audio e immagini cifrati,</text>
-  <text x="668" y="656" class="li">chunk da 64 KiB, ognuno una busta XChaCha20-Poly1305 autenticata.</text>
-  <text x="668" y="674" class="li">PUT solo con <tspan class="mono">If-None-Match: *</tspan> e <tspan class="mono">Content-Length</tspan> firmato.</text>
-  <text x="668" y="692" class="li">Credenziali R2 solo nei segreti della funzione, mai nel client.</text>
-  <text x="668" y="710" class="lblm">Vede solo id opachi e dimensioni. CORS limitato a modus.serv.run.</text>
+  <rect x="656" y="252" width="508" height="120" rx="8" class="card"/>
+  <rect x="656" y="252" width="5" height="120" fill="#8B3FD6"/>
+  <text x="674" y="276" class="h2">R2 · bucket <tspan class="mono" style="font-size:13px">modusnote-blobs-eu</tspan> <tspan class="lblm">(giurisdizione UE)</tspan></text>
+  <text x="674" y="298" class="li">Oggetti <tspan class="mono">&lt;workspace&gt;/&lt;blob&gt;.enc</tspan>: audio e immagini cifrati,</text>
+  <text x="674" y="316" class="li">chunk da 64 KiB, ognuno una busta XChaCha20-Poly1305 autenticata.</text>
+  <text x="674" y="334" class="li">Raggiunto solo dal Worker (binding <tspan class="mono">BLOBS</tspan>): niente chiavi S3,</text>
+  <text x="674" y="350" class="li">niente URL pre-firmati. Il digest BLAKE2b sta nella nota firmata.</text>
+  <text x="674" y="364" class="lblm">Vede solo id opachi e dimensioni.</text>
 
-  <!-- blob-url → R2 -->
-  <line x1="1080" y1="552" x2="1080" y2="588" class="cipher" stroke-dasharray="4 3" marker-end="url(#ac)"/>
-  <text x="1090" y="578" class="lblm">SigV4</text>
+  <!-- Worker -->
+  <rect x="656" y="396" width="508" height="150" rx="8" class="card"/>
+  <rect x="656" y="396" width="5" height="150" fill="#00A3FF"/>
+  <text x="674" y="420" class="h2">Worker in Rust (workers-rs) · <tspan class="mono" style="font-size:13px">/api/*</tspan></text>
+  <text x="674" y="442" class="li">• Controlla Origin; limiti per indirizzo (IPv6 per /64 e /48), mai salvati</text>
+  <text x="674" y="460" class="li">• Proof-of-work (20 bit) per fondare un workspace o rispondere a un codice</text>
+  <text x="674" y="478" class="li">• Corpo entro 8 MiB (righe, bundle) o 64 KiB; blob fino a 96 MiB</text>
+  <text x="674" y="496" class="li">• Blob in streaming verso R2, GET anche con Range</text>
+  <text x="674" y="514" class="li">• Passa la richiesta firmata al DO così com'è: la verifica lui</text>
+  <text x="674" y="536" class="lblm">Nessuna sessione, token, password né email. Nessun log degli IP.</text>
+
+  <!-- Durable Objects -->
+  <rect x="656" y="570" width="508" height="170" rx="8" class="card"/>
+  <rect x="656" y="570" width="5" height="170" fill="#EBB448"/>
+  <text x="674" y="594" class="h2">Durable Objects · giurisdizione UE · SQLite</text>
+  <text x="674" y="616" class="h3">ModusWorkspace <tspan class="lblm" style="font-weight:400">uno per workspace</tspan></text>
+  <text x="674" y="632" class="li">verifica firma MN1, nonce e ruolo; registro e KeyBundle verificati,</text>
+  <text x="674" y="648" class="li">righe con compattazione, blob riservati, quote; alarm: via dopo 13 mesi</text>
+  <text x="674" y="668" class="h3">ModusRendezvous <tspan class="lblm" style="font-weight:400">uno per codice</tspan> <tspan class="li" style="font-weight:400">offerta e fino a 8 risposte, 15 min</tspan></text>
+  <text x="674" y="688" class="h3">ModusGuard <tspan class="lblm" style="font-weight:400">uno solo</tspan> <tspan class="li" style="font-weight:400">soglie giornaliere di tutto il servizio</tspan></text>
+  <text x="674" y="712" class="lblm">Vede chiavi pubbliche, registro firmato, id opachi, posizioni, epoche, dimensioni,</text>
+  <text x="674" y="726" class="lblm">orari. Mai titoli, tipi, tag, schemi o testo: non apre nulla.</text>
+
+  <!-- Worker → R2, Worker → DO -->
+  <line x1="1040" y1="396" x2="1040" y2="374" class="cipher" marker-end="url(#ac)"/>
+  <text x="1050" y="389" class="lblm">binding BLOBS</text>
+  <line x1="1040" y1="546" x2="1040" y2="568" class="cipher" marker-end="url(#ac)"/>
+  <text x="1050" y="562" class="lblm">oggetto per id</text>
 
   <!-- ============ Flussi ============ -->
-  <!-- browser → Pages -->
-  <path d="M442,440 H636 V188 H648" class="ctrl" marker-end="url(#ag)"/>
+  <!-- browser → Static Assets -->
+  <path d="M442,430 H604 V184 H654" class="ctrl" marker-end="url(#ag)"/>
   <text x="472" y="160" class="lbl">HTTPS · solo browser</text>
   <text x="472" y="174" class="lblm">bundle statico con SRI</text>
 
-  <!-- dispositivi → Auth -->
-  <line x1="462" y1="314" x2="666" y2="314" class="ctrl" marker-end="url(#ag)"/>
-  <text x="472" y="296" class="lbl">email + codice</text>
-  <text x="472" y="308" class="lblm">→ JWT (sigillato nel vault)</text>
+  <!-- dispositivi ↔ Worker: dati -->
+  <line x1="462" y1="466" x2="654" y2="466" class="cipher" marker-start="url(#ac)" marker-end="url(#ac)"/>
+  <text x="472" y="446" class="lbl">righe, registro, KeyBundle, codici</text>
+  <text x="472" y="458" class="lblm">firmate MN1 (Ed25519)</text>
 
-  <!-- dispositivi ↔ PostgREST -->
-  <line x1="462" y1="400" x2="666" y2="400" class="cipher" marker-start="url(#ac)" marker-end="url(#ac)"/>
-  <text x="472" y="370" class="lbl">righe cifrate e firmate</text>
-  <text x="472" y="384" class="lblm">JWT Bearer + apikey publishable</text>
-  <text x="472" y="420" class="lblm">push · pull dal cursore · link</text>
+  <!-- dispositivi ↔ Worker: blob -->
+  <line x1="462" y1="530" x2="654" y2="530" class="cipher" marker-start="url(#ac)" marker-end="url(#ac)"/>
+  <text x="472" y="508" class="lbl">blob .enc in streaming</text>
+  <text x="472" y="520" class="lblm">PUT firmato sul corpo vuoto · GET</text>
+  <text x="472" y="548" class="lblm">solo ciphertext, per ogni dispositivo</text>
 
-  <!-- dispositivi → blob-url -->
-  <line x1="462" y1="510" x2="666" y2="510" class="ctrl" marker-end="url(#ag)"/>
-  <text x="472" y="492" class="lbl">chiede l'URL del blob</text>
-  <text x="472" y="504" class="lblm">workspace, blob, metodo, size</text>
-
-  <!-- dispositivi ↔ R2 -->
-  <line x1="462" y1="655" x2="648" y2="655" class="cipher" marker-start="url(#ac)" marker-end="url(#ac)"/>
-  <text x="472" y="628" class="lbl">GET / PUT diretti</text>
-  <text x="472" y="642" class="lblm">URL pre-firmato, solo ciphertext</text>
-  <text x="472" y="674" class="lblm">il token Supabase non va mai a R2</text>
+  <!-- ============ In dismissione ============ -->
+  <rect x="20" y="770" width="600" height="62" rx="8" fill="none" stroke="#8F9CAE" stroke-opacity="0.6" stroke-dasharray="6 4"/>
+  <text x="38" y="794" class="h3" fill="#8F9CAE">In dismissione · Supabase (eu-central-1) e bucket R2 modusnote-blobs (USA)</text>
+  <text x="38" y="814" class="lblm">Sostituiti il 23 ottobre 2026: ogni vault si è trasferito da sé al nuovo server al primo sblocco.</text>
+  <text x="38" y="826" class="lblm">Restano in sola lettura per qualche settimana, poi si spengono con le Edge Function.</text>
 
   <!-- ============ Build e distribuzione ============ -->
-  <text x="38" y="760" class="zone" fill="#8F9CAE">BUILD E DISTRIBUZIONE</text>
-  <rect x="20" y="772" width="780" height="128" rx="8" class="card"/>
-  <rect x="20" y="772" width="5" height="128" fill="#8F9CAE"/>
-  <text x="38" y="798" class="h2">GitHub Actions</text>
-  <text x="38" y="822" class="h3">ci.yml</text>
-  <text x="38" y="840" class="li">analyze, architecture guard, test dei pacchetti e dell'app,</text>
-  <text x="38" y="856" class="li">RLS su PostgreSQL, e2e PostgREST, e2e web in Chrome (WASM e JS)</text>
-  <text x="38" y="872" class="li">AAB di prova (pagine da 16 KB)</text>
-  <text x="470" y="822" class="h3">deploy-web.yml <tspan class="lblm">dopo CI verde su main</tspan></text>
-  <text x="470" y="840" class="li">build web --wasm --csp, SRI sha384,</text>
-  <text x="470" y="856" class="li">SHA256SUMS, wrangler pages deploy</text>
-  <text x="470" y="878" class="h3">release-android.yml <tspan class="lblm">tag android-v*</tspan></text>
-  <text x="470" y="894" class="li">App Bundle firmato con la upload key</text>
+  <text x="38" y="862" class="zone" fill="#8F9CAE">BUILD E DISTRIBUZIONE</text>
+  <rect x="20" y="874" width="780" height="148" rx="8" class="card"/>
+  <rect x="20" y="874" width="5" height="148" fill="#8F9CAE"/>
+  <text x="38" y="900" class="h2">GitHub Actions</text>
+  <text x="38" y="924" class="h3">ci.yml <tspan class="lblm" style="font-weight:400">salta le modifiche di soli documenti</tspan></text>
+  <text x="38" y="942" class="li">verify: analyze, architecture guard, test dei pacchetti</text>
+  <text x="38" y="958" class="li">e dell'app, e2e web in Chrome (WASM e JS)</text>
+  <text x="38" y="974" class="li">server: cargo test con i vettori d'oro, e2e in workerd</text>
+  <text x="38" y="990" class="li">AAB di prova (pagine da 16 KB) se cambia Android</text>
+  <text x="470" y="924" class="h3">deploy-web.yml <tspan class="lblm" style="font-weight:400">CI verde su main</tspan></text>
+  <text x="470" y="942" class="li">build web --wasm --csp, SRI sha384,</text>
+  <text x="470" y="958" class="li">SHA256SUMS, wrangler deploy (Worker + bundle)</text>
+  <text x="470" y="980" class="h3">release-android.yml <tspan class="lblm" style="font-weight:400">tag android-v*</tspan></text>
+  <text x="470" y="996" class="li">App Bundle firmato con la upload key</text>
+  <text x="38" y="1008" class="lblm">Segreti solo nell'environment production (main e tag android-v*); ogni azione fissata a un commit.</text>
 
-  <rect x="830" y="772" width="340" height="128" rx="8" class="card"/>
-  <rect x="830" y="772" width="5" height="128" fill="#8F9CAE"/>
-  <text x="848" y="798" class="h2">Google Play</text>
-  <text x="848" y="822" class="li">Play App Signing rifirma il bundle</text>
-  <text x="848" y="840" class="li">con la chiave dell'app e lo distribuisce</text>
-  <text x="848" y="858" class="li">ai telefoni Android.</text>
-  <text x="848" y="882" class="lblm">Privacy: modus.serv.run/privacy.html</text>
+  <rect x="830" y="874" width="350" height="148" rx="8" class="card"/>
+  <rect x="830" y="874" width="5" height="148" fill="#8F9CAE"/>
+  <text x="848" y="900" class="h2">Google Play</text>
+  <text x="848" y="924" class="li">Play App Signing rifirma il bundle</text>
+  <text x="848" y="942" class="li">con la chiave dell'app e lo distribuisce</text>
+  <text x="848" y="960" class="li">ai telefoni Android.</text>
+  <text x="848" y="988" class="lblm">Privacy: modus.serv.run/privacy.html</text>
 
-  <line x1="800" y1="886" x2="828" y2="886" class="ctrl" marker-end="url(#ag)"/>
-  <path d="M700,772 V740 H1186 V188 H1172" class="ctrl" marker-end="url(#ag)"/>
-  <text x="1012" y="734" class="lblm">pubblica il bundle web</text>
+  <line x1="800" y1="988" x2="828" y2="988" class="ctrl" marker-end="url(#ag)"/>
+  <path d="M700,874 V848 H1190 V160 H1182" class="ctrl" marker-end="url(#ag)"/>
+  <text x="990" y="842" class="lblm">pubblica Worker e bundle web</text>
 
   <!-- ============ Legenda ============ -->
-  <line x1="30" y1="930" x2="70" y2="930" class="cipher" marker-end="url(#ac)"/>
-  <text x="80" y="934" class="lbl">ciphertext (buste del dominio)</text>
-  <line x1="300" y1="930" x2="340" y2="930" class="ctrl" marker-end="url(#ag)"/>
-  <text x="350" y="934" class="lbl">controllo: bundle, login, URL firmati, deploy</text>
-  <rect x="660" y="922" width="16" height="16" rx="3" fill="none" stroke="#EBB448" stroke-dasharray="4 3"/>
-  <text x="686" y="934" class="lbl">zona fidata: unica con chiavi e testo in chiaro</text>
-  <text x="30" y="960" class="lblm">Tutte le connessioni sono HTTPS. La sincronizzazione tra telefono e browser passa solo dal server: ogni dispositivo è un membro del vault con la propria identità (Ed25519 + X-Wing).</text>
+  <line x1="30" y1="1046" x2="70" y2="1046" class="cipher" marker-end="url(#ac)"/>
+  <text x="80" y="1050" class="lbl">ciphertext e richieste firmate</text>
+  <line x1="300" y1="1046" x2="340" y2="1046" class="ctrl" marker-end="url(#ag)"/>
+  <text x="350" y="1050" class="lbl">controllo: bundle, deploy</text>
+  <rect x="560" y="1038" width="16" height="16" rx="3" fill="none" stroke="#EBB448" stroke-dasharray="4 3"/>
+  <text x="586" y="1050" class="lbl">zona fidata: unica con chiavi e testo in chiaro</text>
+  <text x="30" y="1078" class="lblm">Tutte le connessioni sono HTTPS. La sincronizzazione tra telefono e browser passa solo dal server: ogni dispositivo è un membro del vault con la propria identità (Ed25519 + X-Wing).</text>
 </svg>

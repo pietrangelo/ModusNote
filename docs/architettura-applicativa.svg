@@ -1,6 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1120" viewBox="0 0 1200 1120" role="img" aria-labelledby="t d">
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1300" viewBox="0 0 1200 1300" role="img" aria-labelledby="t d">
   <title id="t">Modus Notes · architettura applicativa</title>
-  <desc id="d">App Flutter, cinque bounded context in Dart puro con i loro port, adapter in pacchetti separati, gerarchia delle chiavi e flusso di salvataggio di una nota.</desc>
+  <desc id="d">App Flutter, cinque bounded context in Dart puro con i loro port, adapter in pacchetti separati, gerarchia delle chiavi e server in Rust su Cloudflare, flusso di salvataggio di una nota.</desc>
   <defs>
     <style>
       text { font-family: Inter, "Segoe UI", Helvetica, Arial, sans-serif; fill: #F8FAFC; }
@@ -25,7 +25,7 @@
     <marker id="ak" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#EBB448"/></marker>
   </defs>
 
-  <rect width="1200" height="1120" fill="#090C15"/>
+  <rect width="1200" height="1300" fill="#090C15"/>
 
   <text x="20" y="48" class="h1">Modus Notes · <tspan fill="#EBB448">architettura applicativa</tspan></text>
   <text x="20" y="72" class="sub">DDD con architettura a rosetta: un pacchetto Dart puro per bounded context, port nel dominio, adapter in pacchetti separati. tool/architecture_guard lo fa rispettare in CI.</text>
@@ -43,12 +43,12 @@
   <text x="250" y="189" class="li">documenti, credenziali, palette, cestino</text>
   <text x="530" y="140" class="h3">sync/</text>
   <text x="530" y="157" class="li">SyncController, BlobSync,</text>
-  <text x="530" y="173" class="li">accesso con codice email,</text>
-  <text x="530" y="189" class="li">collegamento dispositivi</text>
+  <text x="530" y="173" class="li">attivazione, codici d'invito,</text>
+  <text x="530" y="189" class="li">membri, eliminazione dal server</text>
   <text x="740" y="140" class="h3">audio/ · attachments/ · backup/ · reminders/</text>
   <text x="740" y="157" class="li">registrazione e riproduzione, immagini e link,</text>
   <text x="740" y="173" class="li">backup .mnbackup ed export Markdown,</text>
-  <text x="740" y="189" class="li">promemoria di scadenza delle password</text>
+  <text x="740" y="189" class="li">promemoria di password e diario</text>
   <line x1="40" y1="204" x2="1160" y2="204" stroke="#2A3350"/>
   <text x="40" y="226" class="h3">bootstrap/ <tspan class="lblm" style="font-weight:400">l'unico punto che collega gli adapter ai port</tspan></text>
   <text x="40" y="246" class="mono">home.dart → if (dart.library.io) home_native.dart · if (dart.library.js_interop) home_web.dart · vault_wiring.dart</text>
@@ -116,12 +116,13 @@
   <text x="739" y="396" class="li">SyncEngine: revisioni firmate,</text>
   <text x="739" y="412" class="li">last-writer-wins causale, coda</text>
   <text x="739" y="428" class="li">offline, tombstone, supersedes;</text>
-  <text x="739" y="444" class="li">collegamento (LinkCode),</text>
-  <text x="739" y="460" class="li">SealedBackup</text>
-  <text x="739" y="484" class="h3">Port</text>
-  <text x="739" y="502" class="port">LocalRecordStore</text>
-  <text x="739" y="518" class="port">VaultStore · SyncServer</text>
-  <text x="739" y="534" class="port">DeviceLinkChannel · Clock</text>
+  <text x="739" y="444" class="li">InviteCode, cambio di server,</text>
+  <text x="739" y="460" class="li">RequestSigner, SealedBackup</text>
+  <text x="739" y="480" class="h3">Port</text>
+  <text x="739" y="496" class="port">LocalRecordStore · Clock</text>
+  <text x="739" y="510" class="port">VaultStore · ShelfStore</text>
+  <text x="739" y="524" class="port">SyncGateway · SyncServer</text>
+  <text x="739" y="538" class="port">InviteChannel</text>
   <text x="739" y="556" class="lblm">usa: identity_cryptography,</text>
   <text x="739" y="572" class="lblm">collaboration_access_control</text>
 
@@ -166,9 +167,9 @@
   <text x="327" y="696" class="mono">SqliteVaultStore</text>
   <text x="327" y="712" class="li">sqlite3: stessa API nativa e WASM,</text>
   <text x="327" y="728" class="li">schema locale versionato</text>
-  <text x="327" y="752" class="mono">SupabaseSyncServer</text>
-  <text x="327" y="768" class="li">PostgREST via http (+ DeviceLinkChannel)</text>
-  <text x="327" y="792" class="mono">SupabaseAuth · OfflineSyncServer</text>
+  <text x="327" y="752" class="mono">ModusServer</text>
+  <text x="327" y="768" class="li">richieste firmate MN1 al Worker (http)</text>
+  <text x="327" y="792" class="mono">blake2b256 · proof-of-work</text>
   <text x="327" y="808" class="li">risposte del server = input non fidato</text>
 
   <rect x="606" y="634" width="281" height="214" rx="8" class="card"/>
@@ -179,8 +180,8 @@
   <text x="620" y="728" class="li">libopus da sorgenti, FFI + shim C</text>
   <text x="620" y="744" class="mono">WebCodecsOpusEncoder / Decoder</text>
   <text x="620" y="760" class="mono">OggOpusMuxer · WavAudioDecoder</text>
-  <text x="620" y="784" class="mono">R2RemoteBlobStore</text>
-  <text x="620" y="800" class="li">blob-url, poi R2 diretto</text>
+  <text x="620" y="784" class="mono">ModusRemoteBlobStore</text>
+  <text x="620" y="800" class="li">/api/w/&lt;id&gt;/blobs, firmato</text>
   <text x="620" y="824" class="lblm">factory con conditional import:</text>
   <text x="620" y="838" class="lblm">stub · dart.library.io · dart.library.js_interop</text>
 
@@ -197,43 +198,76 @@
   <text x="913" y="816" class="mono">Gallery/BrowserImageChooser</text>
   <text x="913" y="836" class="lblm">port propri dell'app, non del dominio</text>
 
+  <!-- ============ Server ============ -->
+  <text x="20" y="888" class="zone" fill="#00A3FF">SERVER · server/ (Rust, workers-rs: lo stesso dominio, a strati)</text>
+  <text x="760" y="888" class="lblm">server/vectors/*.json: vettori d'oro verificati da Dart e da Rust</text>
+  <rect x="20" y="900" width="281" height="130" rx="8" class="card"/>
+  <rect x="20" y="900" width="281" height="4" fill="#8B3FD6"/>
+  <text x="34" y="926" class="h3">crates/ledger <tspan class="lblm" style="font-weight:400">puro</tspan></text>
+  <text x="34" y="946" class="li">formati di MembershipRecord,</text>
+  <text x="34" y="962" class="li">KeyBundle, SealedRow e richieste;</text>
+  <text x="34" y="978" class="li">regole di Workspace.apply;</text>
+  <text x="34" y="994" class="li">firma dietro un trait</text>
+  <text x="34" y="1018" class="lblm">come collaboration_access_control</text>
+  <rect x="313" y="900" width="281" height="130" rx="8" class="card"/>
+  <rect x="313" y="900" width="281" height="4" fill="#EBB448"/>
+  <text x="327" y="926" class="h3">crates/crypto</text>
+  <text x="327" y="946" class="li">RustCrypto: Ed25519 verify_strict,</text>
+  <text x="327" y="962" class="li">severo quanto libsodium;</text>
+  <text x="327" y="978" class="li">BLAKE2b-256 come generichash</text>
+  <text x="327" y="1018" class="lblm">verifica, non firma: il server non ha chiavi</text>
+  <rect x="606" y="900" width="281" height="130" rx="8" class="card"/>
+  <rect x="606" y="900" width="281" height="4" fill="#00A3FF"/>
+  <text x="620" y="926" class="h3">crates/sync <tspan class="lblm" style="font-weight:400">use case</tspan></text>
+  <text x="620" y="946" class="li">un workspace sul port Store:</text>
+  <text x="620" y="962" class="li">autorizzazione per ruolo, nonce,</text>
+  <text x="620" y="978" class="li">compattazione, quote, codici</text>
+  <text x="620" y="1018" class="lblm">cargo test su uno store in memoria</text>
+  <rect x="899" y="900" width="281" height="130" rx="8" class="card"/>
+  <rect x="899" y="900" width="281" height="4" fill="#8F9CAE"/>
+  <text x="913" y="926" class="h3">worker <tspan class="lblm" style="font-weight:400">guscio</tspan></text>
+  <text x="913" y="946" class="mono">api.rs · serve.rs · runtime.rs</text>
+  <text x="913" y="962" class="li">rotte, Durable Objects, R2,</text>
+  <text x="913" y="978" class="li">limitatori, proof-of-work</text>
+  <text x="913" y="1018" class="lblm">e2e in workerd (wrangler dev)</text>
+
   <!-- ============ Chiavi ============ -->
-  <text x="20" y="888" class="zone" fill="#EBB448">GERARCHIA DELLE CHIAVI</text>
-  <rect x="20" y="900" width="560" height="196" rx="8" class="card"/>
-  <rect x="36" y="916" width="100" height="30" rx="5" class="inner" stroke="#EBB448"/>
-  <text x="86" y="936" class="lbl" text-anchor="middle">passphrase</text>
-  <line x1="136" y1="931" x2="206" y2="931" class="key" marker-end="url(#ak)"/>
-  <text x="146" y="924" class="lblm">Argon2id</text>
-  <rect x="208" y="916" width="100" height="30" rx="5" class="inner" stroke="#EBB448"/>
-  <text x="258" y="936" class="lbl" text-anchor="middle">MasterKey</text>
-  <line x1="308" y1="931" x2="336" y2="931" class="key" marker-end="url(#ak)"/>
-  <text x="342" y="935" class="lbl">sigilla l'identità (Ed25519 + X-Wing)</text>
-  <line x1="258" y1="946" x2="258" y2="968" class="key"/>
-  <line x1="258" y1="968" x2="336" y2="968" class="key" marker-end="url(#ak)"/>
-  <text x="266" y="962" class="lblm">mn-local</text>
-  <text x="342" y="972" class="lbl">chiave locale: impostazioni sigillate</text>
-  <text x="36" y="998" class="lblm">La MasterKey è rilasciata subito dopo lo sblocco; lock() rilascia identità, chiave locale e GroupKey.</text>
-  <rect x="36" y="1010" width="100" height="30" rx="5" class="inner" stroke="#8B3FD6"/>
-  <text x="86" y="1030" class="lbl" text-anchor="middle">GroupKey (epoca)</text>
-  <line x1="136" y1="1025" x2="206" y2="1025" class="key" marker-end="url(#ak)"/>
-  <text x="146" y="1018" class="lblm">mn-blob1</text>
-  <rect x="208" y="1010" width="100" height="30" rx="5" class="inner" stroke="#8F9CAE"/>
-  <text x="258" y="1030" class="lbl" text-anchor="middle">BlobKey</text>
-  <text x="322" y="1022" class="lbl">GroupKey: sigilla le revisioni delle note;</text>
-  <text x="322" y="1038" class="lbl">arriva ai membri in un KeyBundle (X-Wing).</text>
-  <text x="36" y="1064" class="li">Passkey (web): uscita PRF → kdf mn-passk → sigilla di nuovo l'identità.</text>
-  <text x="36" y="1082" class="lblm">Algoritmi: XChaCha20-Poly1305 con dati associati, crypto_kdf, Argon2id moderate.</text>
+  <text x="20" y="1068" class="zone" fill="#EBB448">GERARCHIA DELLE CHIAVI</text>
+  <rect x="20" y="1080" width="560" height="196" rx="8" class="card"/>
+  <rect x="36" y="1096" width="100" height="30" rx="5" class="inner" stroke="#EBB448"/>
+  <text x="86" y="1116" class="lbl" text-anchor="middle">passphrase</text>
+  <line x1="136" y1="1111" x2="206" y2="1111" class="key" marker-end="url(#ak)"/>
+  <text x="146" y="1104" class="lblm">Argon2id</text>
+  <rect x="208" y="1096" width="100" height="30" rx="5" class="inner" stroke="#EBB448"/>
+  <text x="258" y="1116" class="lbl" text-anchor="middle">MasterKey</text>
+  <line x1="308" y1="1111" x2="336" y2="1111" class="key" marker-end="url(#ak)"/>
+  <text x="342" y="1115" class="lbl">sigilla l'identità (Ed25519 + X-Wing)</text>
+  <line x1="258" y1="1126" x2="258" y2="1148" class="key"/>
+  <line x1="258" y1="1148" x2="336" y2="1148" class="key" marker-end="url(#ak)"/>
+  <text x="266" y="1142" class="lblm">mn-local</text>
+  <text x="342" y="1152" class="lbl">chiave locale: impostazioni sigillate</text>
+  <text x="36" y="1178" class="lblm">La MasterKey è rilasciata subito dopo lo sblocco; lock() rilascia identità, chiave locale e GroupKey.</text>
+  <rect x="36" y="1190" width="100" height="30" rx="5" class="inner" stroke="#8B3FD6"/>
+  <text x="86" y="1210" class="lbl" text-anchor="middle">GroupKey (epoca)</text>
+  <line x1="136" y1="1205" x2="206" y2="1205" class="key" marker-end="url(#ak)"/>
+  <text x="146" y="1198" class="lblm">mn-blob1</text>
+  <rect x="208" y="1190" width="100" height="30" rx="5" class="inner" stroke="#8F9CAE"/>
+  <text x="258" y="1210" class="lbl" text-anchor="middle">BlobKey</text>
+  <text x="322" y="1202" class="lbl">GroupKey: sigilla le revisioni delle note;</text>
+  <text x="322" y="1218" class="lbl">arriva ai membri in un KeyBundle (X-Wing).</text>
+  <text x="36" y="1244" class="li">Passkey (web): uscita PRF → kdf mn-passk → sigilla di nuovo l'identità.</text>
+  <text x="36" y="1262" class="lblm">Algoritmi: XChaCha20-Poly1305 con dati associati, crypto_kdf, Argon2id moderate.</text>
 
   <!-- ============ Flusso ============ -->
-  <text x="600" y="888" class="zone" fill="#00A3FF">SALVATAGGIO DI UNA NOTA</text>
-  <rect x="600" y="900" width="580" height="196" rx="8" class="card"/>
-  <text x="616" y="926" class="li"><tspan class="h3" fill="#F8FAFC">1</tspan>  Editor: salvataggio 1 s dopo l'ultima modifica</text>
-  <text x="616" y="948" class="li"><tspan class="h3" fill="#F8FAFC">2</tspan>  EntryCodec valida l'entry sullo schema del tipo</text>
-  <text x="616" y="970" class="li"><tspan class="h3" fill="#F8FAFC">3</tspan>  RecordedNote aggiunge metadati dei blob, categoria, cestino</text>
-  <text x="616" y="992" class="li"><tspan class="h3" fill="#F8FAFC">4</tspan>  SyncEngine.write: revisione firmata (Ed25519), sigillata con la</text>
-  <text x="634" y="1008" class="li">GroupKey dell'epoca, dati associati legati a record ed epoca</text>
-  <text x="616" y="1030" class="li"><tspan class="h3" fill="#F8FAFC">5</tspan>  LocalRecordStore: busta nella coda (vault.sqlite o IndexedDB)</text>
-  <text x="616" y="1052" class="li"><tspan class="h3" fill="#F8FAFC">6</tspan>  SupabaseSyncServer: push in sync_rows con supersedes,</text>
-  <text x="634" y="1068" class="li">poi BlobSync carica le registrazioni nuove su R2</text>
-  <text x="616" y="1088" class="lblm">Gli altri dispositivi fanno pull dal cursore, verificano firma e registro, aprono la busta.</text>
+  <text x="600" y="1068" class="zone" fill="#00A3FF">SALVATAGGIO DI UNA NOTA</text>
+  <rect x="600" y="1080" width="580" height="196" rx="8" class="card"/>
+  <text x="616" y="1106" class="li"><tspan class="h3" fill="#F8FAFC">1</tspan>  Editor: salvataggio 1 s dopo l'ultima modifica</text>
+  <text x="616" y="1128" class="li"><tspan class="h3" fill="#F8FAFC">2</tspan>  EntryCodec valida l'entry sullo schema del tipo</text>
+  <text x="616" y="1150" class="li"><tspan class="h3" fill="#F8FAFC">3</tspan>  RecordedNote aggiunge metadati dei blob, categoria, cestino</text>
+  <text x="616" y="1172" class="li"><tspan class="h3" fill="#F8FAFC">4</tspan>  SyncEngine.write: revisione firmata (Ed25519), sigillata con la</text>
+  <text x="634" y="1188" class="li">GroupKey dell'epoca, dati associati legati a record ed epoca</text>
+  <text x="616" y="1210" class="li"><tspan class="h3" fill="#F8FAFC">5</tspan>  LocalRecordStore: busta nella coda (vault.sqlite o IndexedDB)</text>
+  <text x="616" y="1232" class="li"><tspan class="h3" fill="#F8FAFC">6</tspan>  ModusServer: POST rows firmato; il DO verifica firma,</text>
+  <text x="634" y="1248" class="li">ruolo e supersedes, poi BlobSync carica i blob nuovi</text>
+  <text x="616" y="1268" class="lblm">Gli altri dispositivi leggono dal cursore, verificano firma e registro da sé, aprono la busta.</text>
 </svg>
