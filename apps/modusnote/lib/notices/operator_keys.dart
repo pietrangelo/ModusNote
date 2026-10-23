@@ -6,7 +6,8 @@ import 'package:offline_sync/offline_sync.dart';
 /// but never write or alter one. They ship inside the app, and so in the
 /// SHA-256 list of every web bundle.
 ///
-/// Empty for now: service notices are off and the app fetches nothing.
+/// With the list empty, service notices are off and the app fetches
+/// nothing.
 ///
 /// To pin a key, run from `packages/offline_sync`
 ///
@@ -22,7 +23,18 @@ import 'package:offline_sync/offline_sync.dart';
 /// Pin two keys, a primary and a spare kept elsewhere.
 /// `test/platform/service_notices_test.dart` fails six months before a
 /// `notAfter`, so the key is replaced in time.
-const pinnedOperatorKeys = <({String key, String notAfter})>[];
+const pinnedOperatorKeys = <({String key, String notAfter})>[
+  // Primary, pinned 2026-10-23.
+  (
+    key: '3a9ad26e8b4c36953876d84a6b4e22472a4fa2c47ff6e1e9e50040512cf007b2',
+    notAfter: '2028-10-23T00:00:00Z',
+  ),
+  // Spare, kept elsewhere, pinned 2026-10-23.
+  (
+    key: 'cc13eb43c64b429f4ce750f5610da1b559352ddae7b25c724b8bd215da352b34',
+    notAfter: '2028-10-23T00:00:00Z',
+  ),
+];
 
 /// [pinnedOperatorKeys], ready for [ServiceNoticeBoard].
 List<OperatorKey> operatorKeys([
