@@ -77,4 +77,18 @@ void main() {
       ),
     );
   });
+
+  test('adversary: CI skips documents, but not those a test reads', () {
+    final ci = workflows.singleWhere((file) => file.path.endsWith('ci.yml'));
+    final filter =
+        "['**', '!**.md', 'SECURITY.md', '!LICENSE', '!NOTICE', '!docs/**']";
+    final text = ci.readAsStringSync();
+    expect(text, contains('  push:\n    branches: [main]\n    paths: $filter'));
+    expect(text, contains('  pull_request:\n    paths: $filter'));
+    // security_txt_test.dart compares SECURITY.md with security.txt.
+    expect(
+      File('test/platform/security_txt_test.dart').readAsStringSync(),
+      contains("'../../SECURITY.md'"),
+    );
+  });
 }

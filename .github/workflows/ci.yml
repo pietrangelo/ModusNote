@@ -1,11 +1,14 @@
 name: CI
 
+# A change made only of documents (Markdown, LICENSE, NOTICE, docs/) runs
+# nothing, so no deploy follows it either. SECURITY.md stays in: a test
+# compares it with security.txt.
 on:
   push:
     branches: [main]
-    paths-ignore: ['**.md']
+    paths: ['**', '!**.md', 'SECURITY.md', '!LICENSE', '!NOTICE', '!docs/**']
   pull_request:
-    paths-ignore: ['**.md']
+    paths: ['**', '!**.md', 'SECURITY.md', '!LICENSE', '!NOTICE', '!docs/**']
 
 permissions:
   contents: read
@@ -16,7 +19,44 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # Which parts the change touches, documents left out: the app (everything
+  # but server/, whose golden vectors the Dart tests read), the server (its
+  # end-to-end test runs the Dart packages too) and the Android build, which
+  # takes half the app's run. A pull request is compared with its base, a
+  # push on main with the commit before it; when that is missing, all run.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      app: ${{ steps.diff.outputs.app }}
+      server: ${{ steps.diff.outputs.server }}
+      android: ${{ steps.diff.outputs.android }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - id: diff
+        env:
+          BASE: ${{ github.event_name == 'pull_request' && github.base_ref || github.event.before }}
+        run: |
+          if git fetch --depth=1 origin "$BASE" 2>/dev/null; then
+            git diff --name-only FETCH_HEAD HEAD \
+              | grep -vE '\.md$|^(LICENSE|NOTICE|docs/.*)$' > changed.txt || true
+            git diff --name-only FETCH_HEAD HEAD | grep -x SECURITY.md >> changed.txt || true
+          else
+            git ls-files > changed.txt
+          fi
+          cat changed.txt
+          {
+            if grep -qvE '^server/' changed.txt || grep -qE '^server/vectors/' changed.txt
+            then echo app=true; else echo app=false; fi
+            if grep -qE '^(server/|packages/|tool/deploy/|pubspec\.(yaml|lock)$|\.github/workflows/)' changed.txt
+            then echo server=true; else echo server=false; fi
+            if grep -qE '^(apps/modusnote/android/|apps/modusnote/tool/check_android_bundle\.sh|packages/[^/]+/hook/|.*pubspec\.(yaml|lock)$|\.github/workflows/)' changed.txt
+            then echo android=true; else echo android=false; fi
+          } >> "$GITHUB_OUTPUT"
+
   verify:
+    needs: changes
+    if: needs.changes.outputs.app == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -104,32 +144,15 @@ jobs:
         working-directory: apps/modusnote
         run: flutter test
 
-      - name: Does this change touch the Android build?
-        # The bundle takes half the run: on a pull request it runs only when
-        # native code, build hooks, dependencies or this workflow change;
-        # on main it always runs.
-        id: android
-        run: |
-          if [ "${{ github.event_name }}" != pull_request ]; then
-            echo build=true >> "$GITHUB_OUTPUT"; exit 0
-          fi
-          git fetch --depth=1 origin "${{ github.base_ref }}"
-          if git diff --name-only FETCH_HEAD HEAD | grep -qE \
-            '^(apps/modusnote/android/|apps/modusnote/tool/check_android_bundle\.sh|packages/[^/]+/hook/|.*pubspec\.(yaml|lock)$|\.github/workflows/)'; then
-            echo build=true >> "$GITHUB_OUTPUT"
-          else
-            echo build=false >> "$GITHUB_OUTPUT"
-          fi
-
       - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
-        if: steps.android.outputs.build == 'true'
+        if: needs.changes.outputs.android == 'true'
         with:
           distribution: temurin
           java-version: '17'
           cache: gradle
 
       - name: Android App Bundle
-        if: steps.android.outputs.build == 'true'
+        if: needs.changes.outputs.android == 'true'
         # The same release build Google Play gets, signed with the debug key
         # (the upload key lives only in release-android.yml): native
         # libraries 16 KB aligned, network and backup rules in the manifest.
@@ -173,6 +196,8 @@ jobs:
   # crates against the golden vectors, then the Worker in workerd with local Durable Objects
   # and R2. Nothing here talks to Cloudflare.
   server:
+    needs: changes
+    if: needs.changes.outputs.server == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
