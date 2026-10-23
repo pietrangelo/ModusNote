@@ -36,7 +36,7 @@ final class NoteRecorder {
       id: _newBlobId(),
       contentKey: _engine.contentKeyFor(epoch),
     );
-    return RecordingTake._(session, epoch);
+    return RecordingTake._(session, epoch)..limit;
   }
 
   /// Opaque and random, like note ids: blob ids reach R2 in clear.
@@ -57,6 +57,12 @@ final class RecordingTake {
 
   DateTime get startedAt => switch (_session.state) {
     RecordingActive(:final startedAt) => startedAt,
+    _ => throw StateError('take is not recording'),
+  };
+
+  /// When the take stops by itself: see [AudioFormat.longestTake].
+  late final Duration limit = switch (_session.state) {
+    RecordingActive(:final format) => format.longestTake,
     _ => throw StateError('take is not recording'),
   };
 

@@ -86,13 +86,26 @@ void main() {
   final code = InviteCode.tryParse('K7MQ4X-T9ABC-D2EFG')!;
 
   /// Brings in another device of the owner's, as the owner.
-  Future<InviteOffering> offer([UnlockedVault? from, Device? on]) =>
-      (on ?? phone).keeper.offerInvite(
-        from ?? founder,
-        secret(code.toBytes()),
-        lookup: code.lookup,
-        role: Role.owner,
-      );
+  Future<InviteOffering> offer([
+    UnlockedVault? from,
+    Device? on,
+    String? phrase,
+  ]) async {
+    final keeper = (on ?? phone).keeper;
+    // A device that joined with a code chose the browser's passphrase.
+    await keeper.confirm(
+      from ?? founder,
+      password(
+        phrase ?? (from == null ? 'frase del telefono' : 'frase del browser'),
+      ),
+    );
+    return keeper.offerInvite(
+      from ?? founder,
+      secret(code.toBytes()),
+      lookup: code.lookup,
+      role: Role.owner,
+    );
+  }
 
   Future<LinkRequest> join(Device device, {InviteCode? typed}) =>
       device.keeper.acceptInvite(
@@ -233,6 +246,7 @@ void main() {
     final authenticator = passkey_test.FakePasskeyPrf();
     final laptop = Device(server, invites, clock, prf: authenticator);
     final joined = await link(laptop);
+    await laptop.keeper.confirm(joined, password('frase del browser'));
     await laptop.keeper.enrollPasskey(joined);
     joined.lock();
 
@@ -255,6 +269,23 @@ void main() {
 
     expect(await read(third, note), 'dal telefono');
     expect(server.membershipLog.last.author, joined.member);
+  });
+
+  test('a device found open cannot bring another in unconfirmed', () async {
+    // A fresh unlock: whoever has the screen has not given the passphrase.
+    final reopened = await phone.keeper.unlock(password('frase del telefono'));
+    addTearDown(reopened.lock);
+
+    await expectLater(
+      phone.keeper.offerInvite(
+        reopened,
+        secret(code.toBytes()),
+        lookup: code.lookup,
+        role: Role.owner,
+      ),
+      throwsA(isA<ConfirmationRequiredException>()),
+    );
+    expect(await invites.invite(code.lookup), isNull);
   });
 
   test('an admission cut short completes on the next poll', () async {
@@ -428,6 +459,7 @@ void main() {
 
     test('only an owner deletes the workspace from the server', () async {
       final viewer = await (() async {
+        await phone.keeper.confirm(founder, password('frase del telefono'));
         final offering = await phone.keeper.offerInvite(
           founder,
           secret(code.toBytes()),
@@ -534,13 +566,15 @@ void main() {
 
     setUp(() => friend = Device(server, invites, clock));
 
-    Future<InviteOffering> invite({Role role = Role.editor}) =>
-        phone.keeper.offerInvite(
-          founder,
-          secret(inviteCode.toBytes()),
-          lookup: inviteCode.lookup,
-          role: role,
-        );
+    Future<InviteOffering> invite({Role role = Role.editor}) async {
+      await phone.keeper.confirm(founder, password('frase del telefono'));
+      return phone.keeper.offerInvite(
+        founder,
+        secret(inviteCode.toBytes()),
+        lookup: inviteCode.lookup,
+        role: role,
+      );
+    }
 
     Future<LinkRequest> accept({InviteCode? typed}) {
       final code = typed ?? inviteCode;
@@ -601,7 +635,7 @@ void main() {
       final bea = await joined(role: Role.owner);
       final third = Device(server, invites, clock);
 
-      final offering = await offer(bea, friend);
+      final offering = await offer(bea, friend, 'frase di Bea');
       final request = await join(third);
       expect(await offering.poll(), isNotNull);
       final vault = await request.poll();
@@ -769,6 +803,7 @@ void main() {
         final stranger = Device(FakeSyncServer(), FakeInviteChannel(), clock);
         final theirs = await stranger.keeper.create(password('altra frase'));
         addTearDown(theirs.lock);
+        await stranger.keeper.confirm(theirs, password('altra frase'));
         final swapped = await stranger.keeper.offerInvite(
           theirs,
           secret(InviteCode.tryParse('K7MQ4X-ZZZZZ-ZZZZZ')!.toBytes()),

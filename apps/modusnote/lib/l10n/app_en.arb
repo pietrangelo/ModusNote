@@ -416,6 +416,74 @@
   "@passkeyRemoved": {
     "description": "Confirmation after the passkey is removed."
   },
+  "confirmTitle": "Confirm it's you",
+  "@confirmTitle": {
+    "description": "Title of the dialog that asks for the passphrase again before an action that gives lasting access."
+  },
+  "confirmBody": "This gives lasting access to your notes. Type the vault passphrase to go on.",
+  "@confirmBody": {
+    "description": "Body of the confirmation dialog."
+  },
+  "confirmAction": "Confirm",
+  "@confirmAction": {
+    "description": "Button that checks the passphrase typed in the confirmation dialog."
+  },
+  "confirmWithPasskey": "Use passkey",
+  "@confirmWithPasskey": {
+    "description": "Button that confirms with the passkey instead of the passphrase."
+  },
+  "confirmWithBiometric": "Use fingerprint",
+  "@confirmWithBiometric": {
+    "description": "Button that confirms with the fingerprint or face instead of the passphrase."
+  },
+  "biometricUnlockAction": "Unlock with fingerprint",
+  "@biometricUnlockAction": {
+    "description": "Button that opens the vault with the fingerprint or face (Android)."
+  },
+  "biometricSettings": "Fingerprint unlock",
+  "@biometricSettings": {
+    "description": "Title and tooltip of the fingerprint unlock settings."
+  },
+  "biometricSetupBody": "Next time, open your notes with your fingerprint or face instead of typing the passphrase. Your passphrase keeps working. Adding a fingerprint to the phone turns this off.",
+  "@biometricSetupBody": {
+    "description": "Explains fingerprint unlock before it is turned on."
+  },
+  "biometricSetupAction": "Turn on",
+  "@biometricSetupAction": {
+    "description": "Button that turns fingerprint unlock on."
+  },
+  "biometricActiveBody": "This phone opens your notes with your fingerprint or face. Turning it off leaves only the passphrase.",
+  "@biometricActiveBody": {
+    "description": "Shown when fingerprint unlock is on."
+  },
+  "biometricReady": "Fingerprint unlock is on.",
+  "@biometricReady": {
+    "description": "Confirmation after fingerprint unlock is turned on."
+  },
+  "biometricRemoved": "Fingerprint unlock turned off.",
+  "@biometricRemoved": {
+    "description": "Confirmation after fingerprint unlock is turned off."
+  },
+  "biometricCancelled": "The fingerprint request was cancelled.",
+  "@biometricCancelled": {
+    "description": "The person dismissed the fingerprint prompt."
+  },
+  "biometricRejected": "The phone's fingerprints have changed, so they no longer open the vault. Use your passphrase and turn fingerprint unlock on again.",
+  "@biometricRejected": {
+    "description": "The fingerprint key was invalidated, for example by a new fingerprint."
+  },
+  "biometricUnsupported": "This phone has no fingerprint or face set up for unlocking.",
+  "@biometricUnsupported": {
+    "description": "No strong biometric is available."
+  },
+  "biometricPromptTitle": "Open Modus Notes",
+  "@biometricPromptTitle": {
+    "description": "Title of the system fingerprint prompt."
+  },
+  "biometricPromptSubtitle": "Confirm with your fingerprint or face",
+  "@biometricPromptSubtitle": {
+    "description": "Subtitle of the system fingerprint prompt."
+  },
   "dialogClose": "Close",
   "@dialogClose": {
     "description": "Generic button that closes a dialog without doing anything."
@@ -423,6 +491,11 @@
   "recordingInProgress": "Recording",
   "@recordingInProgress": {
     "description": "Title of the sheet shown while the microphone records."
+  },
+  "recordingLimit": "Stops by itself at {length}",
+  "@recordingLimit": {
+    "description": "Recording sheet: the longest take, after which recording stops and the take is kept.",
+    "placeholders": {"length": {"type": "String"}}
   },
   "recordingEncrypted": "Encrypted while it is recorded. Nothing is stored in clear.",
   "@recordingEncrypted": {
@@ -565,6 +638,28 @@
   "cloudStateRefused": "The server refused the sync. Try again later.",
   "@cloudStateRefused": {
     "description": "Sync sheet: the server rejected a request."
+  },
+  "conflictCopyTitle": "{title} (conflict copy)",
+  "@conflictCopyTitle": {
+    "description": "Title of a note kept because another device changed the same note at the same time.",
+    "placeholders": {"title": {"type": "String"}}
+  },
+  "conflictCopyUntitled": "Conflict copy",
+  "@conflictCopyUntitled": {
+    "description": "Title of a conflict copy of a note that had no title."
+  },
+  "conflictCopiesKept": "{count, plural, =1{Another device changed a note at the same time as this one: this device's version is kept as a copy.} other{Another device changed {count} notes at the same time as this one: this device's versions are kept as copies.}}",
+  "@conflictCopiesKept": {
+    "description": "Snackbar after a sync: edits of this device lost to concurrent edits and were kept as conflict copies.",
+    "placeholders": {"count": {"type": "int"}}
+  },
+  "editorChangedElsewhere": "This note changed on another device too. Where you both wrote, your version stays; the other one is kept as a copy.",
+  "@editorChangedElsewhere": {
+    "description": "Snackbar in the editor: another device changed the same fields of the open note; its version was kept as a conflict copy."
+  },
+  "cloudStateBlobRefused": "Your notes are synced, but the server did not accept a recording or a picture: it is too large, or this vault's space for files is full. The others went up.",
+  "@cloudStateBlobRefused": {
+    "description": "Sync sheet: the notes synced but the server refused one recording or picture."
   },
   "cloudStateFull": "This vault has reached its space on the server. Delete forever the notes you no longer need (moving them to the trash frees nothing, emptying it does), then sync again.",
   "@cloudStateFull": {

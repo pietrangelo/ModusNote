@@ -10,6 +10,9 @@
          a reminder may come a few minutes late. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- Fingerprint unlock: a Keystore key that only a strong biometric
+         lets the vault use (BiometricKeys). -->
+    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
     <application
         android:label="Modus Notes"
         android:name="${applicationName}"

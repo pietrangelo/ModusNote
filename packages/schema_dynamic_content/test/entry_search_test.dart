@@ -101,4 +101,11 @@ void main() {
     expect(EntrySearch('prima').matches(after), isFalse);
     expect(EntrySearch('dopo').matches(before), isFalse);
   });
+
+  test('folding lowers, strips Latin accents and leaves the rest', () {
+    expect(EntrySearch.fold('Città ÀÉÎÕÜ çß ŽŁ'), 'citta aeiou cs zł');
+    expect(EntrySearch.fold('Plain ASCII, 123!'), 'plain ascii, 123!');
+    expect(EntrySearch.fold('Привет 東京 🎵ñ'), 'привет 東京 🎵n');
+    expect(EntrySearch.fold(''), '');
+  });
 }

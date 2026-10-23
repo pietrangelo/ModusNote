@@ -69,6 +69,11 @@ abstract interface class NoteStore implements Listenable {
   /// abandoned.
   Future<void> discardTakes(Iterable<KeyedBlob> takes);
 
+  /// Keeps the note as it is stored now as a new note beside it, titled as
+  /// a copy: what an edit about to replace it would otherwise lose. The
+  /// copy's id, or null when there is no such note.
+  Future<EntryId?> keepConflictCopy(EntryId id);
+
   /// Moves a note to the trash, on every device of the workspace.
   Future<void> moveToTrash(EntryId id);
 
@@ -188,6 +193,35 @@ final class InMemoryNoteStore extends ChangeNotifier implements NoteStore {
 
   @override
   Future<void> discardTakes(Iterable<KeyedBlob> takes) async {}
+
+  /// Copies made, by the id they copied.
+  final copies = <EntryId, EntryId>{};
+
+  @override
+  Future<EntryId?> keepConflictCopy(EntryId id) async {
+    final note = _notes[id];
+    if (note == null) return null;
+    final copy = EntryId(
+      '${'c' * 16}${copies.length.toRadixString(16).padLeft(16, '0')}',
+    );
+    _notes[copy] = RecordedNote.compose(
+      switch (DynamicEntry.create(
+        schema: SeedSchemas.catalog.schemaFor(note.entry.schemaId)!,
+        id: copy,
+        attributes: note.entry.attributes,
+        at: clock(),
+      )) {
+        Valid(:final value) => value,
+        Invalid(:final violations) => throw StateError('$violations'),
+      },
+      known: note.recordings.values,
+      pictures: note.images.values,
+      category: note.category,
+    );
+    copies[id] = copy;
+    notifyListeners();
+    return copy;
+  }
 
   @override
   Future<void> moveToTrash(EntryId id) async {

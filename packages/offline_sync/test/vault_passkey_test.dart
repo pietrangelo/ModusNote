@@ -119,6 +119,7 @@ void main() {
 
   Future<UnlockedVault> enrolledVault() async {
     final vault = await keeper().create(password('correct horse'));
+    await keeper().confirm(vault, password('correct horse'));
     await vault.engine.write(note, RevisionContents(bytes('con la passkey')));
     await keeper().enrollPasskey(vault);
     return vault;
@@ -126,6 +127,7 @@ void main() {
 
   test('a vault has no passkey until one is enrolled', () async {
     final vault = await keeper().create(password('correct horse'));
+    await keeper().confirm(vault, password('correct horse'));
     addTearDown(vault.lock);
 
     expect(keeper().offersPasskeys, isTrue);
@@ -146,6 +148,7 @@ void main() {
       keeper(withPasskeys: false).enrollPasskey(vault),
       throwsA(isA<PasskeyUnsupportedException>()),
     );
+    await keeper().confirm(vault, password('correct horse'));
     await keeper().enrollPasskey(vault);
     expect(await keeper(withPasskeys: false).hasPasskey, isFalse);
   });
@@ -264,6 +267,7 @@ void main() {
 
   test('a cancelled prompt changes nothing', () async {
     final vault = await keeper().create(password('correct horse'));
+    await keeper().confirm(vault, password('correct horse'));
     addTearDown(vault.lock);
     passkeys.failNext = const PasskeyCancelledException();
 
@@ -286,6 +290,7 @@ void main() {
   group('adversary', () {
     test('a locked vault cannot enroll a passkey', () async {
       final vault = await keeper().create(password('correct horse'));
+      await keeper().confirm(vault, password('correct horse'));
       vault.lock();
 
       await expectLater(

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -270,6 +271,42 @@ void main() {
     }
   });
 
+  group('a slow connection', () {
+    ModusRemoteBlobStore storeOn(http.Client client) => ModusRemoteBlobStore(
+      origin: Uri.parse('https://modus.example'),
+      workspace: workspace,
+      authorize: (method, target, body) async => 'MN1 signed',
+      client: client,
+      timeout: const Duration(milliseconds: 80),
+    );
+
+    test('an upload that keeps moving takes as long as it needs', () async {
+      Stream<Uint8List> slow() async* {
+        for (var i = 0; i < 6; i++) {
+          await Future<void>.delayed(const Duration(milliseconds: 30));
+          yield Uint8List.fromList([i]);
+        }
+      }
+
+      await storeOn(worker.client).upload(take, slow(), length: 6);
+
+      expect(worker.objects['take-1'], [0, 1, 2, 3, 4, 5]);
+    });
+
+    test('an upload that stalls is aborted, to be retried', () async {
+      final body = StreamController<Uint8List>();
+      addTearDown(body.close);
+      body.add(Uint8List.fromList([1]));
+      final client = _StallingClient();
+
+      await expectLater(
+        storeOn(client).upload(take, body.stream, length: 2),
+        throwsA(isA<RemoteBlobUnavailableException>()),
+      );
+      expect(client.aborted, isTrue);
+    });
+  });
+
   group('adversary', () {
     for (final (name, body) in [
       ('no more flag', '{"blobs":[]}'),
@@ -318,4 +355,23 @@ void main() {
       }
     });
   });
+}
+
+/// Reads whatever body comes and never answers, until the request is
+/// aborted.
+final class _StallingClient extends http.BaseClient {
+  var aborted = false;
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) {
+    request.finalize().listen((_) {});
+    final done = Completer<http.StreamedResponse>();
+    if (request case http.Abortable(:final abortTrigger?)) {
+      abortTrigger.then((_) {
+        aborted = true;
+        done.completeError(http.RequestAbortedException(request.url));
+      });
+    }
+    return done.future;
+  }
 }

@@ -39,6 +39,11 @@ enum SyncProblem {
 
   /// Another device removed this one from the vault: it no longer syncs.
   removed,
+
+  /// The notes synced, but the server turned down a recording or a
+  /// picture (too large, or the vault's file space is full); the others
+  /// went up.
+  blobRefused,
 }
 
 /// Keeps an open vault in step with the server, once its sync is turned
@@ -53,6 +58,7 @@ final class SyncController extends ChangeNotifier {
   SyncController({
     required this._engine,
     required this._onPulled,
+    this._onLost,
     this._afterSync,
     this._enabled = false,
     this._turnOn,
@@ -65,6 +71,10 @@ final class SyncController extends ChangeNotifier {
 
   final SyncEngine _engine;
   final Future<void> Function() _onPulled;
+
+  /// Keeps this device's edits that lost a conflict, before [_onPulled]
+  /// reads the notes again.
+  final Future<void> Function(List<LostEdit> lost)? _onLost;
 
   /// Remembers in the vault that its sync is on.
   final Future<void> Function()? _turnOn;
@@ -214,6 +224,8 @@ final class SyncController extends ChangeNotifier {
       } else {
         _skip = _quiet = min(_quiet + 1, maxQuietTicks);
       }
+      if (report.lost.isNotEmpty) await _onLost?.call(report.lost);
+      if (_disposed) return;
       if (report.pulled > 0) await _onPulled();
       if (_disposed) return;
       await _afterSync?.call(report);
@@ -225,8 +237,8 @@ final class SyncController extends ChangeNotifier {
     } on RemoteBlobUnavailableException {
       // The notes went through; the recordings follow next time.
       if (!_disposed) _set(SyncState.offline);
-    } on RemoteBlobRejectedException catch (e) {
-      _fail(e.status == 413 ? SyncProblem.full : SyncProblem.refused);
+    } on RemoteBlobRejectedException {
+      _fail(SyncProblem.blobRefused);
     } on MalformedBlobException {
       _fail(SyncProblem.untrusted);
     } on LedgerRollbackException {

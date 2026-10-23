@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -34,12 +35,20 @@ final class FakePasskeys implements PasskeyPrf {
   /// Thrown by the next request instead of answering it.
   Object? failNext;
 
+  /// Registering waits for this, as a person at the authenticator would.
+  Completer<void>? atAuthenticator;
+
   /// Answers with an unrelated secret, as another authenticator would.
   bool impostor = false;
 
+  /// How many passkeys were made.
+  var registered = 0;
+
   @override
   Future<RegisteredPasskey> register({required PrfSalt salt}) async {
+    await atAuthenticator?.future;
     _maybeFail();
+    registered++;
     final credential = PasskeyCredentialId.fromBytes(
       sodium.randombytes.buf(32),
     );
