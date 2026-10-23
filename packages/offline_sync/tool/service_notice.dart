@@ -223,11 +223,15 @@ List<Uint8List> readNotices(File file) {
   throw UsageException('${file.path} is not a notices file');
 }
 
-void writeNotices(File file, List<Uint8List> envelopes) {
+void writeNotices(File file, List<Uint8List> envelopes) =>
+    file.writeAsStringSync(noticesText(envelopes), flush: true);
+
+/// The text [writeNotices] writes, whose size devices check.
+String noticesText(List<Uint8List> envelopes) {
   final json = const JsonEncoder.withIndent('  ').convert({
     'notices': [for (final envelope in envelopes) base64.encode(envelope)],
   });
-  file.writeAsStringSync('$json\n', flush: true);
+  return '$json\n';
 }
 
 /// Keeps the operator key and signs with it.
@@ -370,7 +374,8 @@ final class NoticeTool {
     final signed = SignedServiceNotice(notice: notice, signature: signature);
     await _check(signed.toBytes(), notice, keyFile.public);
     final envelopes = [...published, signed.toBytes()];
-    if (_publishedSize(envelopes) > ServiceNoticeBoard.maxPublishedBytes) {
+    if (utf8.encode(noticesText(envelopes)).length >
+        ServiceNoticeBoard.maxPublishedBytes) {
       throw const UsageException('notices file too large: prune first');
     }
     writeNotices(file, envelopes);
@@ -441,14 +446,6 @@ final class NoticeTool {
       secret.dispose();
     }
   }
-
-  static int _publishedSize(List<Uint8List> envelopes) => utf8
-      .encode(
-        jsonEncode({
-          'notices': [for (final e in envelopes) base64.encode(e)],
-        }),
-      )
-      .length;
 }
 
 /// The operator key as kept on the operator's computer.

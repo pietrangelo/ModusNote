@@ -340,6 +340,50 @@ void main() {
       },
     );
 
+    test('sign measures notices.json as it writes it, indented', () async {
+      await tool(['frase del gestore', 'frase del gestore'])
+          .keygen(path('operator.key'));
+      const limit = ServiceNoticeBoard.maxPublishedBytes;
+      int compact(List<Uint8List> envelopes) => utf8
+          .encode(
+            jsonEncode({
+              'notices': [for (final e in envelopes) base64.encode(e)],
+            }),
+          )
+          .length;
+      // As large as the new notice will be: only the signature differs.
+      final next = SignedServiceNotice(
+        notice: ServiceNotice(
+          serial: 8,
+          issued: now,
+          expires: now.add(const Duration(days: 7)),
+          level: ServiceNoticeLevel.info,
+          texts: const {'it': 'Ciao', 'en': 'Hello'},
+        ),
+        signature: Signature.fromBytes(Uint8List(Signature.length)),
+      ).toBytes();
+      final published = [for (var s = 1; s <= 6; s++) _filler(s, 7200, now)];
+      var size = 7200;
+      while (compact([...published, _filler(7, size, now), next]) > limit) {
+        size--;
+      }
+      published.add(_filler(7, size, now));
+      final file = File(path('notices.json'));
+      writeNotices(file, published);
+      final before = file.readAsStringSync();
+      expect(
+        compact([...published, next]),
+        lessThanOrEqualTo(limit),
+        reason: 'only the indentation takes it over the limit',
+      );
+
+      await expectLater(
+        tool(['frase del gestore']).sign(signing(serial: 8)),
+        throwsA(isA<UsageException>()),
+      );
+      expect(file.readAsStringSync(), before);
+    });
+
     test('sign refuses a text no device would show', () async {
       await tool(['frase del gestore', 'frase del gestore'])
           .keygen(path('operator.key'));
@@ -367,6 +411,30 @@ void main() {
     expect(removed, 1);
     expect(readNotices(File(path('notices.json'))), [lasting.toBytes()]);
   });
+}
+
+/// An envelope of exactly [bytes] bytes, in four languages, signed by
+/// nobody: the tool only reads what is already published.
+Uint8List _filler(int serial, int bytes, DateTime issued) {
+  // The body's fixed fields, four text headers and the signature.
+  final text = bytes - 23 - 4 * 4 - Signature.length;
+  final texts = <String, String>{};
+  for (final (index, language) in ['it', 'en', 'de', 'fr'].indexed) {
+    final length = text ~/ 4 + (index < text % 4 ? 1 : 0);
+    texts[language] = '€' * (length ~/ 3) + 'a' * (length % 3);
+  }
+  final envelope = SignedServiceNotice(
+    notice: ServiceNotice(
+      serial: serial,
+      issued: issued,
+      expires: issued.add(const Duration(days: 30)),
+      level: ServiceNoticeLevel.info,
+      texts: texts,
+    ),
+    signature: Signature.fromBytes(Uint8List(Signature.length)),
+  ).toBytes();
+  expect(envelope, hasLength(bytes));
+  return envelope;
 }
 
 final class _Published implements ServiceNoticeSource {
