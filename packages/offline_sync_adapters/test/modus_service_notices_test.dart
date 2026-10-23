@@ -52,6 +52,24 @@ void main() {
     ]);
   });
 
+  test('reads past the highest serial the operator\'s tool keeps', () async {
+    final envelopes = await fetch(
+      (_) => http.Response(
+        jsonEncode({
+          'lastSerial': 12,
+          'notices': [
+            base64.encode([7]),
+          ],
+        }),
+        200,
+      ),
+    );
+
+    expect(envelopes, [
+      [7],
+    ]);
+  });
+
   test('anything wrong is no notices', () async {
     final answers = <String, FutureOr<http.Response> Function(http.Request)>{
       'not found': (_) => notices([
@@ -96,6 +114,26 @@ void main() {
     expect(envelopes, isEmpty);
   });
 
+  // The port promises never to throw; a TLS failure (HandshakeException)
+  // or a connection reset while the body streams (SocketException) is no
+  // ClientException.
+  test('any other failure, before or during the body, is no notices', () async {
+    final failing = [
+      MockClient.streaming((request, _) => throw const _Unreachable()),
+      MockClient.streaming(
+        (request, _) async => http.StreamedResponse(_cutShort(), 200),
+      ),
+    ];
+    for (final client in failing) {
+      final envelopes = await ModusServiceNotices(
+        origin: Uri.parse('https://modus.example'),
+        client: client,
+      ).fetch();
+
+      expect(envelopes, isEmpty);
+    }
+  });
+
   test('a slow server is no notices', () async {
     final envelopes = await ModusServiceNotices(
       origin: Uri.parse('https://modus.example'),
@@ -108,4 +146,15 @@ void main() {
 
     expect(envelopes, isEmpty);
   });
+}
+
+/// Not an `http.ClientException`, as `dart:io` throws them.
+final class _Unreachable implements Exception {
+  const _Unreachable();
+}
+
+/// The start of a body, then the connection is gone.
+Stream<List<int>> _cutShort() async* {
+  yield utf8.encode('{"notices":[');
+  throw const _Unreachable();
 }

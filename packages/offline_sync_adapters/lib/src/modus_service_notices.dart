@@ -40,11 +40,10 @@ final class ModusServiceNotices implements ServiceNoticeSource {
         return [for (final n in notices.cast<String>()) base64.decode(n)];
       }
       return const [];
-    } on http.ClientException {
-      return const [];
-    } on TimeoutException {
-      return const [];
-    } on FormatException {
+    } on Exception {
+      // ClientException, TimeoutException, FormatException, and what
+      // `dart:io` lets through: a HandshakeException before the response,
+      // a SocketException while the body streams.
       return const [];
     }
   }
