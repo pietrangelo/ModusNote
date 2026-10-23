@@ -1,5 +1,6 @@
 //! Signed requests: what a device signs to call the server (`SignedRequest`
-//! in Dart) and the `MN1` Authorization header (`RequestCredential`).
+//! in Dart) and the `MN1` Authorization header (`RequestCredential`), or the
+//! same credential as the live channel's WebSocket subprotocol token.
 //!
 //! Signed: `modusnote.request.v1 | method length | method | path length |
 //! path | millis | nonce | BLAKE2b-256 of the body`.
@@ -8,6 +9,9 @@ use super::values::{KEY_LENGTH, MemberKey, SIGNATURE_LENGTH, Signature};
 
 const LABEL: &[u8] = b"modusnote.request.v1";
 const SCHEME: &str = "MN1 ";
+/// A browser cannot set `Authorization` on a WebSocket, and a subprotocol
+/// token has no spaces: the live channel carries `mn1.` and the same parts.
+const TOKEN: &str = "mn1.";
 pub const NONCE_LENGTH: usize = 16;
 pub const MAX_PATH_LENGTH: usize = 2048;
 const MAX_MILLIS: u64 = (1 << 53) - 1;
@@ -62,7 +66,16 @@ pub struct Credential {
 impl Credential {
     /// None for anything that is not exactly such a header.
     pub fn parse(header: &str) -> Option<Self> {
-        let rest = header.strip_prefix(SCHEME)?;
+        Self::parse_parts(header.strip_prefix(SCHEME)?)
+    }
+
+    /// `mn1.key.millis.nonce.signature`, the live channel's subprotocol
+    /// token; None for anything else.
+    pub fn parse_token(token: &str) -> Option<Self> {
+        Self::parse_parts(token.strip_prefix(TOKEN)?)
+    }
+
+    fn parse_parts(rest: &str) -> Option<Self> {
         let mut parts = rest.split('.');
         let (key, millis, nonce, signature) = (parts.next()?, parts.next()?, parts.next()?, parts.next()?);
         if parts.next().is_some() {
@@ -138,6 +151,29 @@ mod tests {
         for text in ["", "01", "-1", "+1", "1e3", "9007199254740992", "12345678901234567"] {
             assert_eq!(parse_millis(text), None, "{text}");
         }
+    }
+
+    #[test]
+    fn the_subprotocol_token_is_the_header_with_a_dot_for_the_space() {
+        let key = format!("{}A", "_".repeat(42));
+        let nonce = "A".repeat(22);
+        let signature = format!("{}A", "B".repeat(85));
+        let parts = format!("{key}.1792700000000.{nonce}.{signature}");
+        let header = Credential::parse(&format!("MN1 {parts}")).unwrap();
+
+        assert_eq!(Credential::parse_token(&format!("mn1.{parts}")), Some(header));
+        for token in [
+            format!("MN1 {parts}"),
+            format!("MN1.{parts}"),
+            format!("mn1 {parts}"),
+            format!("mn1.{parts}.x"),
+            format!("mn1.{key}.01.{nonce}.{signature}"),
+            format!("mn1.{key}.1.{nonce}={signature}"),
+            parts.clone(),
+        ] {
+            assert_eq!(Credential::parse_token(&token), None, "{token}");
+        }
+        assert_eq!(Credential::parse(&format!("mn1.{parts}")), None, "a header keeps its scheme");
     }
 
     #[test]
