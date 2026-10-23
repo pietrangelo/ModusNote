@@ -102,16 +102,18 @@ final class _Session {
       header = await _signer.authorize('GET', _url.path, Uint8List(0));
     } on VaultLockedException {
       return _end();
+    } catch (_) {
+      return _unavailable();
     }
     if (_over) return;
     final WebSocket socket;
     try {
       socket = await _connect('mn1.${header.substring('MN1 '.length)}');
-    } on Exception {
-      if (_over) return;
-      _over = true;
-      _out.addError(const ServerUnavailableException());
-      return _close();
+    } catch (_) {
+      // Not only exceptions: a browser that will not create the socket
+      // (a policy that blocks the URL) throws a DOMException, which is
+      // none under dart2js or dart2wasm.
+      return _unavailable();
     }
     if (_over) return _closeSocket(socket, 1000);
     _socket = socket;
@@ -221,6 +223,15 @@ final class _Session {
 
   void _end() {
     _over = true;
+    _close();
+  }
+
+  /// Ends a channel that never opened: whatever went wrong, for the app the
+  /// server is out of reach.
+  void _unavailable() {
+    if (_over) return;
+    _over = true;
+    _out.addError(const ServerUnavailableException());
     _close();
   }
 

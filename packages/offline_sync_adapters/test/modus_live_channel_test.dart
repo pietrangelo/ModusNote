@@ -21,6 +21,11 @@ final class _Clock implements Clock {
   DateTime now() => DateTime.now().toUtc();
 }
 
+final class _BrokenClock implements Clock {
+  @override
+  DateTime now() => throw StateError('no clock');
+}
+
 void main() {
   late SodiumSumo sodium;
   late IdentityKeyPair device;
@@ -168,6 +173,43 @@ void main() {
       );
     });
 
+    test('a connection that fails with an error that is no exception is '
+        'the server being unavailable', () async {
+      // As a browser's SecurityError when the page's policy blocks the URL.
+      final origin = Uri.parse('http://127.0.0.1:70000');
+
+      await expectLater(
+        open(origin: origin),
+        emitsInOrder([
+          emitsError(isA<ServerUnavailableException>()),
+          emitsDone,
+        ]),
+      );
+    });
+
+    test('a credential that cannot be signed ends the stream as the server '
+        'being unavailable', () async {
+      final broken = ModusLiveChannel(origin: server.origin).open(
+        workspace,
+        RequestSigner(
+          identities: SodiumIdentityService(sodium),
+          hasher: SodiumContentHasher(sodium),
+          device: device,
+          clock: _BrokenClock(),
+          random: Random.secure(),
+        ),
+      );
+
+      await expectLater(
+        broken,
+        emitsInOrder([
+          emitsError(isA<ServerUnavailableException>()),
+          emitsDone,
+        ]),
+      );
+      expect(server.handshakes, isEmpty);
+    });
+
     test('a locked vault ends the stream without connecting', () async {
       device.dispose();
 
@@ -220,6 +262,8 @@ void main() {
     test('anything else from the server closes the channel', () async {
       for (final message in <Object>[
         'x' * 257,
+        // Heads in every other way, too long only for their blanks.
+        '{"rows":1,${' ' * 260}"bundles":1,"membership":1}',
         '{"rows":1,"bundles":1,"membership":1,"padding":"${'x' * 220}"}',
         'not json',
         '[1,2,3]',

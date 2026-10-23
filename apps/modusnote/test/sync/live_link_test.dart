@@ -70,16 +70,11 @@ Future<void> wait(int milliseconds) =>
 void main() {
   late FakeLiveChannel channel;
   late int syncs;
-  DateTime? lastSynced;
 
   LiveLink link({Random random = const _Fixed(0)}) {
     final link = LiveLink(
       connect: channel.connect,
-      sync: () async {
-        syncs++;
-        lastSynced = DateTime.now();
-      },
-      lastSynced: () => lastSynced,
+      sync: () async => syncs++,
       timings: timings,
       random: random,
     );
@@ -90,7 +85,6 @@ void main() {
   setUp(() {
     channel = FakeLiveChannel();
     syncs = 0;
-    lastSynced = DateTime.now();
   });
 
   test('opens only once started, and says when it is open', () async {
@@ -112,38 +106,40 @@ void main() {
       'of the window', () async {
     link().start();
     channel.open();
-    await wait(5);
+    await wait(100);
+    expect(syncs, 1, reason: 'the opening');
 
     channel.changed();
     await wait(5);
-    expect(syncs, 1);
+    expect(syncs, 2);
 
     for (var i = 0; i < 10; i++) {
       channel.changed();
     }
     await wait(20);
-    expect(syncs, 1, reason: 'the window is not over');
+    expect(syncs, 2, reason: 'the window is not over');
 
     await wait(100);
-    expect(syncs, 2);
+    expect(syncs, 3);
 
     await wait(100);
-    expect(syncs, 2, reason: 'nothing came meanwhile');
+    expect(syncs, 3, reason: 'nothing came meanwhile');
   });
 
-  test('on opening it syncs only when the last sync is not recent', () async {
+  test('every opening syncs, however recent the last sync', () async {
+    // A change can land after the vault's last read of the server and
+    // before the server took the channel: nothing would say it.
     link().start();
     channel.open();
     await wait(5);
-    expect(syncs, 0, reason: 'the vault just synced');
+    expect(syncs, 1);
 
-    lastSynced = DateTime.now().subtract(const Duration(seconds: 1));
     await channel.close();
     await wait(40);
     expect(channel.connections, hasLength(2));
     channel.open();
     await wait(5);
-    expect(syncs, 1, reason: 'what came while it was closed');
+    expect(syncs, 2, reason: 'what came while it was closed');
   });
 
   test('a dropped channel comes back after a short random wait, then '
@@ -190,56 +186,120 @@ void main() {
       'closed', () async {
     for (final code in [LiveClosed.removed, LiveClosed.deleted]) {
       channel = FakeLiveChannel();
-      syncs = 0;
-      lastSynced = DateTime.now();
-      link().start();
+      final live = link()..start();
       channel.open();
       await wait(5);
+      syncs = 0;
 
       await channel.close(code);
       await wait(100);
 
       expect(syncs, 1, reason: 'the log tells the device in a signed record');
       expect(channel.connections, hasLength(1));
+      live
+        ..pause()
+        ..resume();
+      expect(channel.connections, hasLength(1), reason: 'not even on return');
     }
   });
 
   test('another tab that took its place keeps it closed', () async {
-    link().start();
+    final live = link()..start();
     channel.open();
+    await wait(5);
+    syncs = 0;
     await channel.close(LiveClosed.evicted);
     await wait(100);
 
     expect(syncs, 0);
     expect(channel.connections, hasLength(1));
+    live
+      ..pause()
+      ..resume();
+    expect(channel.connections, hasLength(1), reason: 'not even on return');
   });
 
-  test('three handshakes in a row that never open give up until the '
-      'next unlock', () async {
-    final live = link();
-    live.start();
-    await channel.refuse();
-    await wait(40);
-    await channel.refuse();
-    await wait(100);
+  test('three handshakes in a row refused while the server is reachable '
+      'give up, until the app returns from the background', () async {
+    final live = link()
+      ..reached()
+      ..start();
+    for (var i = 0; i < LiveLink.maxUnopened; i++) {
+      live.reached();
+      await channel.refuse();
+      await wait(100);
+    }
     expect(channel.connections, hasLength(3));
-    await channel.refuse();
+    live.reached();
     await wait(200);
+    expect(channel.connections, hasLength(3), reason: 'it gave up');
 
-    expect(channel.connections, hasLength(3));
-    live.resume();
-    expect(channel.connections, hasLength(3), reason: 'not even on resume');
+    live
+      ..pause()
+      ..resume();
+    expect(channel.connections, hasLength(4), reason: 'it tries again');
+  });
+
+  test('handshakes that fail while the server cannot be reached do not '
+      'count', () async {
+    // A tunnel, a lift: the network is down, nothing refused the channel.
+    final live = link()
+      ..reached()
+      ..start();
+    for (var i = 0; i < 5; i++) {
+      await channel.refuse();
+      await wait(80);
+    }
+    expect(channel.connections, hasLength(6));
+
+    live.reached();
+    channel.open();
+    await wait(5);
+    expect(live.isOpen, isTrue);
+  });
+
+  test('a sync that reaches the server brings a waiting channel back at '
+      'once', () async {
+    final live = link(random: const _Fixed(1))..start();
+    await channel.refuse();
+    await wait(5);
+    expect(channel.connections, hasLength(1), reason: 'waits 30 ms');
+
+    live.reached();
+
+    expect(channel.connections, hasLength(2));
+  });
+
+  test('opens that fail right after the return from the background do not '
+      'add up', () async {
+    // The radio may not be up yet when the app comes back.
+    final live = link()
+      ..reached()
+      ..start();
+    for (var i = 0; i < LiveLink.maxUnopened + 1; i++) {
+      live
+        ..pause()
+        ..resume();
+      await channel.refuse();
+    }
+    await wait(40);
+
+    expect(channel.connections, hasLength(LiveLink.maxUnopened + 3));
   });
 
   test('an opened channel counts the failures from scratch', () async {
-    link(random: const _Fixed(1)).start();
+    final live = link(random: const _Fixed(1))
+      ..reached()
+      ..start();
     await channel.refuse();
     await wait(40);
+    live.reached();
     await channel.refuse();
     await wait(100);
     channel.open();
     await channel.close();
     await wait(130);
+    live.reached();
     await channel.refuse();
     await wait(130);
 
@@ -291,8 +351,11 @@ void main() {
     expect(channel.cancelled, 1);
     await wait(150);
     expect(syncs, 1, reason: 'the pending sync is dropped');
-    live.resume();
-    live.start();
+    live
+      ..pause()
+      ..resume()
+      ..reached()
+      ..start();
     expect(channel.connections, hasLength(1));
   });
 }

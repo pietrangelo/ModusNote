@@ -140,10 +140,25 @@ void main() {
       emitsInOrder([const LiveOpened(), const LiveClosed(), emitsDone]),
     );
     await server('accept');
-    await server({'send': 'x' * 257});
+    // Heads in every other way, too long only for their blanks.
+    await server({'send': '{"rows":1,${' ' * 260}"bundles":1,"membership":1}'});
 
     await expectation;
     expect(await server('closed'), ModusLiveChannel.brokenProtocol);
+  });
+
+  test('a socket the browser will not even create is the server being '
+      'unavailable', () async {
+    // The browser throws a DOMException, no Dart exception, as it does
+    // when the page's policy blocks the URL.
+    final blocked = ModusLiveChannel(
+      origin: Uri.parse('http://127.0.0.1:70000'),
+    ).open(workspace, signer);
+
+    await expectLater(
+      blocked,
+      emitsInOrder([emitsError(isA<ServerUnavailableException>()), emitsDone]),
+    );
   });
 
   test('cancelling closes the socket normally', () async {
