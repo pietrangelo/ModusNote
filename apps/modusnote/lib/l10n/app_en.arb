@@ -2485,8 +2485,8 @@
       }
     }
   },
-  "membersLedgerBody": "All your devices should show the same line. A different one means the server is holding changes back from one of them.",
+  "membersLedgerBody": "Sync your devices, then compare: they should all show the same line. If one still differs, the server may be holding records back from that device.",
   "@membersLedgerBody": {
-    "description": "Members sheet: what the member log line is for."
+    "description": "Members sheet: what the member log line is for. Lines differ too while a device has not synced, so the warning holds only after both have."
   }
 }

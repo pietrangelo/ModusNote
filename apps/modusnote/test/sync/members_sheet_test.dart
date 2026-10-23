@@ -125,8 +125,13 @@ void main() {
       findsOneWidget,
     );
     expect(
-      find.textContaining('Tutti i tuoi dispositivi dovrebbero mostrare'),
+      find.text(
+        'Sincronizza i tuoi dispositivi, poi confronta: devono mostrare tutti '
+        'la stessa riga. Se una resta diversa, il server potrebbe nascondere '
+        'dei record a quel dispositivo.',
+      ),
       findsOneWidget,
+      reason: 'a device that has not synced yet shows another line too',
     );
   });
 

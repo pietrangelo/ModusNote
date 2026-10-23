@@ -559,5 +559,5 @@
   "cloudNoticesSecurity": "{count, plural, =1{1 avviso di sicurezza} other{{count} avvisi di sicurezza}}",
   "cloudNotices": "{count, plural, =1{1 avviso} other{{count} avvisi}}",
   "membersLedger": "Registro dei membri: {records, plural, =1{1 record} other{{records} record}} · {signature}",
-  "membersLedgerBody": "Tutti i tuoi dispositivi dovrebbero mostrare la stessa riga. Una diversa vuol dire che il server sta trattenendo dei cambiamenti a uno di loro."
+  "membersLedgerBody": "Sincronizza i tuoi dispositivi, poi confronta: devono mostrare tutti la stessa riga. Se una resta diversa, il server potrebbe nascondere dei record a quel dispositivo."
 }

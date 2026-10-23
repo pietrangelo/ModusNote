@@ -13,8 +13,9 @@ import 'sync_controller.dart';
 import '../theme/modus_palette.dart';
 
 /// The library's sync button: its icon tells the sync state, a badge how
-/// many notices are unread (in the error colour when one is about the
-/// vault's security), and a tap opens [CloudSheet].
+/// many notices are unread (with a shield, in the error colour, when one
+/// is about the vault's security), and a tap opens [CloudSheet]. A screen
+/// reader hears it once, with the state, the count and the kind.
 class CloudButton extends StatelessWidget {
   const CloudButton({
     required this.sync,
@@ -46,38 +47,68 @@ class CloudButton extends StatelessWidget {
         final security = notices?.unreadSecurity ?? 0;
         final service = notices?.unreadService ?? 0;
         final scheme = Theme.of(context).colorScheme;
-        return Badge(
-          isLabelVisible: security + service > 0,
-          backgroundColor: security > 0 ? scheme.error : null,
-          textColor: security > 0 ? scheme.onError : null,
-          label: Text('${security + service}'),
-          child: IconButton(
-            key: const ValueKey('cloud'),
-            tooltip: [
-              l10n.cloudTooltip(sync.state.name),
-              if (security > 0) l10n.cloudNoticesSecurity(security),
-              if (service > 0) l10n.cloudNotices(service),
-            ].join(' · '),
-            onPressed: () => CloudSheet.show(
-              context,
-              sync,
-              notices: notices,
-              onLinkDevice: onLinkDevice,
-              onInvite: onInvite,
+        final description = [
+          l10n.cloudTooltip(sync.state.name),
+          ..._unread(l10n, security: security, service: service),
+        ].join(' · ');
+        void open() => CloudSheet.show(
+          context,
+          sync,
+          notices: notices,
+          onLinkDevice: onLinkDevice,
+          onInvite: onInvite,
+        );
+        return Semantics(
+          button: true,
+          label: description,
+          onTap: open,
+          excludeSemantics: true,
+          child: Badge(
+            isLabelVisible: security + service > 0,
+            backgroundColor: security > 0 ? scheme.error : null,
+            textColor: security > 0 ? scheme.onError : null,
+            label: security > 0
+                ? Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.shield_outlined,
+                        size: IconSizes.badge,
+                        color: scheme.onError,
+                      ),
+                      Text('${security + service}'),
+                    ],
+                  )
+                : Text('${security + service}'),
+            child: IconButton(
+              key: const ValueKey('cloud'),
+              tooltip: description,
+              onPressed: open,
+              icon: Icon(switch (sync.state) {
+                SyncState.off => Icons.cloud_off_outlined,
+                SyncState.syncing => Icons.cloud_sync_outlined,
+                SyncState.synced => Icons.cloud_done_outlined,
+                SyncState.offline => Icons.cloud_off,
+                SyncState.failed => Icons.error_outline,
+              }),
             ),
-            icon: Icon(switch (sync.state) {
-              SyncState.off => Icons.cloud_off_outlined,
-              SyncState.syncing => Icons.cloud_sync_outlined,
-              SyncState.synced => Icons.cloud_done_outlined,
-              SyncState.offline => Icons.cloud_off,
-              SyncState.failed => Icons.error_outline,
-            }),
           ),
         );
       },
     );
   }
 }
+
+/// What the count on a notices badge counts, for the tooltip and for a
+/// screen reader: the security notices first.
+List<String> _unread(
+  AppLocalizations l10n, {
+  required int security,
+  required int service,
+}) => [
+  if (security > 0) l10n.cloudNoticesSecurity(security),
+  if (service > 0) l10n.cloudNotices(service),
+];
 
 /// Turns the sync on, then shows how it is doing and, for an owner, links
 /// another device, invites a person or deletes the vault from the server.
@@ -275,10 +306,20 @@ class _CloudSheetState extends State<CloudSheet> {
           ),
           icon: Badge(
             isLabelVisible: notices.unread > 0,
-            label: Text('${notices.unread}'),
+            label: ExcludeSemantics(child: Text('${notices.unread}')),
             child: const Icon(Icons.notifications_none_outlined),
           ),
-          label: Text(l10n.noticesAction),
+          label: Text(
+            l10n.noticesAction,
+            semanticsLabel: [
+              l10n.noticesAction,
+              ..._unread(
+                l10n,
+                security: notices.unreadSecurity,
+                service: notices.unreadService,
+              ),
+            ].join(' · '),
+          ),
         ),
       ],
       if (sync.managesMembers) ...[
