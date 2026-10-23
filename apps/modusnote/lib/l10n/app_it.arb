@@ -112,6 +112,8 @@
   "biometricCancelled": "Richiesta dell'impronta annullata.",
   "biometricRejected": "Le impronte del telefono sono cambiate e non aprono più il vault. Usa la passphrase e riattiva lo sblocco con l'impronta.",
   "biometricUnsupported": "Su questo telefono non c'è un'impronta o un volto per lo sblocco.",
+  "biometricPromptTitle": "Apri Modus Notes",
+  "biometricPromptSubtitle": "Conferma con l'impronta o il volto",
   "dialogClose": "Chiudi",
   "recordingInProgress": "Registrazione",
   "recordingLimit": "Si ferma da sola a {length}",
