@@ -129,6 +129,23 @@ void main() {
     expect(encFiles(files), ['${blob.value}.enc']);
   });
 
+  testWidgets('a take stops by itself at its longest and is kept', (
+    tester,
+  ) async {
+    await openStore();
+    await startEditing(tester);
+
+    await tapRecord(tester);
+    expect(find.text('Si ferma da sola a 29:00'), findsOneWidget);
+    await tester.pump(const Duration(minutes: 28, seconds: 59));
+    expect(find.text('Registrazione'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Registrazione'), findsNothing);
+    expect(find.text('Registrazione allegata · 0:42'), findsOneWidget);
+  });
+
   testWidgets('a discarded take leaves the field empty and no blob', (
     tester,
   ) async {

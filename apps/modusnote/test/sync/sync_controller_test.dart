@@ -322,10 +322,11 @@ void main() {
       await sync.syncNow();
 
       expect(sync.state, SyncState.failed);
-      expect(sync.problem, SyncProblem.refused);
+      expect(sync.problem, SyncProblem.blobRefused);
     });
 
-    test('a blob over the size limit is reported as no space', () async {
+    test('a blob over the size limit is reported as that blob, not as the '
+        'vault out of space', () async {
       final (sync, _) = await withUploads(
         (_) => Future.error(const RemoteBlobRejectedException(413)),
       );
@@ -333,7 +334,7 @@ void main() {
       await sync.syncNow();
 
       expect(sync.state, SyncState.failed);
-      expect(sync.problem, SyncProblem.full);
+      expect(sync.problem, SyncProblem.blobRefused);
     });
   });
 

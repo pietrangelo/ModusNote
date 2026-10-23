@@ -424,6 +424,11 @@
   "@recordingInProgress": {
     "description": "Title of the sheet shown while the microphone records."
   },
+  "recordingLimit": "Stops by itself at {length}",
+  "@recordingLimit": {
+    "description": "Recording sheet: the longest take, after which recording stops and the take is kept.",
+    "placeholders": {"length": {"type": "String"}}
+  },
   "recordingEncrypted": "Encrypted while it is recorded. Nothing is stored in clear.",
   "@recordingEncrypted": {
     "description": "Reassurance under the recording timer."
@@ -565,6 +570,10 @@
   "cloudStateRefused": "The server refused the sync. Try again later.",
   "@cloudStateRefused": {
     "description": "Sync sheet: the server rejected a request."
+  },
+  "cloudStateBlobRefused": "Your notes are synced, but the server did not accept a recording or a picture: it is too large, or this vault's space for files is full. The others went up.",
+  "@cloudStateBlobRefused": {
+    "description": "Sync sheet: the notes synced but the server refused one recording or picture."
   },
   "cloudStateFull": "This vault has reached its space on the server. Delete forever the notes you no longer need (moving them to the trash frees nothing, emptying it does), then sync again.",
   "@cloudStateFull": {

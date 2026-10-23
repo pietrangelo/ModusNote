@@ -22,7 +22,7 @@ fi
 
 cd "$root/server/worker"
 WRANGLER_SEND_METRICS=false "$root/tool/deploy/node_modules/.bin/wrangler" dev \
-  --var OBJECT_PLACEMENT:local --ip 127.0.0.1 --port "$port" \
+  --var OBJECT_PLACEMENT:local --var DAILY_UPLOAD_BYTES:1000000 --ip 127.0.0.1 --port "$port" \
   --persist-to "$state/data" --show-interactive-dev-session=false > "$log" 2>&1 &
 wrangler=$!
 trap 'kill $wrangler 2>/dev/null || true; rm -rf "$state"' EXIT
