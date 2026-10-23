@@ -42,6 +42,10 @@ void main() {
       gateway: server,
     ).create(secret('frase del telefono'));
     addTearDown(phone.lock);
+    await keeperOn(
+      phoneDb,
+      gateway: server,
+    ).confirm(phone, secret('frase del telefono'));
     await phone.engine.sync();
     final code = InviteCode.tryParse('K7MQ4X-T9ABC-D2EFG')!;
     final offering = await keeperOn(phoneDb, gateway: server).offerInvite(

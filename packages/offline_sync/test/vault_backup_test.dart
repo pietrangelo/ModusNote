@@ -44,6 +44,7 @@ void main() {
   ) async {
     final vault = await keeper.create(secret('correct horse'));
     addTearDown(vault.lock);
+    await keeper.confirm(vault, secret('correct horse'));
     for (final MapEntry(:key, :value) in records.entries) {
       await vault.engine.write(key, RevisionContents(bytes(value)));
     }
@@ -158,6 +159,7 @@ void main() {
     test('a locked vault neither exports nor restores', () async {
       final other = keeper(FakeVaultStore());
       final vault = await other.create(secret('correct horse'));
+      await other.confirm(vault, secret('correct horse'));
       final backup = await other.openBackup(file, secret('backup phrase'));
       vault.lock();
 

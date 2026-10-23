@@ -30,6 +30,10 @@ void main() {
       gateway: server,
     ).create(secret('frase del telefono'.codeUnits));
     addTearDown(owner.lock);
+    await keeperOn(
+      ownerDb,
+      gateway: server,
+    ).confirm(owner, secret('frase del telefono'.codeUnits));
     await owner.engine.sync();
   });
 

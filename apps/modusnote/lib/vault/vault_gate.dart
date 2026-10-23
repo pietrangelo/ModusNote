@@ -31,9 +31,11 @@ import '../sync/link_device_sheet.dart';
 import '../sync/sync_controller.dart';
 import '../theme/golden_ratio.dart';
 import 'auto_lock.dart';
+import 'confirm_holder.dart';
 import 'join_vault.dart';
 import 'passphrase_field.dart';
 import 'passphrase_warning.dart';
+import 'second_factor.dart';
 import 'unreadable_notice.dart';
 import 'vault_note_store.dart';
 import 'vault_shelf_gate.dart';
@@ -59,6 +61,7 @@ class VaultGate extends StatefulWidget {
     this.files,
     this.remindersFor,
     this.switcher,
+    this.secondFactor = SecondFactor.passkey,
     super.key,
   });
 
@@ -110,6 +113,9 @@ class VaultGate extends StatefulWidget {
   /// The vault's name on the lock screen, to switch to another vault of
   /// the device; see [VaultShelfGate].
   final ShelfSwitcher? switcher;
+
+  /// What the keeper's passkey port is on this platform, for its words.
+  final SecondFactor secondFactor;
 
   @override
   State<VaultGate> createState() => _VaultGateState();
@@ -409,6 +415,8 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
   /// an owner.
   Future<void> _linkDevice() async {
     if (_stage case _Open(:final vault, :final sync)) {
+      if (!await _confirmed()) return;
+      if (!mounted) return;
       await LinkDeviceSheet.show(
         context,
         offer: (code) => widget.keeper.offerInvite(
@@ -426,6 +434,8 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
   /// their device.
   Future<void> _invite() async {
     if (_stage case _Open(:final vault, :final sync)) {
+      if (!await _confirmed()) return;
+      if (!mounted) return;
       await InviteSheet.show(
         context,
         offer: (code, role) => widget.keeper.offerInvite(
@@ -659,6 +669,8 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
     final files = widget.files;
     if (files == null) return;
     if (_stage case _Open(:final vault, :final store)) {
+      if (!await _confirmed()) return;
+      if (!mounted) return;
       final keeper = widget.keeper;
       final l10n = AppLocalizations.of(context);
       final dates = MaterialLocalizations.of(context);
@@ -694,6 +706,7 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
   /// Sets up or turns off the passkey of the open vault.
   Future<void> _passkeySettings() async {
     final keeper = widget.keeper;
+    final factor = widget.secondFactor;
     final active = await keeper.hasPasskey;
     if (!mounted) return;
     final l10n = AppLocalizations.of(context);
@@ -701,8 +714,10 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
       context: context,
       builder: (context) => AlertDialog(
         icon: const Icon(Icons.fingerprint),
-        title: Text(l10n.passkeySettings),
-        content: Text(active ? l10n.passkeyActiveBody : l10n.passkeySetupBody),
+        title: Text(factor.settings(l10n)),
+        content: Text(
+          active ? factor.activeBody(l10n) : factor.setupBody(l10n),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
@@ -711,7 +726,7 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
           FilledButton(
             onPressed: () => Navigator.of(context).pop(true),
             child: Text(
-              active ? l10n.passkeyRemoveAction : l10n.passkeySetupAction,
+              active ? l10n.passkeyRemoveAction : factor.setupAction(l10n),
             ),
           ),
         ],
@@ -722,8 +737,9 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
     try {
       if (active) {
         await keeper.removePasskey();
-        outcome = l10n.passkeyRemoved;
+        outcome = factor.removed(l10n);
       } else {
+        if (!await _confirmed()) return;
         final (vault, autoLock) = switch (_stage) {
           _Open(:final vault, :final autoLock) => (vault, autoLock),
           _ => throw const VaultLockedException(),
@@ -736,12 +752,15 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
         } finally {
           release();
         }
-        outcome = l10n.passkeyReady;
+        outcome = factor.ready(l10n);
       }
     } on PasskeyCancelledException {
-      outcome = l10n.passkeyCancelled;
+      outcome = factor.cancelled(l10n);
     } on PasskeyUnsupportedException {
-      outcome = l10n.passkeyUnsupported;
+      outcome = factor.unsupported(l10n);
+    } on ConfirmationRequiredException {
+      // The confirmation ran out while the person read the dialog.
+      return;
     } on VaultLockedException {
       // Locked while the user was at the authenticator: nothing was saved.
       return;
@@ -750,6 +769,22 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(SnackBar(content: Text(outcome)));
+  }
+
+  /// Asks for the passphrase again (or the passkey), unless an earlier
+  /// confirmation still lasts.
+  Future<bool> _confirmed() async {
+    if (_stage case _Open(:final vault, :final autoLock)) {
+      return confirmHolder(
+        context,
+        keeper: widget.keeper,
+        vault: vault,
+        passwordFrom: widget.passwordFrom,
+        factor: widget.secondFactor,
+        hold: autoLock.hold,
+      );
+    }
+    return false;
   }
 
   /// Closes every screen opened over the notes first, so no decrypted
@@ -835,6 +870,9 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
           onLock: _lock,
           onBackup: widget.files == null ? null : _backup,
           onPasskey: widget.keeper.offersPasskeys ? _passkeySettings : null,
+          passkeyLabel: widget.secondFactor.settings(
+            AppLocalizations.of(context),
+          ),
           journalSettings: journal == null
               ? null
               : () => JournalSettingsSheet.show(context, journal),
@@ -868,9 +906,9 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
       _Problem.mismatch => l10n.passphraseMismatch,
       _Problem.wrong => l10n.passphraseWrong,
       _Problem.damaged => l10n.vaultDamaged,
-      _Problem.passkeyCancelled => l10n.passkeyCancelled,
-      _Problem.passkeyRejected => l10n.passkeyRejected,
-      _Problem.passkeyUnsupported => l10n.passkeyUnsupported,
+      _Problem.passkeyCancelled => widget.secondFactor.cancelled(l10n),
+      _Problem.passkeyRejected => widget.secondFactor.rejected(l10n),
+      _Problem.passkeyUnsupported => widget.secondFactor.unsupported(l10n),
       _Problem.unexpected => l10n.vaultOpenFailed,
     };
     final submit = _busy || (creating && !_acknowledged)
@@ -988,7 +1026,7 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
                       OutlinedButton.icon(
                         onPressed: _busy ? null : _unlockWithPasskey,
                         icon: const Icon(Icons.fingerprint),
-                        label: Text(l10n.passkeyUnlockAction),
+                        label: Text(widget.secondFactor.unlockAction(l10n)),
                       ),
                     ],
                     if (_busy) ...[

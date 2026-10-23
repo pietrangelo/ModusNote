@@ -43,6 +43,7 @@ class NoteLibraryScreen extends StatefulWidget {
     this.notice,
     this.onLock,
     this.onPasskey,
+    this.passkeyLabel,
     this.onBackup,
     this.journalSettings,
     this.noteTypes,
@@ -66,6 +67,10 @@ class NoteLibraryScreen extends StatefulWidget {
 
   /// Opens the passkey settings; null where passkeys are not offered.
   final VoidCallback? onPasskey;
+
+  /// The name of [onPasskey]'s settings where the passkey is called
+  /// otherwise, such as the fingerprint on Android.
+  final String? passkeyLabel;
 
   /// Opens the backup and export sheet; null where files cannot be
   /// saved and picked.
@@ -660,7 +665,7 @@ class _NoteLibraryScreenState extends State<NoteLibraryScreen> {
     if (widget.onPasskey case final onPasskey?)
       IconButton(
         onPressed: onPasskey,
-        tooltip: l10n.passkeySettings,
+        tooltip: widget.passkeyLabel ?? l10n.passkeySettings,
         icon: const Icon(Icons.fingerprint),
       ),
     if (widget.onLock case final onLock?)

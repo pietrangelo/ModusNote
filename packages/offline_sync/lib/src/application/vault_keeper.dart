@@ -44,6 +44,10 @@ final class UnlockedVault {
   final RequestSigner signer;
   var _locked = false;
 
+  /// When the person last proved, at this device, that they hold the
+  /// vault: see [VaultKeeper.confirm].
+  DateTime? _confirmedAt;
+
   bool get isLocked => _locked;
 
   SyncEngine get engine =>
@@ -52,6 +56,7 @@ final class UnlockedVault {
   void lock() {
     if (_locked) return;
     _locked = true;
+    _confirmedAt = null;
     _identity.dispose();
     _localKey.dispose();
     _keyring.dispose();
@@ -226,9 +231,32 @@ final class VaultKeeper {
   /// [PasskeyRejectedException], the port's [PasskeyCancelledException] or
   /// [PasskeyUnsupportedException], or [TamperedWorkspaceDataException].
   Future<UnlockedVault> unlockWithPasskey() async {
-    final passkeys = _passkeys ?? (throw const PasskeyUnsupportedException());
     final header =
         await _vaults.loadHeader() ?? (throw const NoVaultException());
+    final (identity, slot) = await _passkeyIdentity(header);
+    final SymmetricKey localKey;
+    try {
+      localKey = _encapsulation.open(
+        slot.sealedLocalKey,
+        recipient: identity,
+        associatedData: slot.localKeySlot(header),
+      );
+    } on AuthenticationTagMismatchException {
+      identity.dispose();
+      throw const PasskeyRejectedException();
+    } catch (_) {
+      identity.dispose();
+      rethrow;
+    }
+    return _verified(header, identity, localKey);
+  }
+
+  /// Asks for the enrolled passkey and opens the identity it seals, which
+  /// must be the member the [header] pins.
+  Future<(IdentityKeyPair, PasskeySlot)> _passkeyIdentity(
+    VaultHeader header,
+  ) async {
+    final passkeys = _passkeys ?? (throw const PasskeyUnsupportedException());
     final slot =
         await _vaults.loadPasskey() ?? (throw const NoPasskeyException());
     final prf = await passkeys.evaluate(slot.credential, salt: slot.salt);
@@ -255,33 +283,92 @@ final class VaultKeeper {
     } finally {
       passkeyKey.dispose();
     }
-    final SymmetricKey localKey;
-    try {
-      // The identity must also be the member the header pins, or a slot
-      // could smuggle in an identity of its own.
-      if (MemberId.of(identity.publicIdentity) != header.member) {
-        throw const PasskeyRejectedException();
-      }
-      localKey = _encapsulation.open(
-        slot.sealedLocalKey,
-        recipient: identity,
-        associatedData: slot.localKeySlot(header),
-      );
-    } on AuthenticationTagMismatchException {
+    // The identity must also be the member the header pins, or a slot
+    // could smuggle in an identity of its own.
+    if (MemberId.of(identity.publicIdentity) != header.member) {
       identity.dispose();
       throw const PasskeyRejectedException();
-    } catch (_) {
-      identity.dispose();
-      rethrow;
     }
-    return _verified(header, identity, localKey);
+    return (identity, slot);
+  }
+
+  /// How long a confirmation lets the actions that give lasting access
+  /// through: bringing a device or a person in, exporting a backup,
+  /// enrolling a passkey. As long as the idle auto-lock.
+  static const confirmationLifetime = Duration(minutes: 5);
+
+  /// The person proves again, on the open [vault], that they hold its
+  /// [password] (consumed): someone who only found the vault open, on an
+  /// unlocked phone or a tab left alone, cannot then give themselves a way
+  /// back in. Throws [WrongPassphraseException].
+  Future<void> confirm(UnlockedVault vault, PasswordSecret password) async {
+    final VaultHeader header;
+    final SymmetricKey master;
+    try {
+      if (vault.isLocked) throw const VaultLockedException();
+      header = await _vaults.loadHeader() ?? (throw const NoVaultException());
+      master = await _keys.deriveKey(
+        password: password,
+        salt: header.salt,
+        parameters: header.kdf,
+      );
+    } finally {
+      password.dispose();
+    }
+    final IdentityKeyPair identity;
+    try {
+      identity = _identities.openIdentity(
+        header.sealedIdentity,
+        key: master,
+        associatedData: header.identitySlot,
+      );
+    } on AuthenticationTagMismatchException {
+      throw const WrongPassphraseException();
+    } finally {
+      master.dispose();
+    }
+    _confirmed(vault, identity);
+  }
+
+  /// [confirm] with the enrolled passkey, which asks the person (a
+  /// fingerprint, a face, a PIN) at the authenticator. Throws as
+  /// [unlockWithPasskey] does.
+  Future<void> confirmWithPasskey(UnlockedVault vault) async {
+    if (vault.isLocked) throw const VaultLockedException();
+    final header =
+        await _vaults.loadHeader() ?? (throw const NoVaultException());
+    final (identity, _) = await _passkeyIdentity(header);
+    _confirmed(vault, identity);
+  }
+
+  void _confirmed(UnlockedVault vault, IdentityKeyPair identity) {
+    final member = MemberId.of(identity.publicIdentity);
+    identity.dispose();
+    // Another vault's header in this store would open its own identity.
+    if (member != vault.member) throw const WrongPassphraseException();
+    if (vault.isLocked) throw const VaultLockedException();
+    vault._confirmedAt = _clock.now();
+  }
+
+  /// Whether the open [vault] was confirmed within [confirmationLifetime].
+  /// A clock set back since counts as not confirmed.
+  bool isConfirmed(UnlockedVault vault) {
+    final at = vault._confirmedAt;
+    if (vault.isLocked || at == null) return false;
+    final now = _clock.now();
+    return !now.isBefore(at) && now.difference(at) < confirmationLifetime;
+  }
+
+  void _requireConfirmed(UnlockedVault vault) {
+    if (vault.isLocked) throw const VaultLockedException();
+    if (!isConfirmed(vault)) throw const ConfirmationRequiredException();
   }
 
   /// Registers a new passkey and seals the open [vault]'s identity and
   /// local key under it, replacing any passkey enrolled before.
   Future<void> enrollPasskey(UnlockedVault vault) async {
     final passkeys = _passkeys ?? (throw const PasskeyUnsupportedException());
-    if (vault.isLocked) throw const VaultLockedException();
+    _requireConfirmed(vault);
     final header =
         await _vaults.loadHeader() ?? (throw const NoVaultException());
     final previous = await _vaults.loadPasskey();
@@ -392,7 +479,7 @@ final class VaultKeeper {
     final salt = _keys.newSalt();
     final SymmetricKey key;
     try {
-      if (vault.isLocked) throw const VaultLockedException();
+      _requireConfirmed(vault);
       key = await _keys.deriveKey(
         password: passphrase,
         salt: salt,
@@ -597,7 +684,7 @@ final class VaultKeeper {
     final salt = _keys.newSalt();
     final SymmetricKey key;
     try {
-      if (vault.isLocked) throw const VaultLockedException();
+      _requireConfirmed(vault);
       key = await _keys.deriveKey(password: code, salt: salt, parameters: _kdf);
     } finally {
       code.dispose();
