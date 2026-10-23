@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:blob_storage_media/blob_storage_media.dart';
 import 'package:flutter/foundation.dart';
 import 'package:offline_sync/offline_sync.dart';
@@ -28,6 +30,7 @@ final class VaultNoteStore extends ChangeNotifier implements NoteStore {
     this.playback,
     this.images,
     this._clock,
+    this._copyTitle,
   );
 
   static Future<VaultNoteStore> open(
@@ -37,6 +40,7 @@ final class VaultNoteStore extends ChangeNotifier implements NoteStore {
     NotePlayback? playback,
     NoteImages? images,
     DateTime Function() clock = DateTime.now,
+    String Function(String title) copyTitle = _sameTitle,
   }) async {
     final store = VaultNoteStore._(
       engine,
@@ -45,6 +49,7 @@ final class VaultNoteStore extends ChangeNotifier implements NoteStore {
       playback,
       images,
       clock,
+      copyTitle,
     );
     await store._load();
     return store;
@@ -53,6 +58,9 @@ final class VaultNoteStore extends ChangeNotifier implements NoteStore {
   final SyncEngine _engine;
   final SchemaCatalog _catalog;
   final DateTime Function() _clock;
+
+  /// The title of a conflict copy, from the note's own (maybe empty).
+  final String Function(String title) _copyTitle;
   final _notes = <EntryId, RecordedNote>{};
   final _categories = <CategoryId, NoteCategory>{};
   CategoryTree? _tree;
@@ -168,6 +176,84 @@ final class VaultNoteStore extends ChangeNotifier implements NoteStore {
     });
     await _release(released);
   }
+
+  @override
+  Future<EntryId?> keepConflictCopy(EntryId id) async {
+    final note = _notes[id];
+    return note == null ? null : _keepCopy(note);
+  }
+
+  /// Keeps as notes of their own this device's edits that a concurrent
+  /// edit from another device replaced, before the notes are read again:
+  /// the copy references the same recordings and pictures, so none of
+  /// them is deleted meanwhile. Returns how many copies were kept;
+  /// categories and records this app cannot read keep none.
+  Future<int> keepLost(Iterable<LostEdit> lost) async {
+    var kept = 0;
+    for (final edit in lost) {
+      final note = _decode(edit.contents.bytes);
+      if (note == null || note.entry.id.value != edit.record.hex) continue;
+      if (note.isTrashed) continue;
+      await _keepCopy(note);
+      kept++;
+    }
+    return kept;
+  }
+
+  /// [note] under a new id, with a title that says it is a copy, filed
+  /// where it was and referencing the same blobs.
+  Future<EntryId> _keepCopy(RecordedNote note) async {
+    final id = newNoteId(Random.secure());
+    final schema = _catalog.schemaFor(note.entry.schemaId);
+    final primary = schema?.primaryTextField;
+    final attributes = {...note.entry.attributes};
+    if (primary != null && primary.type is! MarkdownFieldType) {
+      final title = switch (attributes[primary.key]) {
+        TextValue(:final text) => text,
+        _ => '',
+      };
+      attributes[primary.key] = TextValue(_copyTitle(title.trim()));
+    }
+    DynamicEntry copy(Map<FieldKey, FieldValue> values) =>
+        switch (schema == null
+        ? null
+        : DynamicEntry.create(
+            schema: schema,
+            id: id,
+            attributes: values,
+            at: _clock().toUtc(),
+          )) {
+          Valid(:final value) => value,
+          _ => throw StateError('a note that decoded cannot be copied'),
+        };
+    DynamicEntry entry;
+    try {
+      entry = copy(attributes);
+    } on StateError {
+      // A title too long for its field stays as it was.
+      entry = copy(note.entry.attributes);
+    }
+    await _put(
+      RecordedNote.compose(
+        entry,
+        known: note.recordings.values,
+        pictures: note.images.values,
+        category: note.category,
+      ),
+    );
+    return id;
+  }
+
+  /// A note's id: 128 random bits as 32 hex digits, the shape of the
+  /// record it is stored under.
+  static EntryId newNoteId(Random random) => EntryId(
+    List.generate(
+      16,
+      (_) => random.nextInt(256).toRadixString(16).padLeft(2, '0'),
+    ).join(),
+  );
+
+  static String _sameTitle(String title) => title;
 
   @override
   Future<void> discardTakes(Iterable<KeyedBlob> takes) =>

@@ -94,15 +94,15 @@ final class WebAuthnPasskeyPrf implements PasskeyPrf {
       created.rawId.toDart.asUint8List(),
     );
     final prf = _prfOutput(created);
-    if (prf.output case final output?) {
-      return RegisteredPasskey(credential: credential, key: _keyFrom(output));
-    }
+    // An output given at creation is not trusted to be the one unlocking
+    // will get: some passkey managers answer the PRF when a passkey is
+    // made and never again. The key is always the one an assertion gives,
+    // so a passkey that cannot unlock is never kept.
+    if (prf.output case final output?) _wipe(output);
     if (!prf.enabled) {
       await forget(credential);
       throw const PasskeyUnsupportedException();
     }
-    // Most authenticators evaluate the PRF only on an assertion: ask once
-    // more, for the passkey just made.
     try {
       return RegisteredPasskey(
         credential: credential,

@@ -295,6 +295,9 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
         recorder: widget.recorderFor?.call(vault.engine),
         playback: widget.playbackFor?.call(vault.engine, ensureLocal),
         images: widget.imagesFor?.call(vault.engine, ensureLocal),
+        copyTitle: (title) => title.isEmpty
+            ? l10n.conflictCopyUntitled
+            : l10n.conflictCopyTitle(title),
       );
       if (shared != null) {
         blobs = _blobSync(vault, store, shared);
@@ -448,6 +451,18 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
     final sync = SyncController(
       engine: vault.engine,
       onPulled: store.reload,
+      onLost: (lost) async {
+        final kept = await store.keepLost(lost);
+        if (kept > 0 && mounted) {
+          ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+            SnackBar(
+              content: Text(
+                AppLocalizations.of(context).conflictCopiesKept(kept),
+              ),
+            ),
+          );
+        }
+      },
       afterSync: blobs == null
           ? null
           : (report) => blobs.afterSync(moved: report.moved),
@@ -709,11 +724,18 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
         await keeper.removePasskey();
         outcome = l10n.passkeyRemoved;
       } else {
-        final vault = switch (_stage) {
-          _Open(:final vault) => vault,
+        final (vault, autoLock) = switch (_stage) {
+          _Open(:final vault, :final autoLock) => (vault, autoLock),
           _ => throw const VaultLockedException(),
         };
-        await keeper.enrollPasskey(vault);
+        // The vault stays open while the person is at the authenticator:
+        // locking mid-ceremony would forget the passkey just made.
+        final release = autoLock.hold();
+        try {
+          await keeper.enrollPasskey(vault);
+        } finally {
+          release();
+        }
         outcome = l10n.passkeyReady;
       }
     } on PasskeyCancelledException {

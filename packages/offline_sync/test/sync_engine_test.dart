@@ -239,6 +239,80 @@ void main() {
       expect(await bob.read(note), 'di Bob');
     });
 
+    test('only the device whose edit lost reports it, once', () async {
+      await alice.engine.write(note, RevisionContents(text('base')));
+      await alice.engine.sync();
+      await bob.engine.sync();
+      server.online = false;
+      await alice.engine.write(note, RevisionContents(text('di Alice')));
+      clock.advance();
+      await bob.engine.write(note, RevisionContents(text('di Bob')));
+      server.online = true;
+
+      final first = await alice.engine.sync();
+      final winner = await bob.engine.sync();
+      final loser = await alice.engine.sync();
+      final again = await alice.engine.sync();
+
+      expect(first.lost, isEmpty);
+      expect(winner.lost, isEmpty);
+      expect(loser.lost.single.record, note);
+      expect(utf8.decode(loser.lost.single.contents.bytes), 'di Alice');
+      expect(again.lost, isEmpty);
+    });
+
+    test('a third device reports nobody else\'s loss', () async {
+      final carol = Device(server, clock);
+      addTearDown(carol.dispose);
+      publish(
+        administration.invite(
+          alice.engine.ledger,
+          alice.keyring,
+          owner: alice.identity,
+          invitee: carol.identity.publicIdentity,
+          role: Role.editor,
+        ),
+      );
+      await alice.engine.sync();
+      carol.start(
+        ledgers.verify(server.membershipLog, invitation: invitation),
+        GroupKeyring(workspaceId),
+      );
+      await carol.engine.sync();
+      await bob.engine.sync();
+      await alice.engine.write(note, RevisionContents(text('base')));
+      await alice.engine.sync();
+      await bob.engine.sync();
+      server.online = false;
+      await alice.engine.write(note, RevisionContents(text('di Alice')));
+      clock.advance();
+      await bob.engine.write(note, RevisionContents(text('di Bob')));
+      server.online = true;
+      await alice.engine.sync();
+      await bob.engine.sync();
+
+      final report = await carol.engine.sync();
+
+      expect(report.lost, isEmpty);
+    });
+
+    test('a deletion that lost leaves nothing to keep', () async {
+      await alice.engine.write(note, RevisionContents(text('base')));
+      await alice.engine.sync();
+      await bob.engine.sync();
+      server.online = false;
+      await alice.engine.write(note, const RevisionDeleted());
+      clock.advance();
+      await bob.engine.write(note, RevisionContents(text('di Bob')));
+      server.online = true;
+      await bob.engine.sync();
+
+      final report = await alice.engine.sync();
+
+      expect(report.conflicts, 1);
+      expect(report.lost, isEmpty);
+    });
+
     test('an edit made after seeing a conflict replaces both sides', () async {
       await alice.engine.write(note, RevisionContents(text('base')));
       await alice.engine.sync();
