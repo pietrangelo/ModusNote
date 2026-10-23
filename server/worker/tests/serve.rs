@@ -155,11 +155,17 @@ fn a_socket_carries_its_key_as_its_tag() {
     let tag = serve::socket_tag(&key);
 
     assert_eq!(tag.len(), 64);
-    assert_eq!(serve::socket_of(std::slice::from_ref(&tag), Some(5)), Some(Socket { key, accepted_ms: 5 }));
-    assert_eq!(serve::socket_of(std::slice::from_ref(&tag), None), Some(Socket { key, accepted_ms: 0 }));
-    assert_eq!(serve::socket_of(&[], Some(5)), None);
-    assert_eq!(serve::socket_of(&["zz".into()], Some(5)), None);
-    assert_eq!(serve::socket_of(&[tag.clone(), tag], Some(5)), None);
+    assert_eq!(
+        serve::socket_of(std::slice::from_ref(&tag), Some(5), true),
+        Some(Socket { key, accepted_ms: 5, open: true })
+    );
+    assert_eq!(
+        serve::socket_of(std::slice::from_ref(&tag), None, false),
+        Some(Socket { key, accepted_ms: 0, open: false })
+    );
+    assert_eq!(serve::socket_of(&[], Some(5), true), None);
+    assert_eq!(serve::socket_of(&["zz".into()], Some(5), true), None);
+    assert_eq!(serve::socket_of(&[tag.clone(), tag], Some(5), true), None);
 }
 
 #[test]

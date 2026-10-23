@@ -13,12 +13,17 @@ use crate::workspace::{Heads, SyncError};
 pub const SOCKETS_PER_KEY: usize = 4;
 /// Beyond this the workspace refuses new sockets (429).
 pub const SOCKETS_PER_WORKSPACE: usize = 256;
+/// Beyond this many sockets of any kind the runtime still lists, ours or
+/// not, readable or not, the object accepts no more.
+pub const SOCKETS_HELD: usize = 2 * SOCKETS_PER_WORKSPACE;
 
-/// An open socket: whose it is and when the object accepted it.
+/// A socket the object still holds: whose it is, when the object accepted
+/// it, and whether it is open (or closing, on its way out).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Socket {
     pub key: MemberKey,
     pub accepted_ms: u64,
+    pub open: bool,
 }
 
 /// What the object does with its open sockets after a write: the heads go
@@ -31,29 +36,40 @@ pub struct Fanout {
     pub close: Vec<usize>,
 }
 
-/// The sockets a new one for `key` pushes out, oldest first by acceptance
-/// so the key keeps at most [`SOCKETS_PER_KEY`]; `Throttled` when even then
-/// the workspace would hold more than [`SOCKETS_PER_WORKSPACE`].
-pub fn admit_socket(open: &[Socket], key: &MemberKey) -> Result<Vec<usize>, SyncError> {
-    let mut own: Vec<usize> = (0..open.len()).filter(|&i| open[i].key == *key).collect();
-    own.sort_by_key(|&i| (open[i].accepted_ms, i));
-    own.truncate((own.len() + 1).saturating_sub(SOCKETS_PER_KEY));
-    if open.len() - own.len() >= SOCKETS_PER_WORKSPACE {
+/// The sockets a new one for `key` pushes out: its open ones, oldest first
+/// by acceptance, so the key keeps at most [`SOCKETS_PER_KEY`] open.
+/// `sockets` are every one of ours the object holds, closing ones too: it
+/// keeps them until the peer answers the close, which a peer may never do.
+/// `Throttled` when the key would then have more than [`SOCKETS_PER_KEY`]
+/// closing, when the workspace would hold more than
+/// [`SOCKETS_PER_WORKSPACE`], or when the runtime already lists [`SOCKETS_HELD`]
+/// sockets of any kind (`held`), so accepting one never meets its own limit.
+pub fn admit_socket(sockets: &[Socket], held: usize, key: &MemberKey) -> Result<Vec<usize>, SyncError> {
+    if held >= SOCKETS_HELD {
         return Err(SyncError::Throttled);
     }
-    own.sort_unstable();
-    Ok(own)
+    let own = |open: bool| (0..sockets.len()).filter(move |&i| sockets[i].key == *key && sockets[i].open == open);
+    let closing = own(false).count();
+    let mut evicted: Vec<usize> = own(true).collect();
+    evicted.sort_by_key(|&i| (sockets[i].accepted_ms, i));
+    evicted.truncate((evicted.len() + 1).saturating_sub(SOCKETS_PER_KEY));
+    if closing + evicted.len() > SOCKETS_PER_KEY || sockets.len() - evicted.len() >= SOCKETS_PER_WORKSPACE {
+        return Err(SyncError::Throttled);
+    }
+    evicted.sort_unstable();
+    Ok(evicted)
 }
 
 /// Splits the open sockets after a write by `author`: members hear of it,
-/// except the author's own sockets (it knows); the others close.
+/// except the author's own sockets (it knows); the others close. Closing
+/// sockets are left as they are.
 pub(crate) fn fan_out(
-    open: &[Socket],
+    sockets: &[Socket],
     author: &MemberKey,
     is_member: impl Fn(&MemberKey) -> bool,
 ) -> (Vec<usize>, Vec<usize>) {
     let (mut notify, mut close) = (Vec::new(), Vec::new());
-    for (i, socket) in open.iter().enumerate() {
+    for (i, socket) in sockets.iter().enumerate().filter(|(_, socket)| socket.open) {
         if !is_member(&socket.key) {
             close.push(i);
         } else if socket.key != *author {

@@ -119,11 +119,11 @@ pub fn socket_tag(key: &MemberKey) -> String {
     key.to_hex()
 }
 
-/// An open socket from its tags and attachment (the time it was accepted;
-/// none counts as the oldest), or None if they are not ours.
-pub fn socket_of(tags: &[String], accepted_ms: Option<u64>) -> Option<Socket> {
+/// A socket from its tags, attachment (the time it was accepted; none
+/// counts as the oldest) and state, or None if the tags are not ours.
+pub fn socket_of(tags: &[String], accepted_ms: Option<u64>, open: bool) -> Option<Socket> {
     match tags {
-        [tag] => MemberKey::parse_hex(tag).map(|key| Socket { key, accepted_ms: accepted_ms.unwrap_or(0) }),
+        [tag] => MemberKey::parse_hex(tag).map(|key| Socket { key, accepted_ms: accepted_ms.unwrap_or(0), open }),
         _ => None,
     }
 }

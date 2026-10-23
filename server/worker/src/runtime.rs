@@ -381,33 +381,42 @@ impl ModusWorkspace {
         Ok(())
     }
 
-    /// The open live sockets, with the key and time each carries. Only
-    /// open ones count: a socket being closed is on its way out.
-    fn sockets(&self) -> Vec<(WebSocket, Socket)> {
+    /// Every live socket the object still holds, with the key, time and
+    /// state each carries, and how many the runtime lists in all. A socket
+    /// the object closed stays held, closing, until the peer answers, and
+    /// counts until then; a closed one no longer does.
+    fn sockets(&self) -> (Vec<(WebSocket, Socket)>, usize) {
         const OPEN: u16 = 1;
-        self.state
-            .get_websockets()
+        const CLOSED: u16 = 3;
+        let all = self.state.get_websockets();
+        let held = all.len();
+        let sockets = all
             .into_iter()
-            .filter(|ws| AsRef::<worker::web_sys::WebSocket>::as_ref(ws).ready_state() == OPEN)
             .filter_map(|ws| {
+                let state = AsRef::<worker::web_sys::WebSocket>::as_ref(&ws).ready_state();
+                if state == CLOSED {
+                    return None;
+                }
                 let accepted = ws.deserialize_attachment::<u64>().ok().flatten();
-                let socket = serve::socket_of(&self.state.get_tags(&ws), accepted)?;
+                let socket = serve::socket_of(&self.state.get_tags(&ws), accepted, state == OPEN)?;
                 Some((ws, socket))
             })
-            .collect()
+            .collect();
+        (sockets, held)
     }
 
     /// Accepts a member's live socket, after pushing out its key's oldest
-    /// past the limit; 429 when the workspace holds too many.
+    /// past the limit; 429 when the workspace holds too many, before the
+    /// runtime is asked (its own limit would end the object).
     fn open_live(&self, key: &MemberKey) -> Result<Response> {
-        let open = self.sockets();
-        let listed: Vec<Socket> = open.iter().map(|(_, socket)| *socket).collect();
-        let evicted = match admit_socket(&listed, key) {
+        let (sockets, held) = self.sockets();
+        let listed: Vec<Socket> = sockets.iter().map(|(_, socket)| *socket).collect();
+        let evicted = match admit_socket(&listed, held, key) {
             Ok(evicted) => evicted,
             Err(error) => return fail(error.into()),
         };
         for i in evicted {
-            let _ = open[i].0.close(Some(CLOSE_EVICTED), Some("evicted"));
+            let _ = sockets[i].0.close(Some(CLOSE_EVICTED), Some("evicted"));
         }
         let pair = WebSocketPair::new()?;
         self.state.set_websocket_auto_response(&WebSocketRequestResponsePair::new("ping", "pong")?);
@@ -427,18 +436,18 @@ impl ModusWorkspace {
     /// socket whose key the log no longer has. Nothing here can fail the
     /// write, which has landed.
     fn fan_out(&self, author: &MemberKey) {
-        let open = self.sockets();
-        if open.is_empty() {
+        let (sockets, _) = self.sockets();
+        if sockets.is_empty() {
             return;
         }
-        let listed: Vec<Socket> = open.iter().map(|(_, socket)| *socket).collect();
+        let listed: Vec<Socket> = sockets.iter().map(|(_, socket)| *socket).collect();
         let Ok(fanout) = self.with_space(|space| space.fanout(&listed, author)) else { return };
         let message = serve::heads_message(fanout.heads);
         for i in fanout.notify {
-            let _ = open[i].0.send_with_str(&message);
+            let _ = sockets[i].0.send_with_str(&message);
         }
         for i in fanout.close {
-            let _ = open[i].0.close(Some(CLOSE_REMOVED), Some("removed"));
+            let _ = sockets[i].0.close(Some(CLOSE_REMOVED), Some("removed"));
         }
     }
 

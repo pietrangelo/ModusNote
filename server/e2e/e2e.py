@@ -24,6 +24,32 @@ from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 BASE = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8787"
 ENCRYPTION_KEY_LENGTH = 1216
 OWNER, EDITOR, VIEWER = 1, 2, 3
+# `wrangler dev` enforces the Worker's write limit (60 a minute for each
+# address) in windows aligned to the wall clock, and every request here,
+# then the Dart end-to-end test's, comes from 127.0.0.1. Half of it is
+# this script's in any one window, so a run never meets the limit.
+WRITE_LIMIT_WINDOW_S = 60
+WRITES_PER_WINDOW = 30
+writes_in_window = {}
+
+
+def count_write(method, target):
+    """Counts a call the Worker throttles as a write (anything but a read,
+    and every live handshake), and fails past this script's share."""
+    if method == "GET" and not target.endswith("/live"):
+        return
+    window = int(time.time()) // WRITE_LIMIT_WINDOW_S
+    writes_in_window[window] = writes_in_window.get(window, 0) + 1
+    if writes_in_window[window] > WRITES_PER_WINDOW:
+        raise SystemExit(
+            f"FAIL more than {WRITES_PER_WINDOW} writes in one minute, at {method} {target}: "
+            "wait for the next window first (next_window)"
+        )
+
+
+def next_window():
+    """Waits for the next window of the write limit."""
+    time.sleep(WRITE_LIMIT_WINDOW_S - time.time() % WRITE_LIMIT_WINDOW_S + 0.5)
 
 
 def b64url(data):
@@ -89,6 +115,7 @@ def pow_nonce(purpose, target, bits):
 
 def call(method, target, by=None, body=None, raw=None, headers=None, signed_body=None):
     data = raw if raw is not None else (json.dumps(body).encode() if body is not None else b"")
+    count_write(method, target)
     request = urllib.request.Request(BASE + target, data=data if data or method in ("POST", "PUT") else None, method=method)
     for name, value in (headers or {}).items():
         request.add_header(name, value)
@@ -105,6 +132,7 @@ def call(method, target, by=None, body=None, raw=None, headers=None, signed_body
 
 def cut_upload(target, by, declared):
     """A PUT that declares `declared` bytes and hangs up after a few."""
+    count_write("PUT", target)
     address = urllib.parse.urlsplit(BASE)
     connection = http.client.HTTPConnection(address.hostname, address.port, timeout=30)
     connection.putrequest("PUT", target)
@@ -129,6 +157,7 @@ class Live:
     needs nothing beyond the standard library and `cryptography`."""
 
     def __init__(self, target, protocols, headers=None):
+        count_write("GET", target)
         address = urllib.parse.urlsplit(BASE)
         self.sock = socket.create_connection((address.hostname, address.port), timeout=10)
         key = base64.b64encode(os.urandom(16)).decode()
@@ -339,6 +368,9 @@ def main():
         live.close()
     bob_live = fifth
 
+    # Blobs, codes and removal in a window of their own; the two sockets
+    # wait, idle, as a device's would.
+    next_window()
     blob = os.urandom(70_000)
     target = f"{w}/blobs/note-audio_1"
     expect(call("PUT", target, carol, raw=blob, signed_body=b""), 403, "a viewer cannot upload")
