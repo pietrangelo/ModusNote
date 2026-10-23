@@ -26,7 +26,7 @@ mod workspace;
 pub use auth::{Caller, Denied, Request, SKEW_MS};
 pub use guard::{Budget, Guard};
 pub use limits::Limits;
-pub use live::{Fanout, SOCKETS_PER_KEY, SOCKETS_PER_WORKSPACE, Socket, admit_socket};
+pub use live::{Fanout, SOCKETS_HELD, SOCKETS_PER_KEY, SOCKETS_PER_WORKSPACE, Socket, admit_socket};
 pub use pow::{PowPurpose, pow_satisfied};
 pub use rendezvous::{Rendezvous, RendezvousError};
 pub use store::{MemoryStore, Store, Unavailable};

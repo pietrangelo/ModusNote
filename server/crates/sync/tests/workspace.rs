@@ -562,7 +562,7 @@ mod retention {
 
 mod live {
     use ledger::MemberKey;
-    use sync::{SOCKETS_PER_KEY, SOCKETS_PER_WORKSPACE, Socket, admit_socket};
+    use sync::{SOCKETS_HELD, SOCKETS_PER_KEY, SOCKETS_PER_WORKSPACE, Socket, admit_socket};
 
     use super::*;
 
@@ -677,7 +677,17 @@ mod live {
     }
 
     fn socket(key: &Device, accepted_ms: u64) -> Socket {
-        Socket { key: key.member(), accepted_ms }
+        Socket { key: key.member(), accepted_ms, open: true }
+    }
+
+    /// One the object closed that the peer has not answered yet.
+    fn closing(key: &Device, accepted_ms: u64) -> Socket {
+        Socket { open: false, ..socket(key, accepted_ms) }
+    }
+
+    /// What the object would admit with nothing else held.
+    fn admit(open: &[Socket], key: &MemberKey) -> Result<Vec<usize>, SyncError> {
+        admit_socket(open, open.len(), key)
     }
 
     #[test]
@@ -696,7 +706,12 @@ mod live {
     fn after_a_removal_the_removed_keys_sockets_close() {
         let (mut space, alice, bob, carol) = carol_removed();
         let stranger = MemberKey([9; 32]);
-        let open = [socket(&carol, 1), socket(&bob, 2), socket(&alice, 3), Socket { key: stranger, accepted_ms: 4 }];
+        let open = [
+            socket(&carol, 1),
+            socket(&bob, 2),
+            socket(&alice, 3),
+            Socket { key: stranger, accepted_ms: 4, open: true },
+        ];
 
         let fanout = space.fanout(&open, &alice.member()).unwrap();
         assert_eq!(fanout.heads.membership, 4);
@@ -721,24 +736,86 @@ mod live {
         let open = [socket(&alice, 40), socket(&alice, 10), socket(&bob, 5), socket(&alice, 30), socket(&alice, 20)];
 
         assert_eq!(SOCKETS_PER_KEY, 4);
-        assert_eq!(admit_socket(&open, &alice.member()), Ok(vec![1]));
-        assert_eq!(admit_socket(&open, &bob.member()), Ok(vec![]));
-        assert_eq!(admit_socket(&open[..4], &alice.member()), Ok(vec![]));
+        assert_eq!(admit(&open, &alice.member()), Ok(vec![1]));
+        assert_eq!(admit(&open, &bob.member()), Ok(vec![]));
+        assert_eq!(admit(&open[..4], &alice.member()), Ok(vec![]));
         let more = [&open[..], &[socket(&alice, 50)]].concat();
-        assert_eq!(admit_socket(&more, &alice.member()), Ok(vec![1, 4]), "two past the limit, after a restart");
+        assert_eq!(admit(&more, &alice.member()), Ok(vec![1, 4]), "two past the limit, after a restart");
     }
 
     #[test]
     fn a_workspace_holds_at_most_256_sockets() {
         let (alice, bob) = (Device::new(1), Device::new(2));
         let mut open: Vec<Socket> = (0..SOCKETS_PER_WORKSPACE)
-            .map(|i| Socket { key: MemberKey([(i / SOCKETS_PER_KEY) as u8 + 10; 32]), accepted_ms: 7 })
+            .map(|i| Socket { key: MemberKey([(i / SOCKETS_PER_KEY) as u8 + 10; 32]), accepted_ms: 7, open: true })
             .collect();
 
-        assert_eq!(admit_socket(&open, &alice.member()), Err(SyncError::Throttled));
-        assert_eq!(admit_socket(&open[1..], &alice.member()), Ok(vec![]));
+        assert_eq!(admit(&open, &alice.member()), Err(SyncError::Throttled));
+        assert_eq!(admit(&open[1..], &alice.member()), Ok(vec![]));
         // A key at its own limit makes room for itself.
         open.splice(..4, (0..4).map(|i| socket(&bob, i)));
-        assert_eq!(admit_socket(&open, &bob.member()), Ok(vec![0]));
+        assert_eq!(admit(&open, &bob.member()), Ok(vec![0]));
+    }
+
+    #[test]
+    fn closing_sockets_are_never_heard_from_or_closed_again() {
+        let (mut space, alice, bob, carol) = carol_removed();
+        let open = [closing(&alice, 1), socket(&alice, 2), closing(&carol, 3), socket(&carol, 4)];
+
+        let fanout = space.fanout(&open, &bob.member()).unwrap();
+        assert_eq!((fanout.notify, fanout.close), (vec![1], vec![3]));
+    }
+
+    #[test]
+    fn a_keys_closing_sockets_hold_room_and_are_never_pushed_out() {
+        let (alice, bob) = (Device::new(1), Device::new(2));
+        let full = [socket(&alice, 10), socket(&alice, 20), socket(&alice, 30), socket(&alice, 40)];
+        let behind = [closing(&alice, 1), closing(&alice, 2), closing(&alice, 3)];
+        let held = [&behind[..], &full[..]].concat();
+
+        assert_eq!(
+            admit(&held, &alice.member()),
+            Ok(vec![3]),
+            "an open one goes, the closing ones are left as they are"
+        );
+        let stuck = [&held[..], &[closing(&alice, 4)]].concat();
+        assert_eq!(
+            admit(&stuck, &alice.member()),
+            Err(SyncError::Throttled),
+            "a key whose peer never answers its closes cannot pile up more"
+        );
+        assert_eq!(admit(&stuck, &bob.member()), Ok(vec![]), "nor does it hold back another key");
+        let replaced =
+            [&full[..], &[closing(&alice, 1), closing(&alice, 2), closing(&alice, 3), closing(&alice, 4)]].concat();
+        assert_eq!(admit(&replaced[4..], &alice.member()), Ok(vec![]), "closing ones alone leave room to open");
+    }
+
+    #[test]
+    fn closing_sockets_count_toward_the_workspace() {
+        let alice = Device::new(1);
+        let open: Vec<Socket> = (0..SOCKETS_PER_WORKSPACE)
+            .map(|i| Socket {
+                key: MemberKey([(i / SOCKETS_PER_KEY) as u8 + 10; 32]),
+                accepted_ms: 7,
+                open: i % 2 == 0,
+            })
+            .collect();
+
+        assert_eq!(admit(&open, &alice.member()), Err(SyncError::Throttled));
+    }
+
+    #[test]
+    fn past_a_hard_bound_on_everything_held_nothing_more_is_accepted() {
+        let alice = Device::new(1);
+        let open = [socket(&alice, 1)];
+
+        assert_eq!(SOCKETS_HELD, 512);
+        assert_eq!(admit_socket(&open, SOCKETS_HELD - 1, &alice.member()), Ok(vec![]));
+        assert_eq!(
+            admit_socket(&open, SOCKETS_HELD, &alice.member()),
+            Err(SyncError::Throttled),
+            "sockets the runtime lists that are not ours, or not readable, count too"
+        );
+        assert_eq!(admit_socket(&[], SOCKETS_HELD, &alice.member()), Err(SyncError::Throttled));
     }
 }
