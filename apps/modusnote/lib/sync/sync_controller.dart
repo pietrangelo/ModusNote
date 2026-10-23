@@ -39,6 +39,11 @@ enum SyncProblem {
 
   /// Another device removed this one from the vault: it no longer syncs.
   removed,
+
+  /// The notes synced, but the server turned down a recording or a
+  /// picture (too large, or the vault's file space is full); the others
+  /// went up.
+  blobRefused,
 }
 
 /// Keeps an open vault in step with the server, once its sync is turned
@@ -225,8 +230,8 @@ final class SyncController extends ChangeNotifier {
     } on RemoteBlobUnavailableException {
       // The notes went through; the recordings follow next time.
       if (!_disposed) _set(SyncState.offline);
-    } on RemoteBlobRejectedException catch (e) {
-      _fail(e.status == 413 ? SyncProblem.full : SyncProblem.refused);
+    } on RemoteBlobRejectedException {
+      _fail(SyncProblem.blobRefused);
     } on MalformedBlobException {
       _fail(SyncProblem.untrusted);
     } on LedgerRollbackException {

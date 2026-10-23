@@ -68,33 +68,57 @@ final class ModusRemoteBlobStore implements RemoteBlobStore {
     required int length,
   }) async {
     final url = _blob(id);
-    final request = http.StreamedRequest('PUT', url)
-      ..contentLength = length
-      ..headers['Content-Type'] = 'application/octet-stream'
-      ..headers['Authorization'] = await _authorize(
-        'PUT',
-        _target(url),
-        Uint8List(0),
-      );
-    // The body is piped while the request is in flight; when the request
-    // fails first, nobody waits on the pipe.
+    // No deadline for the whole upload, which on a slow uplink can take
+    // minutes: the request is aborted once the body or the answer stalls
+    // for [_timeout].
+    final stalled = Completer<void>();
+    Timer? idle;
+    void wait() {
+      idle?.cancel();
+      idle = Timer(_timeout, () {
+        if (!stalled.isCompleted) stalled.complete();
+      });
+    }
+
+    final request =
+        http.AbortableStreamedRequest('PUT', url, abortTrigger: stalled.future)
+          ..contentLength = length
+          ..headers['Content-Type'] = 'application/octet-stream'
+          ..headers['Authorization'] = await _authorize(
+            'PUT',
+            _target(url),
+            Uint8List(0),
+          );
+    // The body is piped while the request is in flight, pulled as the
+    // connection takes it; when the request fails first, nobody waits on
+    // the pipe.
     final piped = () async {
       try {
-        await request.sink.addStream(ciphertext);
+        await request.sink.addStream(
+          ciphertext.map((piece) {
+            wait();
+            return piece;
+          }),
+        );
       } finally {
+        wait();
         await request.sink.close();
       }
     }();
+    wait();
     final http.StreamedResponse response;
+    final String text;
     try {
-      response = await _send(request);
+      response = await _sendStreaming(request);
+      text = await _text(response);
     } on Object {
       unawaited(piped.catchError((Object _) {}));
       rethrow;
+    } finally {
+      idle?.cancel();
     }
     await piped;
     final status = response.statusCode;
-    final text = await _text(response);
     // 200: the server already holds this blob, from an upload cut short.
     if (status == 200 || status == 201) return;
     // The body is spent: the next sync uploads again, by the server's time.
@@ -255,6 +279,15 @@ final class ModusRemoteBlobStore implements RemoteBlobStore {
     } on http.ClientException {
       throw const RemoteBlobUnavailableException();
     } on TimeoutException {
+      throw const RemoteBlobUnavailableException();
+    }
+  }
+
+  /// [_send] without its deadline: [upload] keeps its own, on progress.
+  Future<http.StreamedResponse> _sendStreaming(http.BaseRequest request) async {
+    try {
+      return await _client.send(request);
+    } on http.ClientException {
       throw const RemoteBlobUnavailableException();
     }
   }

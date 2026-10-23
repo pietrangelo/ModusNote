@@ -70,24 +70,50 @@ final class BlobSync {
       await _save(sentSetting, null);
       await _save(sweptSetting, null);
     }
-    await uploadPending();
+    // A blob that does not go up must not keep the server from being
+    // cleaned: the pruning runs anyway, and the upload's failure is what
+    // the sync reports.
+    Object? failure;
+    StackTrace? trace;
+    try {
+      await uploadPending();
+    } on BlobException catch (error, stack) {
+      failure = error;
+      trace = stack;
+    }
     await prune();
+    if (failure != null) Error.throwWithStackTrace(failure, trace!);
   }
 
-  /// Uploads the blobs the server does not have yet. Stops at the first
-  /// failure: what went up stays recorded as sent.
+  /// Uploads the blobs the server does not have yet, the smallest first.
+  /// One the server refuses (too large, its storage full) is skipped, so
+  /// it does not hold back the others; the first refusal is thrown once
+  /// they went up. Stops when the server cannot be reached: what went up
+  /// stays recorded as sent.
   Future<void> uploadPending() async {
     final sent = await _sentIds();
+    final pending = [
+      for (final blob in _blobs())
+        if (!sent.contains(blob.id.value) &&
+            !_remoteOnly.contains(blob.id.value))
+          blob,
+    ]..sort((a, b) => a.blob.plaintextLength.compareTo(b.blob.plaintextLength));
     var uploaded = false;
+    RemoteBlobRejectedException? refused;
     try {
-      for (final blob in _blobs()) {
+      for (final blob in pending) {
         final id = blob.id.value;
-        if (sent.contains(id) || _remoteOnly.contains(id)) continue;
+        if (sent.contains(id)) continue;
         if (!await _replication.isLocal(blob.id)) {
           _remoteOnly.add(id);
           continue;
         }
-        await _replication.upload(blob.blob);
+        try {
+          await _replication.upload(blob.blob);
+        } on RemoteBlobRejectedException catch (error) {
+          refused ??= error;
+          continue;
+        }
         sent.add(id);
         uploaded = true;
       }
@@ -96,6 +122,7 @@ final class BlobSync {
       // uploaded again, which the server takes as already there.
       if (uploaded) await _store(sentSetting, sent);
     }
+    if (refused != null) throw refused;
   }
 
   /// Downloads [blob] when this device does not hold it; a downloaded blob

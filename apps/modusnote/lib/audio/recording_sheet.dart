@@ -67,6 +67,8 @@ class _RecordingSheetState extends State<RecordingSheet> {
       setState(() => _take = take);
       _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
         setState(() => _elapsed += const Duration(seconds: 1));
+        // Longer would not play back, or not go up to the server.
+        if (_elapsed >= take.limit) _finish(keep: true);
       });
     } on MicrophonePermissionDeniedException {
       if (mounted) setState(() => _failure = _Failure.denied);
@@ -154,6 +156,16 @@ class _RecordingSheetState extends State<RecordingSheet> {
                 formatLength(_elapsed),
                 key: const ValueKey('recording-elapsed'),
                 style: theme.textTheme.headlineMedium,
+                textAlign: TextAlign.center,
+              ),
+              Text(
+                l10n.recordingLimit(
+                  formatLength(_take?.limit ?? Duration.zero),
+                ),
+                key: const ValueKey('recording-limit'),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: ModusPalette.of(context).muted,
+                ),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: Spacing.s),
