@@ -437,6 +437,25 @@ mod rows {
     }
 
     #[test]
+    fn adversary_rewriting_one_note_runs_out_of_todays_rows() {
+        // A row that supersedes the last never grows the quota: only the day's
+        // budget stops a writer making the server write without end.
+        let limits = Limits { daily_rows: 3, ..Limits::default() };
+        let alice = Device::new(1);
+        let (mut space, _) = founded(&alice, limits);
+        let push_at = |space: &mut Space, rows: &[PushedRow], now| {
+            space.push(&call_at(&alice, "POST", &path("/rows"), b"r", now, now).request(), rows)
+        };
+
+        assert_eq!(push_at(&mut space, &[row(1, 10, 0), row(1, 10, 1)], NOW), Ok(vec![1, 2]));
+        assert_eq!(push_at(&mut space, &[row(1, 10, 2), row(1, 10, 3)], NOW), Err(SyncError::Throttled));
+        assert_eq!(push_at(&mut space, &[row(1, 10, 2)], NOW), Ok(vec![3]), "what is left of the day passes");
+        assert_eq!(push_at(&mut space, &[row(1, 10, 3)], NOW), Err(SyncError::Throttled));
+        let tomorrow = NOW + 86_400_000;
+        assert_eq!(push_at(&mut space, &vec![row(1, 10, 3); 3], tomorrow), Ok(vec![4, 5, 6]));
+    }
+
+    #[test]
     fn a_refused_push_leaves_nothing_behind() {
         let limits = Limits { workspace_bytes: 1_500, ..Limits::default() };
         let alice = Device::new(1);

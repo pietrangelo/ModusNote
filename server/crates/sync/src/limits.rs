@@ -11,6 +11,10 @@ pub struct Limits {
     pub blob_bytes: u64,
     pub workspace_blob_bytes: u64,
     pub daily_upload_bytes: u64,
+    /// Rows pushed in a day (UTC). A row that supersedes the last one never
+    /// grows the quota, so only this stops a writer making the server write
+    /// without end: each row costs the Durable Object about eight writes.
+    pub daily_rows: u64,
     pub pull_rows: usize,
     pub pull_bytes: usize,
     pub members: usize,
@@ -28,6 +32,7 @@ impl Default for Limits {
             blob_bytes: 95 * MIB,
             workspace_blob_bytes: 2048 * MIB,
             daily_upload_bytes: 2048 * MIB,
+            daily_rows: 10_000,
             pull_rows: 200,
             pull_bytes: 4 << 20,
             members: 64,
