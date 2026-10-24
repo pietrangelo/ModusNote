@@ -34,7 +34,7 @@ pub enum SyncError {
     Malformed(&'static str),
     /// The workspace's quota is used up (413).
     Full,
-    /// Today's upload budget is spent (429).
+    /// Today's upload or row budget is spent (429).
     Throttled,
     Unavailable,
 }
@@ -99,6 +99,8 @@ struct Meta {
     upload_day: u64,
     upload_bytes: u64,
     last_seen_ms: u64,
+    rows_day: u64,
+    rows_today: u64,
 }
 
 impl Meta {
@@ -113,6 +115,8 @@ impl Meta {
             upload_day: field(4),
             upload_bytes: field(5),
             last_seen_ms: field(6),
+            rows_day: field(7),
+            rows_today: field(8),
         })
     }
 
@@ -125,6 +129,8 @@ impl Meta {
             self.upload_day,
             self.upload_bytes,
             self.last_seen_ms,
+            self.rows_day,
+            self.rows_today,
         ];
         let bytes: Vec<u8> = fields.iter().flat_map(|f| f.to_be_bytes()).collect();
         store.put(META, &bytes)
@@ -341,8 +347,17 @@ impl<S: Store, C: SignatureCheck> Workspace<S, C> {
             return Err(SyncError::Malformed("row size"));
         }
         let limits = self.limits;
+        let today = request.now_ms / DAY_MS;
         self.store.transaction(|store| {
             let mut meta = Meta::load(store)?;
+            if meta.rows_day != today {
+                meta.rows_day = today;
+                meta.rows_today = 0;
+            }
+            meta.rows_today += rows.len() as u64;
+            if meta.rows_today > limits.daily_rows {
+                return Err(SyncError::Throttled);
+            }
             let mut positions = Vec::with_capacity(rows.len());
             for row in rows {
                 let position = meta.next_row;
