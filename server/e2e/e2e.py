@@ -284,7 +284,12 @@ def expect(outcome, status, what):
     if outcome[0] != status:
         raise SystemExit(f"FAIL {what}: expected {status}, got {outcome[0]} {outcome[1][:200]!r}")
     print(f"ok   {what}")
-    return json.loads(outcome[1]) if outcome[1][:1] in (b"{", b"[") else outcome[1]
+    # By the declared type, not the first byte: a random blob can start with "{".
+    if len(outcome) > 2:
+        is_json = outcome[2].get("Content-Type", "").startswith("application/json")
+    else:
+        is_json = outcome[1][:1] in (b"{", b"[")
+    return json.loads(outcome[1]) if is_json and outcome[1] else outcome[1]
 
 
 def main():

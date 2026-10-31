@@ -1,63 +1,14 @@
 //! A site's use cases with real signatures, as the app will sign them.
 
+#[path = "../../sync/tests/support/mod.rs"]
+mod support;
+
 use crypto::{StrictEd25519, blake2b_256};
-use ed25519_dalek::{Signer, SigningKey};
 use publish::{MediaType, Site, SiteError, SiteLimits};
+use support::{Device, NOW, call, call_at};
 use sync::{Denied, MemoryStore, Request};
 
-const NOW: u64 = 1_792_700_000_000;
 const PIC: &str = "AAAAAAAAAAAAAAAA";
-
-struct Call {
-    method: String,
-    path: String,
-    header: String,
-    digest: [u8; 32],
-    now: u64,
-}
-
-impl Call {
-    fn request(&self) -> Request<'_> {
-        Request {
-            method: &self.method,
-            path: &self.path,
-            authorization: Some(&self.header),
-            body_digest: self.digest,
-            now_ms: self.now,
-        }
-    }
-}
-
-static NONCE: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
-
-fn b64(bytes: &[u8]) -> String {
-    const A: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
-    let mut out = String::new();
-    for chunk in bytes.chunks(3) {
-        let n = chunk.iter().enumerate().fold(0u32, |n, (i, b)| n | (u32::from(*b) << (16 - 8 * i)));
-        for i in 0..=chunk.len() {
-            out.push(A[(n >> (18 - 6 * i) & 63) as usize] as char);
-        }
-    }
-    out
-}
-
-fn call(by: &SigningKey, method: &str, path: &str, body: &[u8], now: u64) -> Call {
-    let digest = blake2b_256(body);
-    let mut nonce = [0u8; 16];
-    nonce[0] = NONCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    nonce[1] = 0x5e;
-    let key = by.verifying_key().to_bytes();
-    let signable = ledger::signable_request(method, path, now, &nonce, &digest).unwrap();
-    let signature = by.sign(&signable).to_bytes();
-    Call {
-        method: method.into(),
-        path: path.into(),
-        header: format!("MN1 {}.{now}.{}.{}", b64(&key), b64(&nonce), b64(&signature)),
-        digest,
-        now,
-    }
-}
 
 fn settings(title: &str) -> Vec<u8> {
     format!(
@@ -77,38 +28,33 @@ fn page(title: &str, text: &str) -> Vec<u8> {
     .into_bytes()
 }
 
-fn owner() -> SigningKey {
-    SigningKey::from_bytes(&[7; 32])
+fn owner() -> Device {
+    Device::new(7)
 }
 
-fn stranger() -> SigningKey {
-    SigningKey::from_bytes(&[9; 32])
+fn stranger() -> Device {
+    Device::new(9)
 }
 
 fn claimed() -> Site<MemoryStore, StrictEd25519> {
     let mut site = Site::new("quaderno", MemoryStore::default(), StrictEd25519);
     let body = settings("Quaderno");
-    assert_eq!(site.claim(&call(&owner(), "POST", "/api/s/quaderno", &body, NOW).request(), &body), Ok(true));
+    assert_eq!(site.claim(&call(&owner(), "POST", "/api/s/quaderno", &body).request(), &body), Ok(true));
     site
 }
 
-fn put(
-    site: &mut Site<MemoryStore, StrictEd25519>,
-    by: &SigningKey,
-    slug: &str,
-    body: &[u8],
-) -> Result<bool, SiteError> {
+fn put(site: &mut Site<MemoryStore, StrictEd25519>, by: &Device, slug: &str, body: &[u8]) -> Result<bool, SiteError> {
     let path = format!("/api/s/quaderno/p/{slug}");
-    site.put_page(&call(by, "PUT", &path, body, NOW).request(), slug, body)
+    site.put_page(&call(by, "PUT", &path, body).request(), slug, body)
 }
 
 #[test]
 fn the_first_key_takes_the_name_and_keeps_it() {
     let mut site = claimed();
     let body = settings("Quaderno");
-    assert_eq!(site.claim(&call(&owner(), "POST", "/api/s/quaderno", &body, NOW).request(), &body), Ok(false));
+    assert_eq!(site.claim(&call(&owner(), "POST", "/api/s/quaderno", &body).request(), &body), Ok(false));
     assert_eq!(
-        site.claim(&call(&stranger(), "POST", "/api/s/quaderno", &body, NOW).request(), &body),
+        site.claim(&call(&stranger(), "POST", "/api/s/quaderno", &body).request(), &body),
         Err(SiteError::Taken)
     );
     assert!(site.home_html().unwrap().contains("<h1>Quaderno</h1>"));
@@ -123,11 +69,11 @@ fn only_the_owner_writes() {
     assert_eq!(put(&mut site, &owner(), "il-faro", &body), Ok(false), "replaced");
     let s = settings("Altro");
     assert_eq!(
-        site.put_settings(&call(&stranger(), "PUT", "/api/s/quaderno", &s, NOW).request(), &s),
+        site.put_settings(&call(&stranger(), "PUT", "/api/s/quaderno", &s).request(), &s),
         Err(SiteError::Denied(Denied::Forbidden))
     );
     assert_eq!(
-        site.delete(&call(&stranger(), "DELETE", "/api/s/quaderno", b"", NOW).request()),
+        site.delete(&call(&stranger(), "DELETE", "/api/s/quaderno", b"").request()),
         Err(SiteError::Denied(Denied::Forbidden))
     );
 }
@@ -136,12 +82,12 @@ fn only_the_owner_writes() {
 fn a_signature_over_another_body_or_time_fails() {
     let mut site = claimed();
     let body = page("Il faro", "testo");
-    let signed = call(&owner(), "PUT", "/api/s/quaderno/p/il-faro", b"something else", NOW);
+    let signed = call(&owner(), "PUT", "/api/s/quaderno/p/il-faro", b"something else");
     assert_eq!(
         site.put_page(&Request { body_digest: blake2b_256(&body), ..signed.request() }, "il-faro", &body),
         Err(SiteError::Denied(Denied::Unauthenticated))
     );
-    let late = call(&owner(), "PUT", "/api/s/quaderno/p/il-faro", &body, NOW - 600_000);
+    let late = call_at(&owner(), "PUT", "/api/s/quaderno/p/il-faro", &body, NOW - 600_000, NOW);
     assert_eq!(
         site.put_page(&Request { now_ms: NOW, ..late.request() }, "il-faro", &body),
         Err(SiteError::Denied(Denied::Clock))
@@ -152,7 +98,7 @@ fn a_signature_over_another_body_or_time_fails() {
 fn a_write_cannot_be_sent_twice() {
     let mut site = claimed();
     let body = page("Il faro", "testo");
-    let once = call(&owner(), "PUT", "/api/s/quaderno/p/il-faro", &body, NOW);
+    let once = call(&owner(), "PUT", "/api/s/quaderno/p/il-faro", &body);
     assert_eq!(site.put_page(&once.request(), "il-faro", &body), Ok(true));
     assert_eq!(site.put_page(&once.request(), "il-faro", &body), Err(SiteError::Denied(Denied::Replayed)));
 }
@@ -181,7 +127,7 @@ fn a_page_needs_its_files_uploaded_first() {
     let body = page("Foto", &format!("![mare](image:{PIC})"));
     assert_eq!(put(&mut site, &owner(), "foto", &body), Err(SiteError::MissingMedia));
     let path = format!("/api/s/quaderno/m/{PIC}?type=jpeg");
-    site.admit_media(&call(&owner(), "PUT", &path, b"", NOW).request(), PIC, MediaType::Jpeg, 1000).unwrap();
+    site.admit_media(&call(&owner(), "PUT", &path, b"").request(), PIC, MediaType::Jpeg, 1000).unwrap();
     assert_eq!(put(&mut site, &owner(), "foto", &body), Ok(true));
     assert!(site.page_html("foto").unwrap().contains(&format!("src=\"/quaderno/m/{PIC}\"")));
     assert_eq!(site.media_type(PIC), Ok(MediaType::Jpeg));
@@ -194,7 +140,7 @@ fn limits_hold() {
     assert_eq!(put(&mut site, &owner(), "due", &page("Due", "x")), Err(SiteError::Full));
     let admit = |site: &mut Site<MemoryStore, StrictEd25519>, id: &str, size: u64| {
         site.admit_media(
-            &call(&owner(), "PUT", &format!("/api/s/quaderno/m/{id}?type=png"), b"", NOW).request(),
+            &call(&owner(), "PUT", &format!("/api/s/quaderno/m/{id}?type=png"), b"").request(),
             id,
             MediaType::Png,
             size,
@@ -213,10 +159,7 @@ fn bad_bodies_are_refused_before_anything_is_stored() {
     assert_eq!(put(&mut site, &owner(), "Bad_Slug", &page("x", "y")), Err(SiteError::NotFound));
     let mut fresh = Site::new("nuovo", MemoryStore::default(), StrictEd25519);
     let ugly = br#"{"title":"x"}"#;
-    assert_eq!(
-        fresh.claim(&call(&owner(), "POST", "/api/s/nuovo", ugly, NOW).request(), ugly),
-        Err(SiteError::Invalid)
-    );
+    assert_eq!(fresh.claim(&call(&owner(), "POST", "/api/s/nuovo", ugly).request(), ugly), Err(SiteError::Invalid));
     assert!(fresh.store().is_empty());
 }
 
@@ -224,10 +167,10 @@ fn bad_bodies_are_refused_before_anything_is_stored() {
 fn taking_the_site_down_frees_the_name() {
     let mut site = claimed();
     put(&mut site, &owner(), "il-faro", &page("Il faro", "x")).unwrap();
-    site.delete(&call(&owner(), "DELETE", "/api/s/quaderno", b"", NOW).request()).unwrap();
+    site.delete(&call(&owner(), "DELETE", "/api/s/quaderno", b"").request()).unwrap();
     assert_eq!(site.home_html(), Err(SiteError::NotFound));
     let body = settings("Di un altro");
-    assert_eq!(site.claim(&call(&stranger(), "POST", "/api/s/quaderno", &body, NOW).request(), &body), Ok(true));
+    assert_eq!(site.claim(&call(&stranger(), "POST", "/api/s/quaderno", &body).request(), &body), Ok(true));
 }
 
 #[test]

@@ -7,9 +7,13 @@ name: Deploy web
 # commit builds. The client talks to its own origin, so nothing about the
 # server is compiled into it.
 #
+# Then the servpub Worker (server/pages), serv.pub's public pages, which
+# reads the ModusSite objects of the first: always deployed after it.
+#
 # Needs two secrets of the GitHub environment `production`, open to main
 # only: CLOUDFLARE_API_TOKEN (Workers Scripts: Edit, Workers R2 Storage:
-# Read, and Workers Routes: Edit on the serv.run zone, nothing else) and
+# Read, and Workers Routes: Edit on the serv.run and serv.pub zones, nothing
+# else) and
 # CLOUDFLARE_ACCOUNT_ID. Never repository secrets: a workflow pushed on any
 # branch, or run by hand from it, could read those and publish its own
 # bundle on modus.serv.run.
@@ -85,6 +89,15 @@ jobs:
       # with the bundle above as its assets.
       - name: Deploy the Worker
         working-directory: server/worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          WRANGLER_SEND_METRICS: 'false'
+        run: '"$WRANGLER" deploy'
+
+      # serv.pub reads the ModusSite objects deployed just above.
+      - name: Deploy serv.pub
+        working-directory: server/pages
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
