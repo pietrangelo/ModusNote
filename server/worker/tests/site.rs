@@ -8,7 +8,9 @@ use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 use crypto::StrictEd25519;
 use modusnote_server::api::{ApiError, Route, route};
-use modusnote_server::serve::{self, Blake2b, INTERNAL_HOME, INTERNAL_MEDIA, INTERNAL_STYLE, Incoming, SiteDone};
+use modusnote_server::serve::{
+    self, Blake2b, INTERNAL_FEED, INTERNAL_HOME, INTERNAL_MEDIA, INTERNAL_STYLE, Incoming, SiteDone,
+};
 use publish::{MediaType, Site};
 use serde_json::json;
 use support::*;
@@ -151,6 +153,10 @@ fn a_site_object_serves_writes_and_reads() {
     let Ok(SiteDone::Html(home)) = serve::site(&mut site, &Blake2b, &read(INTERNAL_HOME)) else { panic!("home") };
     assert!(home.contains("/quaderno/il-faro"));
     assert!(matches!(serve::site(&mut site, &Blake2b, &read(INTERNAL_STYLE)), Ok(SiteDone::Css(_))));
+    let Ok(SiteDone::Feed(feed)) = serve::site(&mut site, &Blake2b, &read(INTERNAL_FEED)) else { panic!("feed") };
+    assert!(feed.contains("<id>https://serv.pub/quaderno/il-faro</id>"));
+    assert!(feed.contains("<summary>Luce</summary>"), "{feed}");
+    assert!(html.contains(&format!(r#"<meta property="og:image" content="https://serv.pub/quaderno/m/{PIC}">"#)));
     let media = format!("{INTERNAL_MEDIA}{PIC}");
     assert_eq!(serve::site(&mut site, &Blake2b, &read(&media)), Ok(SiteDone::MediaType(MediaType::Png)));
     assert_eq!(serve::site(&mut site, &Blake2b, &read("/internal/page/nessuna")), Err(ApiError::NotFound));

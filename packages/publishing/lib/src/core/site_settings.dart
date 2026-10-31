@@ -19,6 +19,7 @@ final class SiteSettings {
     this.body = BodySize.medium,
     this.home = PublicationLayout.collection,
     this.indexable = false,
+    this.font = SiteFont.inter,
   }) : title = PageComposer.line(title, maxTitle),
        about = _about(about) {
     if (this.title.isEmpty) {
@@ -53,6 +54,9 @@ final class SiteSettings {
   /// the person turns it on.
   final bool indexable;
 
+  /// The body's typeface.
+  final SiteFont font;
+
   SiteSettings copyWith({
     String? title,
     String? about,
@@ -61,6 +65,7 @@ final class SiteSettings {
     BodySize? body,
     PublicationLayout? home,
     bool? indexable,
+    SiteFont? font,
   }) => SiteSettings(
     title: title ?? this.title,
     about: about ?? this.about,
@@ -69,6 +74,7 @@ final class SiteSettings {
     body: body ?? this.body,
     home: home ?? this.home,
     indexable: indexable ?? this.indexable,
+    font: font ?? this.font,
   );
 
   /// The wire format of serv.pub.
@@ -90,6 +96,7 @@ final class SiteSettings {
       'body': body.px,
       'home': home == PublicationLayout.essay ? 'essay' : 'collection',
       'indexable': indexable,
+      'font': font.wire,
     };
   }
 
@@ -104,6 +111,7 @@ final class SiteSettings {
     'body': body.px,
     'home': home.name,
     'indexable': indexable,
+    'font': font.wire,
   };
 
   /// Throws [NotPublishableException] or [InvalidColorException] for
@@ -120,6 +128,15 @@ final class SiteSettings {
       'home': final String home,
       'indexable': final bool indexable,
     }) {
+      // Absent from what was kept before fonts were a choice.
+      final font = switch (json['font']) {
+        null => SiteFont.inter,
+        final String wire => SiteFont.values.firstWhere(
+          (f) => f.wire == wire,
+          orElse: () => throw const NotPublishableException('font'),
+        ),
+        _ => throw const NotPublishableException('font'),
+      };
       return SiteSettings(
         title: title,
         about: about,
@@ -141,6 +158,7 @@ final class SiteSettings {
           orElse: () => throw const NotPublishableException('home layout'),
         ),
         indexable: indexable,
+        font: font,
       );
     }
     throw const NotPublishableException('malformed site settings');
@@ -166,9 +184,10 @@ final class SiteSettings {
       other.theme == theme &&
       other.body == body &&
       other.home == home &&
-      other.indexable == indexable;
+      other.indexable == indexable &&
+      other.font == font;
 
   @override
   int get hashCode =>
-      Object.hash(title, about, lang, theme, body, home, indexable);
+      Object.hash(title, about, lang, theme, body, home, indexable, font);
 }

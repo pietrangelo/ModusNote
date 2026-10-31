@@ -96,6 +96,13 @@ def main():
     assert "--h1:76px" in css and "61.8fr 38.2fr" in css and headers["Content-Type"].startswith("text/css"), css
     status, _, headers = seen(visit(f"/{name}/m/{pic}"), 200, "the picture")
     assert headers["Content-Type"] == "image/png" and headers["X-Content-Type-Options"] == "nosniff", headers
+    status, feed, headers = seen(visit(f"/{name}/feed.xml"), 200, "the feed")
+    assert headers["Content-Type"].startswith("application/atom+xml"), headers
+    assert f"/{name}/il-faro</id>" in feed, feed
+    status, font, headers = seen(visit("/fonts/literata.woff2"), 200, "a font")
+    assert headers["Content-Type"] == "font/woff2" and headers["X-Content-Type-Options"] == "nosniff", headers
+    assert font.startswith("wOF2"), font[:8]
+    seen(visit("/fonts/LICENCES.txt"), 404, "only the fonts of the assets")
     seen(visit("/index.html"), 404, "nothing of the vault's client on serv.pub")
     seen(visit("/api/info"), 404, "and no API")
     seen(visit(f"/{name}/nessuna"), 404, "a page that does not exist")

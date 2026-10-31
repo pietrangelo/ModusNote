@@ -48,10 +48,32 @@ void main() {
         body: BodySize.large,
         home: PublicationLayout.essay,
         indexable: true,
+        font: SiteFont.literata,
       );
       expect(
         SiteSettings.fromJson(jsonDecode(jsonEncode(settings.toJson()))),
         settings,
+      );
+    });
+
+    test('choose the body font, Inter until chosen', () {
+      final settings = SiteSettings(title: 'Quaderno', lang: 'it');
+      expect(settings.font, SiteFont.inter);
+      expect(settings.toWire()['font'], 'inter');
+      for (final font in SiteFont.values) {
+        expect(settings.copyWith(font: font).toWire()['font'], font.wire);
+      }
+      expect(
+        {for (final font in SiteFont.values) font.wire},
+        {'inter', 'literata', 'atkinson', 'quattro'},
+        reason: "serv.pub's names",
+      );
+      // A site book kept before fonts were a choice.
+      final kept = settings.toJson()..remove('font');
+      expect(SiteSettings.fromJson(kept).font, SiteFont.inter);
+      expect(
+        () => SiteSettings.fromJson({...settings.toJson(), 'font': 'comic'}),
+        throwsA(isA<NotPublishableException>()),
       );
     });
 

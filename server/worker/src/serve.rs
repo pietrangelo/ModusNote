@@ -334,6 +334,7 @@ pub fn guard<S: Store>(guard: &mut Guard<S>, incoming: &Incoming<'_>) -> Result<
 /// reaches these paths: the API Worker never routes a device's path here).
 pub const INTERNAL_HOME: &str = "/internal/home";
 pub const INTERNAL_STYLE: &str = "/internal/style";
+pub const INTERNAL_FEED: &str = "/internal/feed";
 pub const INTERNAL_PAGE: &str = "/internal/page/";
 pub const INTERNAL_MEDIA: &str = "/internal/media/";
 
@@ -344,6 +345,8 @@ pub enum SiteDone {
     Json(u16, String),
     Html(String),
     Css(String),
+    /// An Atom feed.
+    Feed(String),
     MediaType(MediaType),
 }
 
@@ -359,6 +362,8 @@ pub fn site<S: Store, C: SignatureCheck>(
             SiteDone::Html(site.home_html()?)
         } else if path == INTERNAL_STYLE {
             SiteDone::Css(site.style_css()?)
+        } else if path == INTERNAL_FEED {
+            SiteDone::Feed(site.feed_xml()?)
         } else if let Some(slug) = path.strip_prefix(INTERNAL_PAGE) {
             SiteDone::Html(site.page_html(slug)?)
         } else if let Some(id) = path.strip_prefix(INTERNAL_MEDIA) {

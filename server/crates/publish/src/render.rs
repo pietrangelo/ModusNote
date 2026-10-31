@@ -12,7 +12,7 @@ use pulldown_cmark::{Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 
 use crate::names::{media_id, page_slug};
 use crate::page::{Block, Layout, Page, web_url};
-use crate::settings::{HomeLayout, SiteSettings};
+use crate::settings::{Font, HomeLayout, SiteSettings};
 use crate::text::escape;
 
 /// φ, and the scales the stylesheet takes from it.
@@ -20,6 +20,26 @@ pub const PHI: f64 = 1.618_033_988_749_895;
 pub const SPACING: [u32; 9] = [3, 5, 8, 13, 21, 34, 55, 89, 144];
 pub const MEASURE: u32 = 610;
 pub const WIDE: u32 = 987;
+
+/// Where serv.pub is, for the addresses link previews and feeds need whole.
+pub const ORIGIN: &str = "https://serv.pub";
+
+/// The characters serv.pub's fonts hold (Latin, punctuation, arrows, maths
+/// and the checklist's boxes): any other falls back to the reader's fonts.
+/// Must match `server/pages/fonts/make_web_fonts.py`.
+pub const UNICODE_RANGE: &str = "U+0000-024F,U+0259,U+02B0-02FF,U+0300-036F,U+1E00-1EFF,U+2000-206F,U+20A0-20CF,\
+U+2100-218F,U+2190-21FF,U+2200-22FF,U+2600-26FF";
+
+/// The fonts serv.pub serves, at `/fonts/<name>.woff2`.
+pub const FONT_FILES: [&str; 8] =
+    ["jakarta", "inter", "literata", "literata-italic", "atkinson", "atkinson-italic", "quattro", "quattro-italic"];
+
+/// The longest description a page gives link previews and feeds, in
+/// characters.
+pub const EXCERPT: usize = 233;
+
+/// The newest listed pages a site's feed carries.
+pub const FEED_ENTRIES: usize = 21;
 
 /// The policy every page and stylesheet goes out with.
 pub const CSP: &str = "default-src 'none'; style-src 'self'; img-src 'self'; media-src 'self'; font-src 'self'; \
@@ -167,21 +187,127 @@ fn heading(level: HeadingLevel) -> u8 {
     (level as u8 + 1).min(6)
 }
 
-/// A page listed on a site's home or in a book's contents.
+/// A page listed on a site's home, in a book's contents and in the feed.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Entry {
     pub slug: String,
     pub title: String,
     pub updated_ms: u64,
+    /// The page's [`excerpt`].
+    pub summary: String,
 }
 
-fn head(settings: &SiteSettings, site: &str, title: &str, indexable: bool, style: &str) -> String {
+/// `markdown` as plain text on one line: what it says, without markup.
+pub fn plain(markdown: &str) -> String {
+    let mut out = String::new();
+    let mut in_image = 0usize;
+    for event in Parser::new_ext(markdown, options()) {
+        match event {
+            Event::Start(Tag::Image { .. }) => in_image += 1,
+            Event::End(TagEnd::Image) => in_image = in_image.saturating_sub(1),
+            Event::Text(text) | Event::Code(text) if in_image == 0 => out.push_str(&text),
+            Event::SoftBreak
+            | Event::HardBreak
+            | Event::End(TagEnd::Paragraph | TagEnd::Heading(_) | TagEnd::Item | TagEnd::TableCell) => out.push(' '),
+            _ => {}
+        }
+    }
+    out.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// `text` cut to at most [`EXCERPT`] characters, at a space when there is
+/// one, with an ellipsis when cut.
+fn cut(text: &str) -> String {
+    if text.chars().count() <= EXCERPT {
+        return text.to_owned();
+    }
+    let head: String = text.chars().take(EXCERPT - 1).collect();
+    let head = match head.rfind(' ') {
+        Some(at) if at > head.len() / 2 => &head[..at],
+        _ => head.as_str(),
+    };
+    format!("{}…", head.trim_end_matches(|c: char| c.is_whitespace() || ",;:.".contains(c)))
+}
+
+/// How much of a text an excerpt reads: enough for [`EXCERPT`] characters
+/// under any markup, never the whole of a long note on every read.
+const EXCERPT_SOURCE: usize = 4181;
+
+/// The start of `text`, at most [`EXCERPT_SOURCE`] bytes, a character never
+/// cut in half.
+fn head_of(text: &str) -> &str {
+    if text.len() <= EXCERPT_SOURCE {
+        return text;
+    }
+    let mut end = EXCERPT_SOURCE;
+    while !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    &text[..end]
+}
+
+/// What a page says first, for link previews and feeds: its first text.
+pub fn excerpt(page: &Page) -> String {
+    for block in &page.blocks {
+        let text = match block {
+            Block::Markdown { text, .. } => plain(head_of(text)),
+            Block::Text { text, .. } => text.split_whitespace().collect::<Vec<_>>().join(" "),
+            _ => continue,
+        };
+        if !text.is_empty() {
+            return cut(&text);
+        }
+    }
+    String::new()
+}
+
+/// The first picture a page shows, for link previews.
+pub fn first_image(page: &Page, uploaded: &dyn Fn(&str) -> bool) -> Option<String> {
+    page.blocks.iter().find_map(|block| match block {
+        Block::Image { media, .. } => uploaded(media).then(|| media.clone()),
+        Block::Markdown { text, .. } => images_in(text).into_iter().find(|id| uploaded(id)),
+        _ => None,
+    })
+}
+
+/// What a page tells link previews about itself.
+struct Meta<'a> {
+    /// Its path on serv.pub.
+    path: String,
+    description: &'a str,
+    image: Option<String>,
+    article: bool,
+}
+
+fn head(settings: &SiteSettings, site: &str, title: &str, indexable: bool, style: &str, meta: &Meta<'_>) -> String {
     let robots = if indexable { "" } else { "<meta name=\"robots\" content=\"noindex, nofollow\">\n" };
+    let url = escape(&format!("{ORIGIN}{}", meta.path));
+    let mut tags = format!(
+        "<link rel=\"canonical\" href=\"{url}\">\n<meta property=\"og:url\" content=\"{url}\">\n\
+         <meta property=\"og:type\" content=\"{kind}\">\n",
+        kind = if meta.article { "article" } else { "website" },
+    );
+    if !meta.description.is_empty() {
+        let description = escape(meta.description);
+        tags.push_str(&format!(
+            "<meta name=\"description\" content=\"{description}\">\n\
+             <meta property=\"og:description\" content=\"{description}\">\n"
+        ));
+    }
+    let card = match &meta.image {
+        Some(id) => {
+            tags.push_str(&format!("<meta property=\"og:image\" content=\"{ORIGIN}/{site}/m/{id}\">\n"));
+            "summary_large_image"
+        }
+        None => "summary",
+    };
+    tags.push_str(&format!("<meta name=\"twitter:card\" content=\"{card}\">\n"));
     format!(
         "<!doctype html>\n<html lang=\"{lang}\">\n<head>\n<meta charset=\"utf-8\">\n\
          <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n\
          <meta name=\"referrer\" content=\"no-referrer\">\n{robots}<title>{title}</title>\n\
          <meta property=\"og:title\" content=\"{title}\">\n<meta property=\"og:site_name\" content=\"{site_title}\">\n\
+         {tags}<link rel=\"alternate\" type=\"application/atom+xml\" href=\"/{site}/feed.xml\" title=\"{site_title}\">\n\
          <link rel=\"stylesheet\" href=\"/{site}/style.css?v={style}\">\n</head>\n",
         lang = escape(&settings.lang),
         title = escape(title),
@@ -257,6 +383,7 @@ fn block(block: &Block, site: &str, uploaded: &dyn Fn(&str) -> bool) -> String {
 /// layout; `style` versions the stylesheet so a new theme shows at once.
 pub fn page(
     site: &str,
+    slug: &str,
     settings: &SiteSettings,
     page: &Page,
     contents: &[Entry],
@@ -264,8 +391,15 @@ pub fn page(
     uploaded: &dyn Fn(&str) -> bool,
 ) -> String {
     let indexable = settings.indexable && page.listed;
-    let mut out =
-        head(settings, site, if page.title.is_empty() { &settings.title } else { &page.title }, indexable, style);
+    let description = excerpt(page);
+    let meta = Meta {
+        path: format!("/{site}/{slug}"),
+        description: &description,
+        image: first_image(page, uploaded),
+        article: true,
+    };
+    let title_text = if page.title.is_empty() { &settings.title } else { &page.title };
+    let mut out = head(settings, site, title_text, indexable, style, &meta);
     let layout = match page.layout {
         Layout::Essay => "essay",
         Layout::GoldenSection => "golden-section",
@@ -313,7 +447,9 @@ pub fn page(
 /// A site's home: its title, its words about itself and its listed pages,
 /// the newest first.
 pub fn home(site: &str, settings: &SiteSettings, entries: &[Entry], style: &str) -> String {
-    let mut out = head(settings, site, &settings.title, settings.indexable, style);
+    let description = cut(&plain(head_of(&settings.about)));
+    let meta = Meta { path: format!("/{site}/"), description: &description, image: None, article: false };
+    let mut out = head(settings, site, &settings.title, settings.indexable, style, &meta);
     let layout = match settings.home {
         HomeLayout::Collection => "collection",
         HomeLayout::Essay => "essay",
@@ -334,6 +470,77 @@ pub fn home(site: &str, settings: &SiteSettings, entries: &[Entry], style: &str)
     out
 }
 
+/// `ms` since the epoch as an RFC 3339 time in UTC, as Atom wants it.
+pub fn rfc3339(ms: u64) -> String {
+    let secs = ms / 1000;
+    let (days, rest) = ((secs / 86_400) as i64, secs % 86_400);
+    // Days to a civil date (Howard Hinnant's algorithm).
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097);
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let day = doy - (153 * mp + 2) / 5 + 1;
+    let month = if mp < 10 { mp + 3 } else { mp - 9 };
+    let year = yoe + era * 400 + i64::from(month <= 2);
+    format!("{year:04}-{month:02}-{day:02}T{:02}:{:02}:{:02}Z", rest / 3600, rest / 60 % 60, rest % 60)
+}
+
+/// A site's Atom feed: its newest listed pages, with what each says first.
+/// Atom, not RSS: one format every reader takes, with real dates and ids.
+pub fn feed(site: &str, settings: &SiteSettings, entries: &[Entry]) -> String {
+    let home = format!("{ORIGIN}/{site}/");
+    let updated = rfc3339(entries.iter().map(|e| e.updated_ms).max().unwrap_or(0));
+    let mut out = format!(
+        "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<feed xmlns=\"http://www.w3.org/2005/Atom\" xml:lang=\"{lang}\">\n\
+         <title>{title}</title>\n<id>{home}</id>\n<updated>{updated}</updated>\n\
+         <link rel=\"alternate\" type=\"text/html\" href=\"{home}\"/>\n\
+         <link rel=\"self\" type=\"application/atom+xml\" href=\"{home}feed.xml\"/>\n\
+         <author><name>{title}</name></author>\n<generator>Modus Notes · serv.pub</generator>\n",
+        lang = escape(&settings.lang),
+        title = escape(&settings.title),
+    );
+    if !settings.about.is_empty() {
+        out.push_str(&format!("<subtitle>{}</subtitle>\n", escape(&cut(&plain(head_of(&settings.about))))));
+    }
+    for entry in entries.iter().take(FEED_ENTRIES) {
+        let url = format!("{home}{}", entry.slug);
+        let title = if entry.title.is_empty() { &entry.slug } else { &entry.title };
+        out.push_str(&format!(
+            "<entry>\n<title>{}</title>\n<id>{url}</id>\n<link rel=\"alternate\" type=\"text/html\" href=\"{url}\"/>\n\
+             <updated>{}</updated>\n",
+            escape(title),
+            rfc3339(entry.updated_ms),
+        ));
+        if !entry.summary.is_empty() {
+            out.push_str(&format!("<summary>{}</summary>\n", escape(&entry.summary)));
+        }
+        out.push_str("</entry>\n");
+    }
+    out.push_str("</feed>\n");
+    out
+}
+
+/// The body's face: its file names (regular, italic if it has one) and the
+/// system fonts that stand in while it loads or for what it lacks.
+fn body_font(font: Font) -> (&'static str, Option<&'static str>, &'static str) {
+    match font {
+        Font::Inter => ("inter", None, "system-ui,-apple-system,\"Segoe UI\",sans-serif"),
+        Font::Literata => ("literata", Some("literata-italic"), "Georgia,\"Times New Roman\",serif"),
+        Font::Atkinson => ("atkinson", Some("atkinson-italic"), "system-ui,-apple-system,\"Segoe UI\",sans-serif"),
+        Font::Quattro => ("quattro", Some("quattro-italic"), "ui-monospace,\"SF Mono\",Menlo,monospace"),
+    }
+}
+
+fn font_face(family: &str, file: &str, italic: bool) -> String {
+    format!(
+        "@font-face{{font-family:\"{family}\";src:url(/fonts/{file}.woff2) format(\"woff2\");font-weight:100 900;\
+font-style:{};font-display:swap;unicode-range:{UNICODE_RANGE}}}\n",
+        if italic { "italic" } else { "normal" }
+    )
+}
+
 fn px(value: f64) -> u32 {
     value.round() as u32
 }
@@ -343,14 +550,21 @@ pub fn css(settings: &SiteSettings) -> String {
     let t = &settings.theme;
     let b = f64::from(settings.body);
     let [_, xxs, xs, s, m, l, xl, xxl, _] = SPACING;
-    format!(
-        ":root{{color-scheme:{scheme};--bg:{bg};--surface:{surface};--text:{text};--muted:{muted};--accent:{accent};\
+    let (regular, italic, fallback) = body_font(settings.font);
+    let mut faces = font_face("Modus Heading", "jakarta", false);
+    faces.push_str(&font_face("Modus Text", regular, false));
+    if let Some(italic) = italic {
+        faces.push_str(&font_face("Modus Text", italic, true));
+    }
+    faces
+        + &format!(
+            ":root{{color-scheme:{scheme};--bg:{bg};--surface:{surface};--text:{text};--muted:{muted};--accent:{accent};\
 --accent2:{accent2};--body:{body}px;--caption:{caption}px;--h3:{h3}px;--h2:{h2}px;--h1:{h1}px;--measure:{MEASURE}px;\
 --wide:{WIDE}px}}\n\
 *{{box-sizing:border-box}}\n\
-html{{background:var(--bg);color:var(--text);font:var(--body)/{PHI:.3} Inter,system-ui,-apple-system,\"Segoe UI\",sans-serif}}\n\
+html{{background:var(--bg);color:var(--text);font:var(--body)/{PHI:.3} \"Modus Text\",{fallback}}}\n\
 body{{margin:0;padding:{l}px {m}px {xl}px}}\n\
-h1,h2,h3,h4,h5,h6{{font-family:\"Plus Jakarta Sans\",Inter,system-ui,sans-serif;line-height:1.236;margin:{l}px 0 {s}px}}\n\
+h1,h2,h3,h4,h5,h6{{font-family:\"Modus Heading\",system-ui,sans-serif;line-height:1.236;margin:{l}px 0 {s}px}}\n\
 h1{{font-size:var(--h1)}}h2{{font-size:var(--h2)}}h3{{font-size:var(--h3)}}h4,h5,h6{{font-size:var(--body)}}\n\
 p,ul,ol,blockquote,pre,table,figure{{margin:0 0 {m}px}}\n\
 a{{color:var(--accent);text-underline-offset:{xxs}px}}a:visited{{color:var(--accent2)}}\n\
@@ -381,24 +595,24 @@ display:grid;grid-template-rows:61.8fr 38.2fr;padding:0 {xl}px}}.cover h1{{grid-
 .collection main{{max-width:var(--wide)}}\n\
 .collection .pages{{display:grid;grid-template-columns:repeat(auto-fill,minmax(233px,1fr));gap:{l}px}}\n\
 .collection .pages a{{display:flex;align-items:flex-end;aspect-ratio:{PHI:.3}/1;background:var(--surface);\
-border-radius:{m}px;padding:{m}px;text-decoration:none;font-family:\"Plus Jakarta Sans\",Inter,sans-serif;font-size:var(--h3);line-height:1.236}}\n\
+border-radius:{m}px;padding:{m}px;text-decoration:none;font-family:\"Modus Heading\",system-ui,sans-serif;font-size:var(--h3);line-height:1.236}}\n\
 @media (max-width:{MEASURE}px){{body{{padding:{m}px {s}px {l}px}}\
 .golden-section main,.book main{{display:block}}aside{{border:0;padding:0}}.cover{{padding:0 {m}px}}\
 :root{{--h1:{h2}px;--h2:{h3}px}}}}\n\
 ",
-        scheme = if t.dark { "dark" } else { "light" },
-        bg = t.background,
-        surface = t.surface,
-        text = t.text,
-        muted = t.secondary,
-        accent = t.accent,
-        accent2 = t.second_accent,
-        body = settings.body,
-        caption = px(b / PHI),
-        h3 = px(b * PHI),
-        h2 = px(b * PHI * PHI),
-        h1 = px(b * PHI * PHI * PHI),
-    )
+            scheme = if t.dark { "dark" } else { "light" },
+            bg = t.background,
+            surface = t.surface,
+            text = t.text,
+            muted = t.secondary,
+            accent = t.accent,
+            accent2 = t.second_accent,
+            body = settings.body,
+            caption = px(b / PHI),
+            h3 = px(b * PHI),
+            h2 = px(b * PHI * PHI),
+            h1 = px(b * PHI * PHI * PHI),
+        )
 }
 
 #[cfg(test)]
@@ -473,7 +687,7 @@ mod tests {
 
     #[test]
     fn a_page_has_no_script_and_its_title_once() {
-        let html = page(SITE, &settings::sample(), &page::sample(), &[], "1", &|_| false);
+        let html = page(SITE, "il-faro", &settings::sample(), &page::sample(), &[], "1", &|_| false);
         assert!(html.starts_with("<!doctype html>"));
         assert!(!html.to_lowercase().contains("<script"));
         assert_eq!(html.matches("<h1>").count(), 1);
@@ -487,10 +701,10 @@ mod tests {
     fn indexed_only_when_the_site_allows_and_the_page_is_listed() {
         let mut s = settings::sample();
         s.indexable = true;
-        let listed = page(SITE, &s, &page::sample(), &[], "1", &|_| false);
+        let listed = page(SITE, "il-faro", &s, &page::sample(), &[], "1", &|_| false);
         assert!(!listed.contains("noindex"));
         let draft = page::Page { listed: false, ..page::sample() };
-        assert!(page(SITE, &s, &draft, &[], "1", &|_| false).contains("noindex"));
+        assert!(page(SITE, "il-faro", &s, &draft, &[], "1", &|_| false).contains("noindex"));
     }
 
     #[test]
@@ -511,7 +725,7 @@ mod tests {
             ],
             ..page::sample()
         };
-        let html = page(SITE, &settings::sample(), &p, &[], "1", &|id| id == PIC);
+        let html = page(SITE, "il-faro", &settings::sample(), &p, &[], "1", &|id| id == PIC);
         assert!(html.contains("<h1>&lt;T&gt;</h1>"));
         assert!(html.contains("&lt;120&gt;"));
         assert!(html.contains(r#"<li class="done">a&amp;b</li>"#));
@@ -525,12 +739,16 @@ mod tests {
 
     #[test]
     fn home_lists_pages_and_book_lists_contents() {
-        let entries = [Entry { slug: "il-faro".into(), title: "Il <faro>".into(), updated_ms: 1 }];
+        let entries =
+            [Entry { slug: "il-faro".into(), title: "Il <faro>".into(), updated_ms: 1, summary: String::new() }];
         let html = home(SITE, &settings::sample(), &entries, "1");
         assert!(html.contains(r#"<a href="/quaderno/il-faro">Il &lt;faro&gt;</a>"#));
         assert!(html.contains(r#"<body class="home collection">"#));
         let book = page::Page { layout: page::Layout::Book, ..page::sample() };
-        assert!(page(SITE, &settings::sample(), &book, &entries, "1", &|_| false).contains("<nav class=\"contents\">"));
+        assert!(
+            page(SITE, "il-faro", &settings::sample(), &book, &entries, "1", &|_| false)
+                .contains("<nav class=\"contents\">")
+        );
     }
 
     #[test]
@@ -542,6 +760,113 @@ mod tests {
         assert!(css.contains("grid-template-columns:38.2fr 61.8fr"));
         assert!(css.contains("aspect-ratio:1.618/1"));
         assert!(css.contains("--measure:610px"));
-        assert!(!css.contains("url("), "nothing fetched from a stylesheet");
+        // Fonts only from serv.pub itself, and only those it serves.
+        for url in css.split("url(").skip(1) {
+            let file = url.split(')').next().unwrap();
+            let name = file.strip_prefix("/fonts/").and_then(|f| f.strip_suffix(".woff2")).unwrap();
+            assert!(FONT_FILES.contains(&name), "{file}");
+        }
+    }
+
+    #[test]
+    fn the_body_font_is_the_sites_and_headings_are_jakarta() {
+        let inter = css(&settings::sample());
+        assert!(inter.contains("url(/fonts/jakarta.woff2)") && inter.contains("url(/fonts/inter.woff2)"));
+        assert!(!inter.contains("font-style:italic"), "Inter has no italic file");
+        assert!(inter.contains("font-display:swap"));
+        assert!(inter.contains(&format!("unicode-range:{UNICODE_RANGE}")));
+        let mut s = settings::sample();
+        s.font = Font::Literata;
+        let literata = css(&s);
+        assert!(
+            literata.contains("url(/fonts/literata.woff2)") && literata.contains("url(/fonts/literata-italic.woff2)")
+        );
+        assert!(literata.contains(r#"font:var(--body)/1.618 "Modus Text",Georgia"#), "{literata}");
+        assert!(!literata.contains("inter.woff2"));
+        for font in [Font::Inter, Font::Literata, Font::Atkinson, Font::Quattro] {
+            let (regular, italic, _) = body_font(font);
+            assert!(FONT_FILES.contains(&regular));
+            assert!(italic.is_none_or(|i| FONT_FILES.contains(&i)));
+        }
+    }
+
+    #[test]
+    fn link_previews_tell_title_words_picture_and_address() {
+        let p = page::Page {
+            blocks: vec![
+                Block::Image { label: String::new(), media: "BBBBBBBBBBBBBBBB".into(), caption: String::new() },
+                Block::Markdown {
+                    label: String::new(),
+                    text: format!("## Prima\n\nLa luce *gira* <\"sempre\">. ![x](image:{PIC})"),
+                },
+            ],
+            ..page::sample()
+        };
+        let html = page(SITE, "il-faro", &settings::sample(), &p, &[], "1", &|id| id == PIC);
+        assert!(html.contains(r#"<link rel="canonical" href="https://serv.pub/quaderno/il-faro">"#));
+        assert!(html.contains(r#"<meta property="og:url" content="https://serv.pub/quaderno/il-faro">"#));
+        assert!(html.contains(r#"<meta property="og:type" content="article">"#));
+        assert!(
+            html.contains(
+                r#"<meta property="og:description" content="Prima La luce gira &lt;&quot;sempre&quot;&gt;.">"#
+            ),
+            "{html}"
+        );
+        // The first picture the site holds, at its whole address.
+        assert!(html.contains(&format!(r#"<meta property="og:image" content="https://serv.pub/quaderno/m/{PIC}">"#)));
+        assert!(html.contains(r#"content="summary_large_image""#));
+        assert!(html.contains(r#"<link rel="alternate" type="application/atom+xml" href="/quaderno/feed.xml""#));
+        let home = home(SITE, &settings::sample(), &[], "1");
+        assert!(home.contains(r#"<meta property="og:type" content="website">"#));
+        assert!(home.contains(r#"<meta name="description" content="Racconti e canzoni.">"#));
+        assert!(home.contains(r#"content="summary""#) && !home.contains("og:image"));
+    }
+
+    #[test]
+    fn excerpts_are_plain_and_short() {
+        assert_eq!(plain("# A\n\n*b* `c` [d](https://x.org) ![alt](image:x)\n- e"), "A b c d e");
+        let long = "parola ".repeat(100);
+        let p =
+            page::Page { blocks: vec![Block::Markdown { label: String::new(), text: long.clone() }], ..page::sample() };
+        let e = excerpt(&p);
+        assert!(e.chars().count() <= EXCERPT, "{e}");
+        assert!(e.ends_with("parola…"), "{e}");
+        // A long note is read only as far as its excerpt needs.
+        let huge = format!("{}{}", "è".repeat(EXCERPT_SOURCE), "fine");
+        assert!(head_of(&huge).len() <= EXCERPT_SOURCE && !head_of(&huge).contains("fine"));
+        let tags = page::Page { blocks: vec![page::sample().blocks[1].clone()], ..page::sample() };
+        assert_eq!(excerpt(&tags), "", "only text describes a page");
+    }
+
+    #[test]
+    fn the_feed_is_atom_escaped_and_bounded() {
+        let entries: Vec<Entry> = (0..30)
+            .map(|i| Entry {
+                slug: format!("p-{i}"),
+                title: "<b>&".into(),
+                updated_ms: 1_793_404_800_000 - i * 1000,
+                summary: "a < b".into(),
+            })
+            .collect();
+        let xml = feed(SITE, &settings::sample(), &entries);
+        assert!(xml.starts_with("<?xml version=\"1.0\" encoding=\"utf-8\"?>"));
+        assert!(xml.contains(r#"<feed xmlns="http://www.w3.org/2005/Atom" xml:lang="it">"#));
+        assert!(xml.contains("<id>https://serv.pub/quaderno/</id>"));
+        assert!(
+            xml.contains(r#"<link rel="self" type="application/atom+xml" href="https://serv.pub/quaderno/feed.xml"/>"#)
+        );
+        assert!(xml.contains("<updated>2026-10-31T00:00:00Z</updated>"), "{xml}");
+        assert_eq!(xml.matches("<entry>").count(), FEED_ENTRIES);
+        assert!(xml.contains("<title>&lt;b&gt;&amp;</title>"));
+        assert!(xml.contains("<summary>a &lt; b</summary>"));
+        assert!(!xml.contains("<b>"));
+        assert!(feed(SITE, &settings::sample(), &[]).contains("<updated>1970-01-01T00:00:00Z</updated>"));
+    }
+
+    #[test]
+    fn dates_are_rfc3339() {
+        assert_eq!(rfc3339(0), "1970-01-01T00:00:00Z");
+        assert_eq!(rfc3339(951_782_400_000), "2000-02-29T00:00:00Z");
+        assert_eq!(rfc3339(1_793_448_245_999), "2026-10-31T12:04:05Z");
     }
 }

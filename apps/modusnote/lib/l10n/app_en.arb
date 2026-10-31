@@ -2524,5 +2524,36 @@
   "publishOffline": "serv.pub cannot be reached right now. Try again later.",
   "publishLimit": "The site has reached its limits of pages, files or space.",
   "publishNothing": "Choose at least one field with something to show.",
-  "publishNoKey": "This device does not have the site's key."
+  "publishNoKey": "This device does not have the site's key.",
+  "siteSettingsOpen": "Site appearance",
+  "siteSettingsTitle": "The site",
+  "siteAbout": "About",
+  "siteAboutHelp": "On the site's home page, in Markdown",
+  "siteAccentHue": "Accent hue",
+  "siteBackgroundHue": "Background hue",
+  "siteHueOwn": "Choose the hue",
+  "siteBody": "Text size",
+  "siteHome": "Site home",
+  "siteHomeCollection": "Collection of cards",
+  "siteHomeEssay": "List of titles",
+  "siteIndexable": "Visible to search engines",
+  "siteIndexableHelp": "When off, pages ask search engines not to index them.",
+  "siteFeed": "Feed for RSS readers",
+  "sitePreviewTitle": "A page of the site",
+  "sitePreviewText": "Text reads like this, side notes like this.",
+  "sitePreviewLink": "A link",
+  "siteSave": "Save the site",
+  "siteSaved": "Site updated",
+  "siteWithdraw": "Withdraw the site",
+  "siteWithdrawTitle": "Withdraw the whole site?",
+  "siteWithdrawBody": "Every page and file of {name} will disappear from serv.pub and the name will be free for anyone again. Copies others have already made stay theirs.",
+  "@siteWithdrawBody": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "siteWithdrawConfirm": "Withdraw",
+  "siteWithdrawn": "Site withdrawn"
 }

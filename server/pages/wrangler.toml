@@ -15,6 +15,14 @@ command = "cargo install -q worker-build@0.8.7 --locked && worker-build --releas
 
 # The published files, under pub/<site>/<id>, in the same EU bucket as the
 # encrypted blobs (whose keys start with a workspace id, never "pub/").
+# The fonts the stylesheets name, built from the app's by
+# fonts/make_web_fonts.py, and nothing else. The Worker runs first on every
+# request and serves them itself, with its own headers.
+[assets]
+directory = "public"
+binding = "ASSETS"
+run_worker_first = true
+
 [[r2_buckets]]
 binding = "BLOBS"
 bucket_name = "modusnote-blobs-eu"
