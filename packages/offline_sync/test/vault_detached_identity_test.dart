@@ -91,10 +91,7 @@ void main() {
     expect(await keeper().openDetachedIdentity(vault, 'site.nulla'), isNull);
 
     await keeper().forgetDetachedIdentity(vault, 'site.quaderno');
-    expect(
-      await keeper().openDetachedIdentity(vault, 'site.quaderno'),
-      isNull,
-    );
+    expect(await keeper().openDetachedIdentity(vault, 'site.quaderno'), isNull);
   });
 
   test('plain settings cannot reach a detached identity', () async {
