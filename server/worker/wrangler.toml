@@ -46,9 +46,19 @@ class_name = "ModusRendezvous"
 name = "GUARD"
 class_name = "ModusGuard"
 
+# One object per site on serv.pub (named by the site), 2026-10-31. The
+# `servpub` Worker (server/pages) reads them for the public pages.
+[[durable_objects.bindings]]
+name = "SITES"
+class_name = "ModusSite"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["ModusWorkspace", "ModusRendezvous", "ModusGuard"]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["ModusSite"]
 
 # Every API call is throttled per client address, IPv6 by /64 (kept in memory by
 # Cloudflare, never stored by us); writes and reads each have their own allowance.

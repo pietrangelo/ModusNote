@@ -4,11 +4,12 @@
 //! `runtime` only moves bytes in and out, and does what needs R2.
 
 use ledger::{Credential, MemberKey, SignatureCheck, WorkspaceId};
+use publish::{MediaType, Site};
 use serde::Serialize;
 use sync::{Budget, Guard, Hasher, Heads, PowPurpose, Rendezvous, Request, Socket, Store, Workspace, pow_satisfied};
 
 use crate::api::{
-    self, AnswerBody, AnswersReply, ApiError, BlobReply, BlobsReply, BundleBody, BundleReply, BundlesReply,
+    self, AnswerBody, AnswersReply, ApiError, BlobReply, BlobsReply, BundleBody, BundleReply, BundlesReply, ClaimBody,
     DeleteBlobsBody, FoundBody, HeadsReply, OfferBody, OfferReply, PositionReply, PositionsReply, PullReply, PushBody,
     RecordBody, RecordsReply, Route, decode, encode, live_token, parse_json, pow_day_ok,
 };
@@ -218,9 +219,18 @@ pub fn workspace<S: Store, C: SignatureCheck>(
             let token = live_token(incoming.upgrade, incoming.protocols)?;
             Ok(Done::Live(space.live(&request, token)?))
         }
-        Route::Info | Route::Offer(_) | Route::Answer(_) | Route::Answers(_) | Route::CloseCode(_) => {
-            Err(ApiError::NotFound)
-        }
+        Route::Info
+        | Route::Offer(_)
+        | Route::Answer(_)
+        | Route::Answers(_)
+        | Route::CloseCode(_)
+        | Route::ClaimSite(_)
+        | Route::PutSettings(_)
+        | Route::DeleteSite(_)
+        | Route::PutPage(..)
+        | Route::DeletePage(..)
+        | Route::PutMedia(..)
+        | Route::DeleteMedia(..) => Err(ApiError::NotFound),
     }
 }
 
@@ -283,6 +293,7 @@ pub fn admit(route: &Route, body: &[u8], hasher: &impl Hasher, now_ms: u64, bits
     let (purpose, target, pow) = match route {
         Route::Found(ws) => (PowPurpose::Found, ws.0.to_vec(), parse_json::<FoundBody>(body)?.pow),
         Route::Answer(lookup) => (PowPurpose::Answer, lookup.as_bytes().to_vec(), parse_json::<AnswerBody>(body)?.pow),
+        Route::ClaimSite(site) => (PowPurpose::Site, site.as_bytes().to_vec(), parse_json::<ClaimBody>(body)?.pow),
         _ => return Ok(()),
     };
     let nonce = pow.nonce()?;
@@ -317,4 +328,88 @@ pub fn guard<S: Store>(guard: &mut Guard<S>, incoming: &Incoming<'_>) -> Result<
     let (amount, ceiling) = (number(1..9), number(9..17));
     let (Ok(amount), Ok(ceiling)) = (amount, ceiling) else { return Err(ApiError::BadRequest) };
     guard.spend(budget, amount, ceiling, incoming.now_ms).map_err(|_| ApiError::Unavailable)
+}
+
+/// Public reads of a site, from the pages Worker on serv.pub (only it
+/// reaches these paths: the API Worker never routes a device's path here).
+pub const INTERNAL_HOME: &str = "/internal/home";
+pub const INTERNAL_STYLE: &str = "/internal/style";
+pub const INTERNAL_PAGE: &str = "/internal/page/";
+pub const INTERNAL_MEDIA: &str = "/internal/media/";
+
+/// What a site's object answers: a JSON reply to the app, or a page, a
+/// stylesheet or a file's type to the pages Worker.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum SiteDone {
+    Json(u16, String),
+    Html(String),
+    Css(String),
+    MediaType(MediaType),
+}
+
+/// Serves a site's object: the signed API calls, and the public reads.
+pub fn site<S: Store, C: SignatureCheck>(
+    site: &mut Site<S, C>,
+    hasher: &impl Hasher,
+    incoming: &Incoming<'_>,
+) -> Result<SiteDone, ApiError> {
+    if incoming.method == "GET" {
+        let path = incoming.path;
+        return Ok(if path == INTERNAL_HOME {
+            SiteDone::Html(site.home_html()?)
+        } else if path == INTERNAL_STYLE {
+            SiteDone::Css(site.style_css()?)
+        } else if let Some(slug) = path.strip_prefix(INTERNAL_PAGE) {
+            SiteDone::Html(site.page_html(slug)?)
+        } else if let Some(id) = path.strip_prefix(INTERNAL_MEDIA) {
+            SiteDone::MediaType(site.media_type(id)?)
+        } else {
+            return Err(ApiError::NotFound);
+        });
+    }
+    let route = api::route(incoming.method, incoming.path, incoming.query)?;
+    let target = incoming.target();
+    let request = Request {
+        method: incoming.method,
+        path: &target,
+        authorization: incoming.authorization,
+        body_digest: hasher.blake2b_256(incoming.body),
+        now_ms: incoming.now_ms,
+    };
+    let body = incoming.body;
+    let ok = || SiteDone::Json(200, "{}".into());
+    match route {
+        Route::ClaimSite(_) => {
+            let settings = parse_json::<ClaimBody>(body)?.settings.to_string();
+            let created = site.claim(&request, settings.as_bytes())?;
+            Ok(SiteDone::Json(if created { 201 } else { 200 }, format!(r#"{{"created":{created}}}"#)))
+        }
+        Route::PutSettings(_) => {
+            site.put_settings(&request, body)?;
+            Ok(ok())
+        }
+        Route::DeleteSite(_) => {
+            site.delete(&request)?;
+            Ok(ok())
+        }
+        Route::PutPage(_, slug) => {
+            let created = site.put_page(&request, &slug, body)?;
+            Ok(SiteDone::Json(if created { 201 } else { 200 }, format!(r#"{{"created":{created}}}"#)))
+        }
+        Route::DeletePage(_, slug) => {
+            site.delete_page(&request, &slug)?;
+            Ok(ok())
+        }
+        Route::PutMedia(_, id, kind) => {
+            let kind = MediaType::parse(&kind).ok_or(ApiError::NotFound)?;
+            let size = incoming.blob_size.and_then(|s| s.parse().ok()).ok_or(ApiError::LengthRequired)?;
+            site.admit_media(&request, &id, kind, size)?;
+            Ok(ok())
+        }
+        Route::DeleteMedia(_, id) => {
+            site.delete_media(&request, &id)?;
+            Ok(ok())
+        }
+        _ => Err(ApiError::NotFound),
+    }
 }

@@ -468,6 +468,7 @@ dependencies = [
  "hex",
  "js-sys",
  "ledger",
+ "publish",
  "serde",
  "serde_json",
  "sync",
@@ -670,6 +671,16 @@ dependencies = [
  "itoa",
  "ryu",
  "serde",
+]
+
+[[package]]
+name = "servpub-pages"
+version = "0.1.0"
+dependencies = [
+ "js-sys",
+ "publish",
+ "wasm-bindgen",
+ "worker",
 ]
 
 [[package]]

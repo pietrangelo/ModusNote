@@ -19,6 +19,7 @@ use std::cell::RefCell;
 use crypto::StrictEd25519;
 use js_sys::{Array, Object, Reflect, Uint8Array};
 use ledger::{MemberKey, WorkspaceId};
+use publish::{MediaType, Site, SiteLimits};
 use sync::{Budget, Guard, Limits, Rendezvous, Socket, Store, Unavailable, Workspace, admit_socket};
 use wasm_bindgen::prelude::*;
 use worker::{
@@ -30,7 +31,7 @@ use worker::{
 use crate::api::{self, ApiError, InfoReply, LIVE_PROTOCOL, POW_BITS, Route};
 use crate::serve::{
     self, BLOB_SIZE, Blake2b, CLOSE_EVICTED, CLOSE_GONE, CLOSE_POLICY, CLOSE_REMOVED, Done, INTERNAL_OFFER,
-    INTERNAL_SPEND, Incoming,
+    INTERNAL_SPEND, Incoming, SiteDone,
 };
 
 /// Every object is created in the EU.
@@ -40,6 +41,7 @@ const CODES: &str = "CODES";
 const GUARD: &str = "GUARD";
 const GUARD_NAME: &str = "guard";
 const BLOBS: &str = "BLOBS";
+const SITES: &str = "SITES";
 /// The workspace an object holds, kept beside the use case's keys so the
 /// alarm knows which prefix of R2 to clear.
 const NAME: &str = "name";
@@ -652,6 +654,106 @@ impl DurableObject for ModusGuard {
     }
 }
 
+/// One site on serv.pub, named by the site's name: its owner's key, its
+/// settings, its pages and the list of its files (their bytes are in R2
+/// under `pub/<site>/`). Reads come from the pages Worker, writes from the
+/// app through `/api/s/`.
+#[durable_object(fetch)]
+pub struct ModusSite {
+    state: State,
+}
+
+impl std::fmt::Debug for ModusSite {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("ModusSite")
+    }
+}
+
+impl DurableObject for ModusSite {
+    fn new(state: State, _env: Env) -> Self {
+        Self { state }
+    }
+
+    async fn fetch(&self, req: Request) -> Result<Response> {
+        let received = Received::read(req).await?;
+        let name = self.state.id().name().unwrap_or_default();
+        let mut site = Site::new(&name, DurableKv::new(&self.state), StrictEd25519);
+        match serve::site(&mut site, &Blake2b, &received.incoming(now_ms())) {
+            Ok(SiteDone::Json(status, body)) => respond(status, body),
+            Ok(SiteDone::Html(html)) => text_response(html, "text/html; charset=utf-8"),
+            Ok(SiteDone::Css(css)) => text_response(css, "text/css; charset=utf-8"),
+            Ok(SiteDone::MediaType(kind)) => text_response(kind.name().to_owned(), "text/plain"),
+            Err(error) => fail(error),
+        }
+    }
+}
+
+fn text_response(body: String, content_type: &str) -> Result<Response> {
+    let mut response = Response::ok(body)?;
+    response.headers_mut().set("Content-Type", content_type)?;
+    Ok(response)
+}
+
+fn media_key(site: &str, id: &str) -> String {
+    format!("pub/{site}/{id}")
+}
+
+/// A file for a site: its whole body is read (a few MiB at most) so its
+/// first bytes can be checked against its declared type, the site's object
+/// counts it, then it goes to R2 with that type.
+async fn put_media(
+    env: &Env,
+    req: &mut Request,
+    target: &str,
+    site: &str,
+    id: &str,
+    kind: &str,
+) -> std::result::Result<Response, ApiError> {
+    let kind = MediaType::parse(kind).ok_or(ApiError::NotFound)?;
+    let size = api::declared_length(header(req, "Content-Length").as_deref(), SiteLimits::default().media_file)?;
+    let body = req.bytes().await?;
+    if body.len() as u64 != size {
+        return Err(ApiError::BadRequest);
+    }
+    if !kind.matches(&body) {
+        return Err(ApiError::Unprocessable);
+    }
+    let object = stub(env, SITES, site)?;
+    let authorization = header(req, "Authorization");
+    let reply = relay(&object, "PUT", target, authorization.as_deref(), b"", Some(size)).await?;
+    if reply.status_code() != 200 {
+        return Ok(reply);
+    }
+    spend(env, Budget::UploadBytes, size).await?;
+    let metadata = worker::HttpMetadata { content_type: Some(kind.content_type().to_owned()), ..Default::default() };
+    env.bucket(BLOBS)?.put(media_key(site, id), body).http_metadata(metadata).execute().await?;
+    Ok(respond(201, "{}".into())?)
+}
+
+/// A site's write that frees files: once its object has said yes, R2
+/// forgets them too.
+async fn site_delete(
+    env: &Env,
+    req: &Request,
+    target: &str,
+    route: &Route,
+    site: &str,
+) -> std::result::Result<Response, ApiError> {
+    let object = stub(env, SITES, site)?;
+    let authorization = header(req, "Authorization");
+    let reply = relay(&object, "DELETE", target, authorization.as_deref(), b"", None).await?;
+    if reply.status_code() == 200 {
+        let bucket = env.bucket(BLOBS)?;
+        match route {
+            Route::DeleteMedia(_, id) => bucket.delete(media_key(site, id)).await?,
+            _ => {
+                purge_blobs(&bucket, &format!("pub/{site}")).await?;
+            }
+        }
+    }
+    Ok(reply)
+}
+
 /// Spends from a daily ceiling; 429 for everyone once it is reached.
 async fn spend(env: &Env, budget: Budget, amount: u64) -> std::result::Result<(), ApiError> {
     let (name, default) = match budget {
@@ -823,7 +925,7 @@ async fn handle(req: &mut Request, env: &Env) -> std::result::Result<Response, A
         Vec::new()
     };
     serve::admit(&route, &body, &Blake2b, now_ms(), POW_BITS)?;
-    if matches!(route, Route::Found(_)) {
+    if matches!(route, Route::Found(_) | Route::ClaimSite(_)) {
         spend(env, Budget::Workspaces, 1).await?;
     }
     let target = match url.query() {
@@ -839,6 +941,13 @@ async fn handle(req: &mut Request, env: &Env) -> std::result::Result<Response, A
         Route::PutBlob(ws, id) => put_blob(env, req, &target, ws, id).await,
         Route::GetBlob(ws, id) => get_blob(env, req, &target, ws, id).await,
         Route::PostOffer(ws, lookup) => post_offer(env, req, &target, ws, lookup, &body).await,
+        Route::PutMedia(site, id, kind) => put_media(env, req, &target, site, id, kind).await,
+        Route::DeleteMedia(site, _) | Route::DeleteSite(site) => site_delete(env, req, &target, &route, site).await,
+        _ if route.site().is_some() => {
+            let object = stub(env, SITES, route.site().unwrap_or_default())?;
+            let authorization = header(req, "Authorization");
+            Ok(relay(&object, &method, &target, authorization.as_deref(), &body, None).await?)
+        }
         _ => {
             let object = match (route.workspace(), route.lookup()) {
                 (Some(ws), _) => stub(env, WORKSPACES, &ws.to_hex())?,

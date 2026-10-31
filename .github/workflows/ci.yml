@@ -237,7 +237,7 @@ jobs:
       - name: Lint, native and for Workers
         run: |
           cargo clippy --locked --all-targets -- -D warnings
-          cargo clippy --locked -p modusnote-server --target wasm32-unknown-unknown -- -D warnings
+          cargo clippy --locked -p modusnote-server -p servpub-pages --target wasm32-unknown-unknown -- -D warnings
 
       - name: Tests, golden vectors included
         run: cargo test --locked
