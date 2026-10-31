@@ -82,7 +82,12 @@ async fn serve(req: &Request, env: &Env) -> Result<Response> {
             None => not_found(),
         },
         PublicRoute::Feed(site) => match read(env, &site, "/internal/feed").await? {
-            Some(body) => text(200, &body, "application/atom+xml; charset=utf-8", PAGE_CACHE),
+            Some(body) => {
+                // For feed readers, not for search results.
+                let mut response = text(200, &body, "application/atom+xml; charset=utf-8", PAGE_CACHE)?;
+                response.headers_mut().set("X-Robots-Tag", "noindex")?;
+                Ok(response)
+            }
             None => not_found(),
         },
         // The fonts are this Worker's only static assets (public/fonts);

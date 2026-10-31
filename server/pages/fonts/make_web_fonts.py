@@ -5,7 +5,8 @@ The pages may load fonts only from their own origin (`font-src 'self'`),
 so serv.pub serves these files itself, as the servpub Worker's static
 assets. Each is the app's variable font cut to the Latin, punctuation and
 symbol ranges the pages declare in `unicode-range` (any other character
-falls back to the system's fonts) and compressed as WOFF2.
+falls back to the system's fonts) and compressed as WOFF2; a font with a
+Reserved Font Name is not cut, only compressed.
 
 Run it again when a font in the app changes, and commit the output:
 
@@ -16,6 +17,7 @@ Run it again when a font in the app changes, and commit the output:
 from pathlib import Path
 
 from fontTools import subset
+from fontTools.ttLib import TTFont
 
 ROOT = Path(__file__).resolve().parents[3]
 SOURCE = ROOT / "apps/modusnote/assets/fonts"
@@ -37,6 +39,11 @@ FONTS = {
     "quattro-italic": "reading/iAWriterQuattro-Italic-Variable.ttf",
 }
 
+# Fonts with a Reserved Font Name ("iA Writer", "Plex"): a cut is a
+# Modified Version, which the OFL forbids to carry that name, so these are
+# only re-wrapped as WOFF2 with every byte of their data unchanged.
+WHOLE = {"quattro", "quattro-italic"}
+
 LICENCES = [
     "Inter-OFL.txt",
     "PlusJakartaSans-OFL.txt",
@@ -49,6 +56,13 @@ LICENCES = [
 def main() -> None:
     TARGET.mkdir(parents=True, exist_ok=True)
     for name, source in FONTS.items():
+        out = TARGET / f"{name}.woff2"
+        if name in WHOLE:
+            font = TTFont(str(SOURCE / source))
+            font.flavor = "woff2"
+            font.save(str(out))
+            print(f"{out.relative_to(ROOT)}: {out.stat().st_size // 1024} KiB, whole")
+            continue
         options = subset.Options()
         options.flavor = "woff2"
         options.layout_features = ["*"]
@@ -60,7 +74,6 @@ def main() -> None:
         subsetter = subset.Subsetter(options)
         subsetter.populate(unicodes=subset.parse_unicodes(UNICODES))
         subsetter.subset(font)
-        out = TARGET / f"{name}.woff2"
         subset.save_font(font, str(out), options)
         print(f"{out.relative_to(ROOT)}: {out.stat().st_size // 1024} KiB")
     licences = TARGET / "LICENCES.txt"

@@ -312,15 +312,16 @@ impl<S: Store, C: SignatureCheck> Site<S, C> {
         Ok(self.store.list(MEDIA, None, usize::MAX)?.into_iter().map(|(k, _)| k[MEDIA.len()..].to_owned()).collect())
     }
 
-    /// The listed pages, newest first.
-    fn entries(&self) -> Result<Vec<Entry>, SiteError> {
+    /// The listed pages, newest first; with what each says first only for
+    /// the feed, which needs it.
+    fn entries(&self, summaries: bool) -> Result<Vec<Entry>, SiteError> {
         let mut entries = Vec::new();
         for (key, value) in self.store.list(PAGES, None, usize::MAX)? {
             let Ok(stored) = serde_json::from_slice::<Stored>(&value) else { continue };
             if stored.page.listed {
                 entries.push(Entry {
                     slug: key[PAGES.len()..].to_owned(),
-                    summary: render::excerpt(&stored.page),
+                    summary: if summaries { render::excerpt(&stored.page) } else { String::new() },
                     title: stored.page.title,
                     updated_ms: stored.updated_ms,
                 });
@@ -331,7 +332,7 @@ impl<S: Store, C: SignatureCheck> Site<S, C> {
     }
 
     pub fn home_html(&self) -> Result<String, SiteError> {
-        Ok(render::home(&self.name, &self.settings()?, &self.entries()?, &self.style_version()?))
+        Ok(render::home(&self.name, &self.settings()?, &self.entries(false)?, &self.style_version()?))
     }
 
     pub fn page_html(&self, slug: &str) -> Result<String, SiteError> {
@@ -343,7 +344,7 @@ impl<S: Store, C: SignatureCheck> Site<S, C> {
         let stored: Stored = serde_json::from_slice(&json).map_err(|_| SiteError::Unavailable)?;
         let uploaded = self.uploaded()?;
         let contents =
-            if matches!(stored.page.layout, crate::page::Layout::Book) { self.entries()? } else { Vec::new() };
+            if matches!(stored.page.layout, crate::page::Layout::Book) { self.entries(false)? } else { Vec::new() };
         Ok(render::page(&self.name, slug, &settings, &stored.page, &contents, &self.style_version()?, &|id| {
             uploaded.iter().any(|u| u == id)
         }))
@@ -351,7 +352,7 @@ impl<S: Store, C: SignatureCheck> Site<S, C> {
 
     /// The site's Atom feed: its newest listed pages.
     pub fn feed_xml(&self) -> Result<String, SiteError> {
-        Ok(render::feed(&self.name, &self.settings()?, &self.entries()?))
+        Ok(render::feed(&self.name, &self.settings()?, &self.entries(true)?))
     }
 
     pub fn style_css(&self) -> Result<String, SiteError> {

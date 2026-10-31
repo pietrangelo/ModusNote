@@ -229,11 +229,28 @@ fn cut(text: &str) -> String {
     format!("{}…", head.trim_end_matches(|c: char| c.is_whitespace() || ",;:.".contains(c)))
 }
 
+/// How much of a text an excerpt reads: enough for [`EXCERPT`] characters
+/// under any markup, never the whole of a long note on every read.
+const EXCERPT_SOURCE: usize = 4181;
+
+/// The start of `text`, at most [`EXCERPT_SOURCE`] bytes, a character never
+/// cut in half.
+fn head_of(text: &str) -> &str {
+    if text.len() <= EXCERPT_SOURCE {
+        return text;
+    }
+    let mut end = EXCERPT_SOURCE;
+    while !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    &text[..end]
+}
+
 /// What a page says first, for link previews and feeds: its first text.
 pub fn excerpt(page: &Page) -> String {
     for block in &page.blocks {
         let text = match block {
-            Block::Markdown { text, .. } => plain(text),
+            Block::Markdown { text, .. } => plain(head_of(text)),
             Block::Text { text, .. } => text.split_whitespace().collect::<Vec<_>>().join(" "),
             _ => continue,
         };
@@ -430,7 +447,7 @@ pub fn page(
 /// A site's home: its title, its words about itself and its listed pages,
 /// the newest first.
 pub fn home(site: &str, settings: &SiteSettings, entries: &[Entry], style: &str) -> String {
-    let description = cut(&plain(&settings.about));
+    let description = cut(&plain(head_of(&settings.about)));
     let meta = Meta { path: format!("/{site}/"), description: &description, image: None, article: false };
     let mut out = head(settings, site, &settings.title, settings.indexable, style, &meta);
     let layout = match settings.home {
@@ -485,7 +502,7 @@ pub fn feed(site: &str, settings: &SiteSettings, entries: &[Entry]) -> String {
         title = escape(&settings.title),
     );
     if !settings.about.is_empty() {
-        out.push_str(&format!("<subtitle>{}</subtitle>\n", escape(&cut(&plain(&settings.about)))));
+        out.push_str(&format!("<subtitle>{}</subtitle>\n", escape(&cut(&plain(head_of(&settings.about))))));
     }
     for entry in entries.iter().take(FEED_ENTRIES) {
         let url = format!("{home}{}", entry.slug);
@@ -814,6 +831,9 @@ mod tests {
         let e = excerpt(&p);
         assert!(e.chars().count() <= EXCERPT, "{e}");
         assert!(e.ends_with("parola…"), "{e}");
+        // A long note is read only as far as its excerpt needs.
+        let huge = format!("{}{}", "è".repeat(EXCERPT_SOURCE), "fine");
+        assert!(head_of(&huge).len() <= EXCERPT_SOURCE && !head_of(&huge).contains("fine"));
         let tags = page::Page { blocks: vec![page::sample().blocks[1].clone()], ..page::sample() };
         assert_eq!(excerpt(&tags), "", "only text describes a page");
     }
