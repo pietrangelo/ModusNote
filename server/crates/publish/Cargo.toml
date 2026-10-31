@@ -1,0 +1,23 @@
+[package]
+name = "publish"
+description = "Public pages on serv.pub: a site's signed settings and pages, checked and rendered to static HTML without scripts"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+ledger.workspace = true
+sync.workspace = true
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+pulldown-cmark = { version = "0.13", default-features = false }
+
+[dev-dependencies]
+crypto.workspace = true
+ed25519-dalek = { version = "2.2", default-features = false }
+
+[lints]
+workspace = true

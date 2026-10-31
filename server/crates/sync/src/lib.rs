@@ -23,7 +23,7 @@ mod rendezvous;
 mod store;
 mod workspace;
 
-pub use auth::{Caller, Denied, Request, SKEW_MS};
+pub use auth::{Caller, Denied, Request, SKEW_MS, authenticate};
 pub use guard::{Budget, Guard};
 pub use limits::Limits;
 pub use live::{Fanout, SOCKETS_HELD, SOCKETS_PER_KEY, SOCKETS_PER_WORKSPACE, Socket, admit_socket};

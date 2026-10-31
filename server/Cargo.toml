@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/ledger", "crates/crypto", "crates/sync", "worker"]
+members = ["crates/ledger", "crates/crypto", "crates/sync", "crates/publish", "worker"]
 
 [workspace.package]
 version = "0.1.0"
@@ -14,6 +14,7 @@ publish = false
 ledger = { path = "crates/ledger" }
 crypto = { path = "crates/crypto" }
 sync = { path = "crates/sync" }
+publish = { path = "crates/publish" }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
