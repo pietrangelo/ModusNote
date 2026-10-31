@@ -85,8 +85,10 @@ void main() {
           media: [MediaId('AAAAAAAAAAAAAAAAAAAAAA')],
           at: DateTime.utc(2026, 10, 31),
         ),
+      },
+      drafts: {
         EntryId('note-2'): PublishedPage(
-          slug: PageSlug('bozza'),
+          slug: PageSlug('bozza-abcdefghij'),
           title: 'Bozza',
           listed: false,
           media: const [],
@@ -100,6 +102,7 @@ void main() {
       expect(back.name, book.name);
       expect(back.settings, book.settings);
       expect(back.pages.keys, book.pages.keys);
+      expect(back.drafts.keys, [EntryId('note-2')]);
       expect(back.pages[EntryId('note-1')]!.media, [
         MediaId('AAAAAAAAAAAAAAAAAAAAAA'),
       ]);
@@ -110,18 +113,21 @@ void main() {
       expect(book.slugs, {EntryId('note-1'): PageSlug('il-faro')});
     });
 
-    test('adds and removes pages', () {
+    test('adds and removes pages and drafts', () {
       final without = book.withPage(EntryId('note-1'), null);
-      expect(without.pages.keys, [EntryId('note-2')]);
-      expect(book.pages, hasLength(2), reason: 'immutable');
+      expect(without.pages, isEmpty);
+      expect(without.drafts, hasLength(1));
+      expect(book.pages, hasLength(1), reason: 'immutable');
+      expect(book.taken, {PageSlug('il-faro'), PageSlug('bozza-abcdefghij')});
+      expect(book.withDraft(EntryId('note-2'), null).drafts, isEmpty);
     });
 
     test('anything else is malformed', () {
       for (final bad in [
         '',
         '{}',
-        '{"v":2,"name":"quaderno","settings":{},"pages":{}}',
-        '{"v":1,"name":"api","settings":{},"pages":{}}',
+        '{"v":2,"name":"quaderno","settings":{},"pages":{},"drafts":{}}',
+        '{"v":1,"name":"api","settings":{},"pages":{},"drafts":{}}',
       ]) {
         expect(
           () => SiteBook.fromBytes(Uint8List.fromList(utf8.encode(bad))),

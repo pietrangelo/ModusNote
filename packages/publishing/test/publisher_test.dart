@@ -179,7 +179,7 @@ void main() {
     );
   });
 
-  Future<Uri> publish(String text, {bool listed = true, String id = 'note-1'}) {
+  Future<Uri> publish(String text, {bool draft = false, String id = 'note-1'}) {
     final e = entry(note, {
       'body': TextValue(text),
       'files': AttachmentsValue([ImageAttachment(picture, caption: 'Molo')]),
@@ -194,7 +194,7 @@ void main() {
       schema: note,
       labelOf: labelOf,
       describe: describe,
-      listed: listed,
+      draft: draft,
     );
   }
 
@@ -268,13 +268,45 @@ void main() {
 
   test('published again it keeps its address and swaps its files', () async {
     await publisher.claim(name, settings);
-    await publish('# Il faro\n\nLuce.', listed: false);
+    await publish('# Il faro\n\nLuce.');
     final first = server.files.keys.single;
     final url = await publish('# Un altro titolo\n\nLuce.');
     expect(url.path, '/quaderno/il-faro');
     expect(server.files.keys.single, isNot(first));
-    expect(books.book!.pages.values.single.listed, isTrue);
+    expect(server.pages.keys, ['il-faro']);
   });
+
+  test(
+    'a draft has an address nobody guesses and leaves the page be',
+    () async {
+      await publisher.claim(name, settings);
+      await publish('# Il faro\n\nLuce.');
+      final live = Map.of(server.pages['il-faro']!);
+      final url = await publish('# Il faro\n\nAltra luce.', draft: true);
+      expect(url.path, matches(RegExp(r'^/quaderno/il-faro-[a-z2-7]{10}$')));
+      final slug = url.pathSegments.last;
+      expect(
+        server.pages['il-faro'],
+        live,
+        reason: 'the live page is untouched',
+      );
+      expect(server.pages[slug]!['listed'], isFalse);
+      expect(books.book!.drafts[EntryId('note-1')]!.slug.value, slug);
+      expect(books.book!.slugs.values, [PageSlug('il-faro')]);
+
+      // Another preview replaces the first, files and all.
+      final again = await publish('# Il faro\n\nTerza.', draft: true);
+      expect(again, isNot(url));
+      expect(server.pages.containsKey(slug), isFalse);
+      expect(server.files, hasLength(2), reason: 'the page and one draft');
+
+      // Publishing takes the draft away.
+      await publish('# Il faro\n\nTerza.');
+      expect(server.pages.keys, ['il-faro']);
+      expect(server.files, hasLength(1));
+      expect(books.book!.drafts, isEmpty);
+    },
+  );
 
   test('two notes with one title get two addresses', () async {
     await publisher.claim(name, settings);
@@ -301,11 +333,13 @@ void main() {
     () async {
       await publisher.claim(name, settings);
       await publish('# Il faro\n\nLuce.');
+      await publish('# Il faro\n\nBozza.', draft: true);
       confirmed = false;
       await publisher.withdraw(EntryId('note-1'));
       expect(server.pages, isEmpty);
       expect(server.files, isEmpty);
       expect(books.book!.pages, isEmpty);
+      expect(books.book!.drafts, isEmpty);
     },
   );
 

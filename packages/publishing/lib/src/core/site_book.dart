@@ -23,8 +23,8 @@ final class PublishedPage {
   final PageSlug slug;
   final String title;
 
-  /// False while it is only a draft to look at: reachable by its address,
-  /// absent from the home and never indexed.
+  /// False for a draft to look at: reachable only by its address (made
+  /// unguessable), absent from the home and never indexed.
   final bool listed;
 
   /// The files uploaded for it, deleted when it is published again or
@@ -71,11 +71,18 @@ final class SiteBook {
     required this.name,
     required this.settings,
     Map<EntryId, PublishedPage> pages = const {},
-  }) : pages = Map.unmodifiable(pages);
+    Map<EntryId, PublishedPage> drafts = const {},
+  }) : pages = Map.unmodifiable(pages),
+       drafts = Map.unmodifiable(drafts);
 
   final SiteName name;
   final SiteSettings settings;
+
+  /// The pages the site lists, by the note they show.
   final Map<EntryId, PublishedPage> pages;
+
+  /// The latest preview of each note, at an address of its own.
+  final Map<EntryId, PublishedPage> drafts;
 
   Uri get home => Uri.parse('${name.url}/');
 
@@ -83,18 +90,42 @@ final class SiteBook {
 
   /// The note each published page shows, for links between them.
   Map<EntryId, PageSlug> get slugs => {
-    for (final MapEntry(:key, :value) in pages.entries)
-      if (value.listed) key: value.slug,
+    for (final MapEntry(:key, :value) in pages.entries) key: value.slug,
+  };
+
+  /// Every address in use, drafts included.
+  Set<PageSlug> get taken => {
+    for (final page in pages.values) page.slug,
+    for (final page in drafts.values) page.slug,
   };
 
   SiteBook withSettings(SiteSettings settings) =>
-      SiteBook(name: name, settings: settings, pages: pages);
+      SiteBook(name: name, settings: settings, pages: pages, drafts: drafts);
 
   /// With [entry]'s page, or without it when [page] is null.
-  SiteBook withPage(EntryId entry, PublishedPage? page) {
-    final next = {...pages}..remove(entry);
+  SiteBook withPage(EntryId entry, PublishedPage? page) => SiteBook(
+    name: name,
+    settings: settings,
+    pages: _with(pages, entry, page),
+    drafts: drafts,
+  );
+
+  /// With [entry]'s draft, or without it when [draft] is null.
+  SiteBook withDraft(EntryId entry, PublishedPage? draft) => SiteBook(
+    name: name,
+    settings: settings,
+    pages: pages,
+    drafts: _with(drafts, entry, draft),
+  );
+
+  static Map<EntryId, PublishedPage> _with(
+    Map<EntryId, PublishedPage> map,
+    EntryId entry,
+    PublishedPage? page,
+  ) {
+    final next = {...map}..remove(entry);
     if (page != null) next[entry] = page;
-    return SiteBook(name: name, settings: settings, pages: next);
+    return next;
   }
 
   Uint8List toBytes() => Uint8List.fromList(
@@ -105,6 +136,10 @@ final class SiteBook {
         'settings': settings.toJson(),
         'pages': {
           for (final MapEntry(:key, :value) in pages.entries)
+            key.value: value.toJson(),
+        },
+        'drafts': {
+          for (final MapEntry(:key, :value) in drafts.entries)
             key.value: value.toJson(),
         },
       }),
@@ -120,14 +155,17 @@ final class SiteBook {
         'name': final String name,
         'settings': final Object settings,
         'pages': final Map<String, Object?> pages,
+        'drafts': final Map<String, Object?> drafts,
       }) {
+        Map<EntryId, PublishedPage> read(Map<String, Object?> map) => {
+          for (final MapEntry(:key, :value) in map.entries)
+            EntryId(key): PublishedPage.fromJson(value),
+        };
         return SiteBook(
           name: SiteName(name),
           settings: SiteSettings.fromJson(settings),
-          pages: {
-            for (final MapEntry(:key, :value) in pages.entries)
-              EntryId(key): PublishedPage.fromJson(value),
-          },
+          pages: read(pages),
+          drafts: read(drafts),
         );
       }
     } on FormatException {

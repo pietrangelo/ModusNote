@@ -79,28 +79,32 @@ final class Publisher {
   }
 
   /// Publishes [content], the snapshot of note [entry] made by
-  /// [PublicationPolicy.compose], as a page of the site: a draft only its
-  /// address reaches until [listed]. The page keeps its address when
-  /// published again; its files are uploaded anew and the old ones
-  /// deleted. Returns the page's address.
+  /// [PublicationPolicy.compose], as a page the site lists. The page keeps
+  /// its address when published again; its files are uploaded anew and
+  /// the old ones deleted, and so is the note's draft. Returns the page's
+  /// address.
+  ///
+  /// As a [draft] (a preview) it goes to an address of its own, the
+  /// title's followed by 50 random bits, so nobody finds it by guessing
+  /// before the person decides; the site does not list it, search engines
+  /// are told not to index it, and the live page, if any, stays as it is.
   Future<Uri> publish({
     required EntryId entry,
     required PublicationContent content,
     required SchemaDefinition schema,
     required String Function(FieldDefinition field) labelOf,
     required String Function(FieldDefinition field, FieldValue value) describe,
-    required bool listed,
+    bool draft = false,
     PublicationLayout? layout,
   }) async {
     _requireConfirmed();
     final book = await _site();
-    final previous = book.pages[entry];
-    final slug =
-        previous?.slug ??
-        content.slug.freeAmong({
-          for (final page in book.pages.values) page.slug,
-        });
-    final page = await _withKey(book, (key) async {
+    final page = book.pages[entry];
+    final previousDraft = book.drafts[entry];
+    final slug = draft
+        ? _draftSlug(content.slug, book.taken)
+        : page?.slug ?? content.slug.freeAmong(book.taken);
+    final published = await _withKey(book, (key) async {
       final uploaded = <BlobId, MediaId>{};
       try {
         for (final blob in {...content.images, ...content.audio}) {
@@ -122,14 +126,14 @@ final class Publisher {
           media: uploaded,
           labelOf: labelOf,
           describe: describe,
-          listed: listed,
+          listed: !draft,
           layout: layout,
         );
         await _gateway.putPage(key, book.name, slug, document.toJson());
         return PublishedPage(
           slug: slug,
           title: document.title,
-          listed: listed,
+          listed: !draft,
           media: document.media,
           at: _now().toUtc(),
         );
@@ -138,28 +142,47 @@ final class Publisher {
         rethrow;
       }
     });
-    await _books.save(book.withPage(entry, page));
-    await _withKey(
-      book,
-      (key) => _deleteQuietly(
-        key,
-        book,
-        previous?.media.where((id) => !page.media.contains(id)) ?? const [],
-      ),
+    // A draft replaces the note's earlier draft; a page replaces its
+    // earlier self and every draft of the note.
+    await _books.save(
+      draft
+          ? book.withDraft(entry, published)
+          : book.withPage(entry, published).withDraft(entry, null),
     );
+    await _withKey(book, (key) async {
+      final stale = draft ? null : page;
+      if (previousDraft != null) {
+        await _deletePageQuietly(key, book, previousDraft.slug);
+        await _deleteQuietly(key, book, previousDraft.media);
+      }
+      if (stale != null) {
+        await _deleteQuietly(
+          key,
+          book,
+          stale.media.where((id) => !published.media.contains(id)),
+        );
+      }
+    });
     return book.pageUrl(slug);
   }
 
-  /// Takes [entry]'s page off the site, with its files.
+  /// Takes [entry]'s page and draft off the site, with their files.
   Future<void> withdraw(EntryId entry) async {
     final book = await _site();
     final page = book.pages[entry];
-    if (page == null) return;
+    final draft = book.drafts[entry];
+    if (page == null && draft == null) return;
     await _withKey(book, (key) async {
-      await _gateway.deletePage(key, book.name, page.slug);
-      await _deleteQuietly(key, book, page.media);
+      if (page != null) {
+        await _gateway.deletePage(key, book.name, page.slug);
+        await _deleteQuietly(key, book, page.media);
+      }
+      if (draft != null) {
+        await _deletePageQuietly(key, book, draft.slug);
+        await _deleteQuietly(key, book, draft.media);
+      }
     });
-    await _books.save(book.withPage(entry, null));
+    await _books.save(book.withPage(entry, null).withDraft(entry, null));
   }
 
   /// Withdraws the whole site: serv.pub deletes its pages and files and
@@ -187,6 +210,36 @@ final class Publisher {
       return await use(key);
     } finally {
       key.release();
+    }
+  }
+
+  /// A draft nobody needs any more: like a file, left behind on failure.
+  Future<void> _deletePageQuietly(
+    SiteKey key,
+    SiteBook book,
+    PageSlug slug,
+  ) async {
+    try {
+      await _gateway.deletePage(key, book.name, slug);
+    } on PublishingException {
+      // Left behind, unlisted.
+    }
+  }
+
+  /// The title's address followed by ten random symbols (50 bits).
+  PageSlug _draftSlug(PageSlug base, Set<PageSlug> taken) {
+    const alphabet = 'abcdefghijklmnopqrstuvwxyz234567';
+    while (true) {
+      final suffix = List.generate(
+        10,
+        (_) => alphabet[_random.nextInt(alphabet.length)],
+      ).join();
+      final room = PageSlug.maxLength - suffix.length - 1;
+      final head = base.value.length > room
+          ? base.value.substring(0, room).replaceAll(RegExp(r'-+$'), '')
+          : base.value;
+      final slug = PageSlug('$head-$suffix');
+      if (!taken.contains(slug)) return slug;
     }
   }
 

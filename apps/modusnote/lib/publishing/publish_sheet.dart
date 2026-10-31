@@ -195,7 +195,7 @@ class _PublishSheetState extends State<PublishSheet> {
       schema: widget.schema,
       labelOf: (field) => texts.label(field.label),
       describe: (field, value) => _describe(texts, locale, field, value),
-      listed: listed,
+      draft: !listed,
       layout: _layout,
     );
     final next = await widget.access.publisher.book();
@@ -414,9 +414,7 @@ class _PublishSheetState extends State<PublishSheet> {
                 key: const ValueKey('publish-confirm'),
                 onPressed: ready ? () => _publish(listed: true) : null,
                 child: Text(
-                  page?.listed == true
-                      ? l10n.publishUpdate
-                      : l10n.publishConfirm,
+                  page != null ? l10n.publishUpdate : l10n.publishConfirm,
                 ),
               ),
             ),
@@ -429,7 +427,7 @@ class _PublishSheetState extends State<PublishSheet> {
             color: ModusPalette.of(context).muted,
           ),
         ),
-        if (page != null) ...[
+        if (page != null || book.drafts[widget.entry.id] != null) ...[
           const SizedBox(height: Spacing.m),
           TextButton.icon(
             key: const ValueKey('publish-withdraw'),
