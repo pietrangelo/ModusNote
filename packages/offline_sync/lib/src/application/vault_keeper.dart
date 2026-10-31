@@ -432,7 +432,7 @@ final class VaultKeeper {
   /// under the open [vault]'s local key; null when none is stored. A value
   /// that does not open under [name] (moved, edited) reads as absent.
   Future<Uint8List?> loadSetting(UnlockedVault vault, String name) async {
-    _checkSettingName(name);
+    _checkPlainSettingName(name);
     if (vault.isLocked) throw const VaultLockedException();
     final sealed = await _vaults.loadSetting(name);
     if (sealed == null) return null;
@@ -455,7 +455,7 @@ final class VaultKeeper {
     String name,
     Uint8List? value,
   ) async {
-    _checkSettingName(name);
+    _checkPlainSettingName(name);
     if (vault.isLocked) throw const VaultLockedException();
     await _vaults.saveSetting(
       name,
@@ -468,6 +468,83 @@ final class VaultKeeper {
             ),
     );
   }
+
+  /// Where [createDetachedIdentity] keeps an identity, among the settings
+  /// but out of reach of [loadSetting] and [saveSetting].
+  static const _detachedPrefix = 'identity.';
+
+  /// A new signing identity of its own, for a service that must not learn
+  /// which vault, device or workspace it serves (a site on serv.pub): it
+  /// is never in the members' log and signs nothing of the workspace. It
+  /// is sealed under the open [vault]'s local key as [name] and kept on
+  /// this device only, replacing any identity kept under that name. Needs
+  /// a fresh confirmation ([confirm]): whoever only found the vault open
+  /// must not give themselves a key that outlives it.
+  Future<IdentityKeyPair> createDetachedIdentity(
+    UnlockedVault vault,
+    String name,
+  ) async {
+    final setting = _detachedSetting(name);
+    _requireConfirmed(vault);
+    final identity = _identities.generateIdentity();
+    try {
+      final sealed = _identities.sealIdentity(
+        identity,
+        key: vault._localKey,
+        associatedData: _detachedSlot(vault, name),
+      );
+      await _vaults.saveSetting(setting, sealed);
+      if (vault.isLocked) throw const VaultLockedException();
+    } catch (_) {
+      identity.dispose();
+      rethrow;
+    }
+    return identity;
+  }
+
+  /// The identity kept as [name] in the open [vault], owned by the caller;
+  /// null when there is none or it does not open under that name.
+  Future<IdentityKeyPair?> openDetachedIdentity(
+    UnlockedVault vault,
+    String name,
+  ) async {
+    final setting = _detachedSetting(name);
+    if (vault.isLocked) throw const VaultLockedException();
+    final sealed = await _vaults.loadSetting(setting);
+    if (sealed == null) return null;
+    if (vault.isLocked) throw const VaultLockedException();
+    try {
+      return _identities.openIdentity(
+        sealed,
+        key: vault._localKey,
+        associatedData: _detachedSlot(vault, name),
+      );
+    } on AuthenticationTagMismatchException {
+      return null;
+    }
+  }
+
+  Future<void> forgetDetachedIdentity(UnlockedVault vault, String name) async {
+    final setting = _detachedSetting(name);
+    if (vault.isLocked) throw const VaultLockedException();
+    await _vaults.saveSetting(setting, null);
+  }
+
+  /// Signs requests as [identity] (a detached one), which stays owned by
+  /// the caller.
+  RequestSigner signerFor(IdentityKeyPair identity) => _signer(identity);
+
+  static String _detachedSetting(String name) {
+    final setting = '$_detachedPrefix$name';
+    _checkSettingName(setting);
+    return setting;
+  }
+
+  static AssociatedData _detachedSlot(UnlockedVault vault, String name) =>
+      AssociatedData.forContext(
+        'modusnote.vault.identity.v1',
+        '${vault.workspace.hex}.$name',
+      );
 
   /// Every live record of the open [vault], sealed under a key stretched
   /// from [passphrase] (consumed) with a salt of its own: a file to keep
@@ -565,6 +642,15 @@ final class VaultKeeper {
 
   static void _checkSettingName(String name) {
     if (!_settingName.hasMatch(name)) {
+      throw ArgumentError.value(name, 'name', 'not a setting name');
+    }
+  }
+
+  /// A name [loadSetting] and [saveSetting] may use: never a detached
+  /// identity's.
+  static void _checkPlainSettingName(String name) {
+    _checkSettingName(name);
+    if (name.startsWith(_detachedPrefix)) {
       throw ArgumentError.value(name, 'name', 'not a setting name');
     }
   }

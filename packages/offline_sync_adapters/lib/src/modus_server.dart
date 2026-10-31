@@ -7,6 +7,9 @@ import 'package:http/http.dart' as http;
 import 'package:identity_cryptography/identity_cryptography.dart';
 import 'package:meta/meta.dart';
 import 'package:offline_sync/offline_sync.dart';
+import 'package:publishing/publishing.dart';
+
+part 'modus_sites.dart';
 
 /// The server understood the request and refused it for good: a workspace
 /// over its quota (413), a record or bundle the log does not allow (422),
@@ -78,6 +81,9 @@ final class ModusServer implements SyncGateway {
 
   @override
   InviteChannel invites(RequestSigner? signer) => _Codes(this, signer);
+
+  /// The signed API of serv.pub's sites, on this server.
+  SiteGateway sites() => _Sites(this);
 
   /// What the server says about itself, asked once (and again after a
   /// failure).
@@ -151,26 +157,47 @@ final class ModusServer implements SyncGateway {
     RequestSigner? signer,
     Object? body,
     Map<int, Exception> meaning = const {},
-  }) async {
-    final bytes = body == null
+  }) => _call(
+    method,
+    path,
+    body: body == null
         ? Uint8List(0)
-        : Uint8List.fromList(utf8.encode(jsonEncode(body)));
+        : Uint8List.fromList(utf8.encode(jsonEncode(body))),
+    contentType: body == null ? null : 'application/json',
+    authorize: signer?.authorize,
+    adjustClock: signer?.adjustClock,
+    meaning: meaning,
+  );
+
+  /// [_json] for any body: [authorize] signs [signedBody] when given (a
+  /// file is signed on an empty body, as its length is), [body] otherwise.
+  Future<Object?> _call(
+    String method,
+    String path, {
+    required Uint8List body,
+    String? contentType,
+    Uint8List? signedBody,
+    Future<String> Function(String method, String path, Uint8List body)?
+    authorize,
+    void Function(DateTime server)? adjustClock,
+    Map<int, Exception> meaning = const {},
+  }) async {
     final target = _api.resolve(path);
     for (var attempt = 0; ; attempt++) {
-      final request = http.Request(method, target)..bodyBytes = bytes;
-      if (body != null) request.headers['Content-Type'] = 'application/json';
-      if (signer != null) {
-        request.headers['Authorization'] = await signer.authorize(
+      final request = http.Request(method, target)..bodyBytes = body;
+      if (contentType != null) request.headers['Content-Type'] = contentType;
+      if (authorize != null) {
+        request.headers['Authorization'] = await authorize(
           method,
           target.hasQuery ? '${target.path}?${target.query}' : target.path,
-          bytes,
+          signedBody ?? body,
         );
       }
       final (status, text) = await _send(request);
-      if (status == 401 && signer != null && attempt == 0) {
+      if (status == 401 && adjustClock != null && attempt == 0) {
         final now = _serverTime(text);
         if (now != null) {
-          signer.adjustClock(now);
+          adjustClock(now);
           continue;
         }
       }

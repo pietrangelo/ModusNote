@@ -179,6 +179,9 @@ fn media_types_by_their_first_bytes() {
     assert!(MediaType::Png.matches(b"\x89PNG\r\n\x1a\n...."));
     assert!(MediaType::Webp.matches(b"RIFF\0\0\0\0WEBPVP8 "));
     assert!(MediaType::Ogg.matches(b"OggS\0"));
+    assert!(MediaType::Webm.matches(&[0x1A, 0x45, 0xDF, 0xA3, 0x9F]));
+    assert!(!MediaType::Webm.matches(b"OggS\0"));
+    assert_eq!(MediaType::parse("webm"), Some(MediaType::Webm));
     assert!(!MediaType::Png.matches(b"<html><script>"));
     assert!(!MediaType::Webp.matches(b"RIFF\0\0\0\0WAVEfmt "));
     assert_eq!(MediaType::parse("svg"), None, "no SVG: it can carry script");

@@ -12,6 +12,7 @@ dependencies:
   identity_cryptography: any
   meta: ^1.16.0
   offline_sync: any
+  publishing: any
   sqlite3: ^3.7.0
   web_socket: ^1.0.1
 

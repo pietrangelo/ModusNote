@@ -80,6 +80,8 @@ pub enum MediaType {
     Png,
     Webp,
     Ogg,
+    /// Recordings made in a browser (Opus in WebM).
+    Webm,
 }
 
 impl MediaType {
@@ -89,6 +91,7 @@ impl MediaType {
             "png" => Some(Self::Png),
             "webp" => Some(Self::Webp),
             "ogg" => Some(Self::Ogg),
+            "webm" => Some(Self::Webm),
             _ => None,
         }
     }
@@ -99,6 +102,7 @@ impl MediaType {
             Self::Png => "png",
             Self::Webp => "webp",
             Self::Ogg => "ogg",
+            Self::Webm => "webm",
         }
     }
 
@@ -108,6 +112,7 @@ impl MediaType {
             Self::Png => "image/png",
             Self::Webp => "image/webp",
             Self::Ogg => "audio/ogg",
+            Self::Webm => "audio/webm",
         }
     }
 
@@ -118,6 +123,8 @@ impl MediaType {
             Self::Png => bytes.starts_with(b"\x89PNG\r\n\x1a\n"),
             Self::Webp => bytes.len() >= 12 && bytes.starts_with(b"RIFF") && &bytes[8..12] == b"WEBP",
             Self::Ogg => bytes.starts_with(b"OggS"),
+            // The EBML header every Matroska file opens with.
+            Self::Webm => bytes.starts_with(&[0x1A, 0x45, 0xDF, 0xA3]),
         }
     }
 }
