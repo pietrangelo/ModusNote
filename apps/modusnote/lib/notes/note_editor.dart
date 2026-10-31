@@ -5,6 +5,7 @@ import 'package:blob_storage_media/blob_storage_media.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:publishing/publishing.dart';
 import 'package:schema_dynamic_content/schema_dynamic_content.dart';
 
 import '../attachments/open_in_browser.dart';
@@ -14,6 +15,7 @@ import '../appearance/appearance_scope.dart';
 import '../appearance/page_appearance.dart';
 import '../appearance/page_sheet.dart';
 import '../l10n/generated/app_localizations.dart';
+import '../publishing/publish_sheet.dart';
 import '../theme/golden_ratio.dart';
 import '../theme/modus_theme.dart';
 import '../theme/modus_themes.dart';
@@ -756,6 +758,7 @@ class NoteEditorScreenState extends State<NoteEditorScreen>
     };
     final embedded = widget.onClose != null;
     final focused = _focused;
+    final publishing = PublishingScope.maybeOf(context);
     final appearance = AppearanceScope.maybeOf(context);
     final page = appearance?.page ?? const PageAppearance();
     final font = appearance?.shownFont ?? PageFont.inter;
@@ -835,6 +838,24 @@ class NoteEditorScreenState extends State<NoteEditorScreen>
                 icon: const Icon(Icons.center_focus_weak),
                 selectedIcon: const Icon(Icons.center_focus_strong),
               ),
+              if (_saved case final saved?
+                  when !focused &&
+                      publishing != null &&
+                      PublicationPolicy.canPublish(_schema))
+                IconButton(
+                  key: const ValueKey('publish-note'),
+                  // What is published is the note as saved.
+                  onPressed: _dirty
+                      ? null
+                      : () => PublishSheet.show(
+                          context,
+                          access: publishing,
+                          entry: saved,
+                          schema: _schema,
+                        ),
+                  tooltip: l10n.publishAction,
+                  icon: const Icon(Icons.public),
+                ),
               if (_saved != null && !focused)
                 IconButton(
                   onPressed: _trash,

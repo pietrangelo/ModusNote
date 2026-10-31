@@ -128,6 +128,7 @@ VaultGate _gate({
     switcher: switcher,
     live: cloud.live,
     serviceNotices: cloud.serviceNotices,
+    sites: cloud.sites,
     sharedBlobsFor: cloud.remoteBlobs == null
         ? null
         : (vault) {

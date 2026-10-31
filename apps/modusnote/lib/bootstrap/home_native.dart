@@ -134,6 +134,7 @@ VaultGate _gate({
     switcher: switcher,
     live: cloud.live,
     serviceNotices: cloud.serviceNotices,
+    sites: cloud.sites,
     secondFactor: SecondFactor.biometric,
     sharedBlobsFor: cloud.remoteBlobs == null
         ? null
