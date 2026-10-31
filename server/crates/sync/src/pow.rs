@@ -11,6 +11,8 @@ const LABEL: &[u8] = b"modusnote.pow.v1";
 pub enum PowPurpose {
     Found,
     Answer,
+    /// Claiming a site's name on serv.pub.
+    Site,
 }
 
 impl PowPurpose {
@@ -18,6 +20,7 @@ impl PowPurpose {
         match self {
             Self::Found => 1,
             Self::Answer => 2,
+            Self::Site => 3,
         }
     }
 }

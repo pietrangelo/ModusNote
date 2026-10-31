@@ -34,8 +34,26 @@ for _ in $(seq 1 300); do
 done
 grep -q 'Ready on' "$log" || { cat "$log"; exit 1; }
 
+# serv.pub's own Worker, on the next port: it finds the ModusSite objects
+# of the session above through wrangler's dev registry, and the same R2.
+pages_port=$((port + 1))
+pages_log="$state/pages.log"
+(cd "$root/server/pages" && WRANGLER_SEND_METRICS=false exec "$root/tool/deploy/node_modules/.bin/wrangler" dev \
+  --var OBJECT_PLACEMENT:local --ip 127.0.0.1 --port "$pages_port" \
+  --persist-to "$state/data" --show-interactive-dev-session=false > "$pages_log" 2>&1) &
+pages=$!
+trap 'kill $wrangler $pages 2>/dev/null || true; rm -rf "$state"' EXIT
+for _ in $(seq 1 300); do
+  grep -q 'Ready on' "$pages_log" && break
+  kill -0 $pages 2>/dev/null || { cat "$pages_log"; exit 1; }
+  sleep 1
+done
+grep -q 'Ready on' "$pages_log" || { cat "$pages_log"; exit 1; }
+
 export NO_PROXY=127.0.0.1 no_proxy=127.0.0.1
 python3 -I "$root/server/e2e/e2e.py" "http://127.0.0.1:$port"
+sleep $((61 - $(date +%s) % 60))
+python3 -I "$root/server/e2e/servpub.py" "http://127.0.0.1:$port" "http://127.0.0.1:$pages_port"
 
 # The app's own domain and adapter against the same Worker, where Dart is
 # installed (the CI job installs it). It starts in a window of the write

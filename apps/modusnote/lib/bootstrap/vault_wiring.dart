@@ -7,6 +7,7 @@ import 'package:identity_cryptography/identity_cryptography.dart';
 import 'package:identity_cryptography_adapters/identity_cryptography_adapters.dart';
 import 'package:offline_sync/offline_sync.dart';
 import 'package:offline_sync_adapters/offline_sync_adapters.dart';
+import 'package:publishing/publishing.dart';
 import 'package:sodium/sodium_sumo.dart';
 import 'package:sqlite3/common.dart';
 
@@ -51,9 +52,13 @@ final class CloudWiring {
     this.remoteBlobs,
     this.live,
     this.serviceNotices,
+    this.sites,
   });
 
   final SyncGateway? gateway;
+
+  /// serv.pub's signed API, on the same server.
+  final SiteGateway? sites;
 
   /// The blobs of an open vault's workspace on the server, every request
   /// signed by the vault's device.
@@ -74,8 +79,10 @@ CloudWiring cloudWiring(
   required IdentityService identities,
 }) {
   if (config == null) return const CloudWiring();
+  final server = ModusServer(origin: config.origin, blake2b: blake2b);
   return CloudWiring(
-    gateway: ModusServer(origin: config.origin, blake2b: blake2b),
+    gateway: server,
+    sites: server.sites(),
     live: ModusLiveChannel(origin: config.origin),
     serviceNotices: ServiceNoticeBoard(
       source: ModusServiceNotices(origin: config.origin),

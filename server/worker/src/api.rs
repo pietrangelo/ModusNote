@@ -10,6 +10,7 @@ use std::net::IpAddr;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 use ledger::WorkspaceId;
+use publish::SiteError;
 use serde::{Deserialize, Serialize};
 use sync::{Denied, RendezvousError, SyncError};
 
@@ -18,6 +19,9 @@ use sync::{Denied, RendezvousError, SyncError};
 /// else. Larger pushes go in several requests.
 pub const MAX_BULK_BODY: u64 = 8 << 20;
 pub const MAX_SMALL_BODY: u64 = 64 << 10;
+/// A published page: a note's Markdown (up to 500,000 code units, some
+/// characters three bytes in UTF-8) and its other fields, as JSON.
+pub const MAX_PAGE_BODY: u64 = 2 << 20;
 /// What proof of work founding a workspace or answering a code costs: about
 /// a million BLAKE2b hashes, a second or two on a phone.
 pub const POW_BITS: u32 = 20;
@@ -45,6 +49,16 @@ pub enum Route {
     Answer(String),
     Answers(String),
     CloseCode(String),
+    /// A site on serv.pub: claimed with a proof of work, then written only
+    /// by the key that claimed it.
+    ClaimSite(String),
+    PutSettings(String),
+    DeleteSite(String),
+    PutPage(String, String),
+    DeletePage(String, String),
+    /// Site, media id, type (`jpeg`, `png`, `webp`, `ogg`).
+    PutMedia(String, String, String),
+    DeleteMedia(String, String),
 }
 
 impl Route {
@@ -82,11 +96,28 @@ impl Route {
         }
     }
 
+    /// The site whose object answers, if any.
+    pub fn site(&self) -> Option<&str> {
+        match self {
+            Self::ClaimSite(site)
+            | Self::PutSettings(site)
+            | Self::DeleteSite(site)
+            | Self::PutPage(site, _)
+            | Self::DeletePage(site, _)
+            | Self::PutMedia(site, ..)
+            | Self::DeleteMedia(site, _) => Some(site),
+            _ => None,
+        }
+    }
+
     /// Whether the body is JSON to read (a blob's is streamed to R2).
     pub fn takes_json(&self) -> bool {
         matches!(
             self,
-            Self::Found(_)
+            Self::ClaimSite(_)
+                | Self::PutSettings(_)
+                | Self::PutPage(..)
+                | Self::Found(_)
                 | Self::AppendRecord(_)
                 | Self::AppendBundle(_)
                 | Self::Push(_)
@@ -100,6 +131,7 @@ impl Route {
     pub fn max_body(&self) -> u64 {
         match self {
             Self::Push(_) | Self::AppendBundle(_) | Self::Found(_) => MAX_BULK_BODY,
+            Self::PutPage(..) => MAX_PAGE_BODY,
             _ => MAX_SMALL_BODY,
         }
     }
@@ -212,6 +244,20 @@ impl From<Denied> for ApiError {
     }
 }
 
+impl From<SiteError> for ApiError {
+    fn from(error: SiteError) -> Self {
+        match error {
+            SiteError::Denied(denied) => denied.into(),
+            SiteError::NotFound => Self::NotFound,
+            SiteError::Taken => Self::Conflict,
+            SiteError::Invalid => Self::BadRequest,
+            SiteError::MissingMedia => Self::Unprocessable,
+            SiteError::Full => Self::TooLarge,
+            SiteError::Unavailable => Self::Unavailable,
+        }
+    }
+}
+
 impl From<RendezvousError> for ApiError {
     fn from(error: RendezvousError) -> Self {
         match error {
@@ -292,17 +338,56 @@ pub fn route(method: &str, path: &str, query: Option<&str>) -> Result<Route, Api
                 _ => ("POST", Route::Answer(lookup)),
             }
         }
+        ["s", site] => {
+            let site = site_name(site)?;
+            match method {
+                "POST" => ("POST", Route::ClaimSite(site)),
+                "DELETE" => ("DELETE", Route::DeleteSite(site)),
+                _ => ("PUT", Route::PutSettings(site)),
+            }
+        }
+        ["s", site, "p", slug] => {
+            let (site, slug) = (site_name(site)?, page_slug(slug)?);
+            match method {
+                "DELETE" => ("DELETE", Route::DeletePage(site, slug)),
+                _ => ("PUT", Route::PutPage(site, slug)),
+            }
+        }
+        ["s", site, "m", id] => {
+            let (site, id) = (site_name(site)?, media_id(id)?);
+            match method {
+                "DELETE" => ("DELETE", Route::DeleteMedia(site, id)),
+                _ => {
+                    let kind = query.strip_prefix("type=").filter(|k| publish::MediaType::parse(k).is_some());
+                    ("PUT", Route::PutMedia(site, id, kind.ok_or(ApiError::NotFound)?.to_owned()))
+                }
+            }
+        }
         _ => return Err(ApiError::NotFound),
     };
     if method != allowed {
         return Err(ApiError::MethodNotAllowed);
     }
-    let takes_query =
-        matches!(route, Route::Membership(..) | Route::Bundles(..) | Route::Pull(..) | Route::ListBlobs(..));
+    let takes_query = matches!(
+        route,
+        Route::Membership(..) | Route::Bundles(..) | Route::Pull(..) | Route::ListBlobs(..) | Route::PutMedia(..)
+    );
     if !takes_query && !query.is_empty() {
         return Err(ApiError::NotFound);
     }
     Ok(route)
+}
+
+fn site_name(segment: &str) -> Result<String, ApiError> {
+    publish::names::site_name(segment).then(|| segment.to_owned()).ok_or(ApiError::NotFound)
+}
+
+fn page_slug(segment: &str) -> Result<String, ApiError> {
+    publish::names::page_slug(segment).then(|| segment.to_owned()).ok_or(ApiError::NotFound)
+}
+
+fn media_id(segment: &str) -> Result<String, ApiError> {
+    publish::names::media_id(segment).then(|| segment.to_owned()).ok_or(ApiError::NotFound)
 }
 
 fn workspace(segment: &str) -> Result<WorkspaceId, ApiError> {
@@ -458,6 +543,14 @@ impl Pow {
 #[serde(deny_unknown_fields)]
 pub struct FoundBody {
     pub records: Vec<String>,
+    pub pow: Pow,
+}
+
+/// Claiming a site: its first settings and the proof of work.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ClaimBody {
+    pub settings: serde_json::Value,
     pub pow: Pow,
 }
 

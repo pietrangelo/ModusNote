@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:identity_cryptography/identity_cryptography.dart';
 import 'package:offline_sync/offline_sync.dart';
+import 'package:publishing/publishing.dart';
 import 'package:schema_dynamic_content/schema_dynamic_content.dart';
 
 import '../attachments/note_images.dart';
@@ -25,6 +26,10 @@ import '../notes/journal/journal_settings_sheet.dart';
 import '../notices/notice_center.dart';
 import '../notices/notices_sheet.dart';
 import '../notices/security_banner.dart';
+import '../publishing/publication_media.dart';
+import '../publishing/publish_sheet.dart';
+import '../publishing/reencode_picture.dart';
+import '../publishing/vault_publishing.dart';
 import '../reminders/journal_reminder.dart';
 import '../reminders/password_reminders.dart';
 import '../sync/blob_sync.dart';
@@ -67,6 +72,7 @@ class VaultGate extends StatefulWidget {
     this.remindersFor,
     this.switcher,
     this.secondFactor = SecondFactor.passkey,
+    this.sites,
     super.key,
   });
 
@@ -129,6 +135,10 @@ class VaultGate extends StatefulWidget {
   /// What the keeper's passkey port is on this platform, for its words.
   final SecondFactor secondFactor;
 
+  /// serv.pub's signed API, where notes are published; null in a build
+  /// without a server, which then offers no publishing.
+  final SiteGateway? sites;
+
   @override
   State<VaultGate> createState() => _VaultGateState();
 }
@@ -165,6 +175,7 @@ final class _Open extends _Stage {
     this.journal,
     this.types,
     this.notices,
+    this.publishing,
   );
 
   final UnlockedVault vault;
@@ -181,6 +192,9 @@ final class _Open extends _Stage {
 
   /// The note types this device offers.
   final NoteTypeSetting types;
+
+  /// Publishing on serv.pub; null without a server.
+  final PublishingAccess? publishing;
 }
 
 /// Present once the sync of the vault was turned on (see
@@ -370,6 +384,35 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
                     ),
             );
       _attachAppearance(vault, page);
+      final sites = widget.sites;
+      final pictureBlobs = store.images?.blobs;
+      final publishing = sites == null
+          ? null
+          : PublishingAccess(
+              publisher: Publisher(
+                gateway: sites,
+                keys: VaultSiteKeys(widget.keeper, vault),
+                books: VaultSiteBooks(widget.keeper, vault),
+                media: VaultPublicationMedia(
+                  imageOf: store.imageOf,
+                  recordingOf: store.recordingOf,
+                  openImage: (image) =>
+                      store.images?.open(image) ??
+                      Future.error(BlobNotFoundException(image.id)),
+                  openRecording: (take) async* {
+                    if (pictureBlobs == null) return;
+                    await ensureLocal?.call(take.blob);
+                    yield* pictureBlobs.read(
+                      take.blob,
+                      contentKey: vault.engine.contentKeyFor(take.epoch),
+                    );
+                  },
+                  reencode: reencodePicture,
+                ),
+                isConfirmed: () => widget.keeper.isConfirmed(vault),
+              ),
+              confirm: _confirmed,
+            );
       setState(
         () => _stage = _Open(
           vault,
@@ -380,6 +423,7 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
           journal,
           types,
           notices,
+          publishing,
         ),
       );
       sync?.start();
@@ -948,41 +992,45 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
       :final journal,
       :final types,
       :final notices,
+      :final publishing,
     ) =>
       AutoLockScope(
         autoLock: autoLock,
-        child: NoteLibraryScreen(
-          schemas: widget.catalog.current,
-          store: store,
-          notice: notices == null
-              ? UnreadableNotice(store: store)
-              : Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    SecurityBanner(notices: notices, onOpen: _showNotices),
-                    UnreadableNotice(store: store),
-                  ],
-                ),
-          cloud: sync == null
-              ? null
-              : CloudButton(
-                  sync: sync,
-                  notices: notices,
-                  onLinkDevice: _linkDevice,
-                  onInvite: _invite,
-                ),
-          onNotices: notices == null ? null : _showNotices,
-          onLock: _lock,
-          onBackup: widget.files == null ? null : _backup,
-          onPasskey: widget.keeper.offersPasskeys ? _passkeySettings : null,
-          passkeyLabel: widget.secondFactor.settings(
-            AppLocalizations.of(context),
+        child: _withPublishing(
+          publishing,
+          NoteLibraryScreen(
+            schemas: widget.catalog.current,
+            store: store,
+            notice: notices == null
+                ? UnreadableNotice(store: store)
+                : Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      SecurityBanner(notices: notices, onOpen: _showNotices),
+                      UnreadableNotice(store: store),
+                    ],
+                  ),
+            cloud: sync == null
+                ? null
+                : CloudButton(
+                    sync: sync,
+                    notices: notices,
+                    onLinkDevice: _linkDevice,
+                    onInvite: _invite,
+                  ),
+            onNotices: notices == null ? null : _showNotices,
+            onLock: _lock,
+            onBackup: widget.files == null ? null : _backup,
+            onPasskey: widget.keeper.offersPasskeys ? _passkeySettings : null,
+            passkeyLabel: widget.secondFactor.settings(
+              AppLocalizations.of(context),
+            ),
+            journalSettings: journal == null
+                ? null
+                : () => JournalSettingsSheet.show(context, journal),
+            noteTypes: types,
           ),
-          journalSettings: journal == null
-              ? null
-              : () => JournalSettingsSheet.show(context, journal),
-          noteTypes: types,
         ),
       ),
     _Joining() => JoinVaultScreen(
@@ -996,6 +1044,9 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
       passkey: passkey,
     ),
   };
+
+  static Widget _withPublishing(PublishingAccess? access, Widget child) =>
+      access == null ? child : PublishingScope(access: access, child: child);
 
   Widget _form(
     BuildContext context, {

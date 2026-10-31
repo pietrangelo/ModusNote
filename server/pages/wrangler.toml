@@ -1,0 +1,35 @@
+# serv.pub: public pages of Modus Notes, read-only. The sites' Durable
+# Objects belong to the `modusnote` Worker (server/worker), which takes the
+# signed writes; this Worker only reads them, and the files in R2.
+name = "servpub"
+main = "build/worker/shim.mjs"
+compatibility_date = "2026-09-15"
+
+# Pietrangelo's zone serv.pub (2026-10-31). Deploy the `modusnote` Worker
+# first: the binding below names its ModusSite class.
+routes = [{ pattern = "serv.pub", custom_domain = true }]
+workers_dev = false
+
+[build]
+command = "cargo install -q worker-build@0.8.7 --locked && worker-build --release"
+
+# The published files, under pub/<site>/<id>, in the same EU bucket as the
+# encrypted blobs (whose keys start with a workspace id, never "pub/").
+[[r2_buckets]]
+binding = "BLOBS"
+bucket_name = "modusnote-blobs-eu"
+jurisdiction = "eu"
+
+[[durable_objects.bindings]]
+name = "SITES"
+class_name = "ModusSite"
+script_name = "modusnote"
+
+# Reads per client address, kept in Cloudflare's memory, never stored by us.
+[[ratelimits]]
+name = "READ_LIMITER"
+namespace_id = "7404"
+simple = { limit = 300, period = 60 }
+
+[observability]
+enabled = false

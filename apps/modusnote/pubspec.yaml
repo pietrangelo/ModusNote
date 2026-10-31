@@ -25,6 +25,7 @@ dependencies:
   offline_sync: any
   offline_sync_adapters: any
   path_provider: ^2.1.6
+  publishing: any
   schema_dynamic_content: any
   sodium: ^4.1.1
   sqlite3: ^3.7.0
