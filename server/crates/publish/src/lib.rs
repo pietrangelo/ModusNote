@@ -20,6 +20,6 @@ mod site;
 mod text;
 
 pub use page::{Block, Layout, Page};
-pub use settings::{HomeLayout, SiteSettings, Theme};
+pub use settings::{Font, HomeLayout, SiteSettings, Theme};
 pub use site::{MediaType, Site, SiteError, SiteLimits};
 pub use text::escape;

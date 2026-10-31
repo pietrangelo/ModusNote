@@ -320,6 +320,7 @@ impl<S: Store, C: SignatureCheck> Site<S, C> {
             if stored.page.listed {
                 entries.push(Entry {
                     slug: key[PAGES.len()..].to_owned(),
+                    summary: render::excerpt(&stored.page),
                     title: stored.page.title,
                     updated_ms: stored.updated_ms,
                 });
@@ -343,9 +344,14 @@ impl<S: Store, C: SignatureCheck> Site<S, C> {
         let uploaded = self.uploaded()?;
         let contents =
             if matches!(stored.page.layout, crate::page::Layout::Book) { self.entries()? } else { Vec::new() };
-        Ok(render::page(&self.name, &settings, &stored.page, &contents, &self.style_version()?, &|id| {
+        Ok(render::page(&self.name, slug, &settings, &stored.page, &contents, &self.style_version()?, &|id| {
             uploaded.iter().any(|u| u == id)
         }))
+    }
+
+    /// The site's Atom feed: its newest listed pages.
+    pub fn feed_xml(&self) -> Result<String, SiteError> {
+        Ok(render::feed(&self.name, &self.settings()?, &self.entries()?))
     }
 
     pub fn style_css(&self) -> Result<String, SiteError> {

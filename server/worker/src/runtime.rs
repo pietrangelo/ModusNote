@@ -682,6 +682,7 @@ impl DurableObject for ModusSite {
             Ok(SiteDone::Json(status, body)) => respond(status, body),
             Ok(SiteDone::Html(html)) => text_response(html, "text/html; charset=utf-8"),
             Ok(SiteDone::Css(css)) => text_response(css, "text/css; charset=utf-8"),
+            Ok(SiteDone::Feed(xml)) => text_response(xml, "application/atom+xml; charset=utf-8"),
             Ok(SiteDone::MediaType(kind)) => text_response(kind.name().to_owned(), "text/plain"),
             Err(error) => fail(error),
         }

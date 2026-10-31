@@ -5,7 +5,7 @@
 //! Durable Object (`ModusSite`, in the `modusnote` Worker, which takes the
 //! signed writes under `modus.serv.run/api/s/`), its files from R2.
 //!
-//! It is a Worker of its own, with no static assets and no API, so nothing
+//! It is a Worker of its own, with no API and no static assets but its fonts, so nothing
 //! of the vault's web client is ever served from this origin and nothing on
 //! it can reach the vault's storage. Every response forbids scripts.
 //!
@@ -13,6 +13,7 @@
 #![forbid(unsafe_code)]
 
 use publish::names::{media_id, page_slug, site_name};
+use publish::render::FONT_FILES;
 
 #[cfg(target_arch = "wasm32")]
 mod runtime;
@@ -26,8 +27,12 @@ pub enum PublicRoute {
     Slash(String),
     Home(String),
     Style(String),
+    /// A site's Atom feed.
+    Feed(String),
     Page(String, String),
     Media(String, String),
+    /// One of the fonts the stylesheets name, from this Worker's assets.
+    Font(&'static str),
     NotFound,
 }
 
@@ -41,9 +46,16 @@ pub fn route(method: &str, path: &str) -> PublicRoute {
     match segments.as_slice() {
         [""] => PublicRoute::Front,
         ["robots.txt"] => PublicRoute::Robots,
+        // "fonts" is a reserved site name: no site can be there.
+        ["fonts", file] => file
+            .strip_suffix(".woff2")
+            .and_then(|name| FONT_FILES.iter().find(|f| **f == name))
+            .map_or(PublicRoute::NotFound, |name| PublicRoute::Font(name)),
         [site] if site_name(site) => PublicRoute::Slash((*site).to_owned()),
         [site, ""] if site_name(site) => PublicRoute::Home((*site).to_owned()),
         [site, "style.css"] if site_name(site) => PublicRoute::Style((*site).to_owned()),
+        // A page's address has no dot, so no page is there.
+        [site, "feed.xml"] if site_name(site) => PublicRoute::Feed((*site).to_owned()),
         [site, slug] if site_name(site) && page_slug(slug) => PublicRoute::Page((*site).to_owned(), (*slug).to_owned()),
         [site, "m", id] if site_name(site) && media_id(id) => PublicRoute::Media((*site).to_owned(), (*id).to_owned()),
         _ => PublicRoute::NotFound,
@@ -72,6 +84,8 @@ pub const PAGE_CACHE: &str = "public, max-age=60";
 /// A file never changes under its id (the app draws a new id per upload).
 pub const MEDIA_CACHE: &str = "public, max-age=31536000, immutable";
 pub const NO_CACHE: &str = "no-store";
+/// A font changes only with a new deploy of this Worker: a day in any cache.
+pub const FONT_CACHE: &str = "public, max-age=86400";
 
 pub const ROBOTS: &str = "User-agent: *\nAllow: /\n";
 
@@ -99,6 +113,11 @@ mod tests {
         assert_eq!(route("GET", "/quaderno/"), PublicRoute::Home("quaderno".into()));
         assert_eq!(route("HEAD", "/quaderno/style.css"), PublicRoute::Style("quaderno".into()));
         assert_eq!(route("GET", "/quaderno/il-faro"), PublicRoute::Page("quaderno".into(), "il-faro".into()));
+        assert_eq!(route("GET", "/quaderno/feed.xml"), PublicRoute::Feed("quaderno".into()));
+        assert_eq!(route("GET", "/fonts/literata-italic.woff2"), PublicRoute::Font("literata-italic"));
+        for name in FONT_FILES {
+            assert_eq!(route("GET", &format!("/fonts/{name}.woff2")), PublicRoute::Font(name));
+        }
         assert_eq!(
             route("GET", "/quaderno/m/AAAAAAAAAAAAAAAA"),
             PublicRoute::Media("quaderno".into(), "AAAAAAAAAAAAAAAA".into())
@@ -120,6 +139,14 @@ mod tests {
             "//quaderno",
             "/quaderno/../x",
             "/assets/",
+            "/fonts/",
+            "/fonts/comic.woff2",
+            "/fonts/inter.ttf",
+            "/fonts/inter",
+            "/fonts/../inter.woff2",
+            "/fonts/LICENCES.txt",
+            "/fonts/inter.woff2/x",
+            "/quaderno/feed.rss",
         ] {
             assert_eq!(route("GET", path), PublicRoute::NotFound, "{path}");
         }

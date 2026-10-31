@@ -21,6 +21,9 @@ pub struct SiteSettings {
     pub home: HomeLayout,
     #[serde(default)]
     pub indexable: bool,
+    /// The body's typeface; headings are always Plus Jakarta Sans.
+    #[serde(default)]
+    pub font: Font,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -42,6 +45,19 @@ pub enum HomeLayout {
     Collection,
     /// One column of titles.
     Essay,
+}
+
+/// The typefaces of the app's reader, served by serv.pub itself.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Font {
+    #[default]
+    Inter,
+    Literata,
+    /// Atkinson Hyperlegible Next.
+    Atkinson,
+    /// iA Writer Quattro.
+    Quattro,
 }
 
 /// What a site's settings may not be.
@@ -152,6 +168,7 @@ pub(crate) fn sample() -> SiteSettings {
         body: 18,
         home: HomeLayout::Collection,
         indexable: false,
+        font: Font::Inter,
     }
 }
 
@@ -213,5 +230,17 @@ mod tests {
         s.about = "a".repeat(MAX_ABOUT + 1);
         assert_eq!(s.check(), Err(Invalid::About));
         assert_eq!(SiteSettings::parse(br#"{"title":"x","extra":1}"#), Err(Invalid::Title));
+    }
+
+    #[test]
+    fn the_font_is_one_of_four_and_inter_when_unsaid() {
+        let mut json = serde_json::to_value(sample()).unwrap();
+        json.as_object_mut().unwrap().remove("font");
+        let parsed = SiteSettings::parse(json.to_string().as_bytes()).unwrap();
+        assert_eq!(parsed.font, Font::Inter, "settings from before fonts");
+        json["font"] = "literata".into();
+        assert_eq!(SiteSettings::parse(json.to_string().as_bytes()).unwrap().font, Font::Literata);
+        json["font"] = "comic_sans".into();
+        assert_eq!(SiteSettings::parse(json.to_string().as_bytes()), Err(Invalid::Title));
     }
 }
