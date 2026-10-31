@@ -56,7 +56,9 @@ final class _Media implements PublicationMedia {
 final class _Server implements SiteGateway {
   final claimed = <String>[];
   final pages = <String, Map<String, Object>>{};
+  final settings = <Map<String, Object>>[];
   var taken = false;
+  var deleted = false;
 
   @override
   Future<void> claim(SiteKey key, SiteName name, Map<String, Object> s) async {
@@ -69,10 +71,10 @@ final class _Server implements SiteGateway {
     SiteKey k,
     SiteName n,
     Map<String, Object> s,
-  ) async {}
+  ) async => settings.add(s);
 
   @override
-  Future<void> deleteSite(SiteKey key, SiteName name) async {}
+  Future<void> deleteSite(SiteKey key, SiteName name) async => deleted = true;
 
   @override
   Future<void> putPage(
@@ -270,5 +272,127 @@ void main() {
     await tester.pumpAndSettle();
     expect(server.pages, isEmpty);
     expect(find.text('Pagina ritirata'), findsOneWidget);
+  });
+
+  group('the site panel', () {
+    Future<void> openSite(WidgetTester tester) async {
+      books.book = SiteBook(
+        name: SiteName('quaderno'),
+        settings: SiteSettings(title: 'Quaderno', lang: 'it'),
+      );
+      final keys = _Keys()..kept.add('quaderno');
+      await pumpApp(
+        tester,
+        Scaffold(
+          body: PublishSheet(
+            access: PublishingAccess(
+              publisher: Publisher(
+                gateway: server,
+                keys: keys,
+                books: books,
+                media: _Media(),
+                isConfirmed: () => confirmed,
+              ),
+              confirm: () async {
+                confirmations++;
+                confirmed = confirms;
+                return confirms;
+              },
+            ),
+            entry: entry,
+            schema: schema,
+          ),
+        ),
+      );
+      await tap(tester, 'publish-site-settings');
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('site-preview')), findsOneWidget);
+    }
+
+    testWidgets('saves theme, hue, size, font, home and indexing', (
+      tester,
+    ) async {
+      await openSite(tester);
+      expect(
+        find.text('https://serv.pub/quaderno/feed.xml'),
+        findsOneWidget,
+        reason: 'the feed is offered',
+      );
+      await tester.enterText(
+        find.byKey(const ValueKey('site-about')),
+        'Note di mare.',
+      );
+      await tap(tester, 'site-theme-paper');
+      await tester.pumpAndSettle();
+      final accent = find.descendant(
+        of: find.byKey(const ValueKey('site-accent-hue')),
+        matching: find.byType(Switch),
+      );
+      await tester.ensureVisible(accent);
+      await tester.tap(accent);
+      await tester.pumpAndSettle();
+      await tap(tester, 'site-font-literata');
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('20 px'));
+      await tester.tap(find.text('20 px'));
+      await tester.pumpAndSettle();
+      await tap(tester, 'site-home-essay');
+      await tester.pumpAndSettle();
+      await tap(tester, 'site-indexable');
+      await tester.pumpAndSettle();
+      await tap(tester, 'site-save');
+      await tester.pumpAndSettle();
+
+      expect(confirmations, 1);
+      final wire = server.settings.single;
+      expect(wire['about'], 'Note di mare.');
+      expect(wire['font'], 'literata');
+      expect(wire['body'], 20);
+      expect(wire['home'], 'essay');
+      expect(wire['indexable'], isTrue);
+      expect((wire['theme']! as Map)['dark'], isFalse);
+      final kept = books.book!.settings;
+      expect(kept.theme.base, BaseTheme.paper);
+      expect(kept.theme.accentHue, isNotNull);
+      expect(kept.font, SiteFont.literata);
+      expect(find.text('Sito aggiornato'), findsOneWidget);
+      expect(find.byKey(const ValueKey('site-preview')), findsNothing);
+    });
+
+    testWidgets('without the confirmation nothing is saved', (tester) async {
+      confirms = false;
+      await openSite(tester);
+      await tap(tester, 'site-font-quattro');
+      await tester.pumpAndSettle();
+      await tap(tester, 'site-save');
+      await tester.pumpAndSettle();
+      expect(confirmations, 1);
+      expect(server.settings, isEmpty);
+      expect(books.book!.settings.font, SiteFont.inter);
+    });
+
+    testWidgets('withdraws the whole site only when asked twice', (
+      tester,
+    ) async {
+      await openSite(tester);
+      await tap(tester, 'site-withdraw');
+      await tester.pumpAndSettle();
+      expect(find.textContaining('serv.pub/quaderno'), findsWidgets);
+      await tester.tap(find.text('Annulla'));
+      await tester.pumpAndSettle();
+      expect(server.deleted, isFalse);
+      expect(confirmations, 0);
+
+      await tap(tester, 'site-withdraw');
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('site-withdraw-confirm')));
+      await tester.pumpAndSettle();
+      expect(confirmations, 1);
+      expect(server.deleted, isTrue);
+      expect(books.book, isNull);
+      expect(find.text('Sito ritirato'), findsOneWidget);
+      // Back to creating a site.
+      expect(find.byKey(const ValueKey('publish-site-name')), findsOneWidget);
+    });
   });
 }

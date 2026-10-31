@@ -11,6 +11,24 @@ enum BodySize {
   final int px;
 }
 
+/// The body's typeface on a site: the fonts of the app's reader, which
+/// serv.pub serves itself. Headings are always Plus Jakarta Sans.
+enum SiteFont {
+  inter('inter'),
+  literata('literata'),
+
+  /// Atkinson Hyperlegible Next, drawn for readers with low vision.
+  atkinson('atkinson'),
+
+  /// iA Writer Quattro.
+  quattro('quattro');
+
+  const SiteFont(this.wire);
+
+  /// serv.pub's name for it.
+  final String wire;
+}
+
 /// The type scale of a published page: headings climb by φ from the body,
 /// the caption falls by φ, lines are φ apart, and a line of text is at most
 /// 610 px (about 65 characters), a Fibonacci width.

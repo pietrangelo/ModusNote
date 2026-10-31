@@ -9,6 +9,7 @@ import '../l10n/generated/app_localizations.dart';
 import '../notes/schema_text.dart';
 import '../theme/golden_ratio.dart';
 import '../theme/modus_palette.dart';
+import 'site_settings_sheet.dart';
 
 /// What the notes need to publish: the vault's [Publisher] and the way to
 /// ask the person to prove again that the vault is theirs ([confirm]),
@@ -204,6 +205,13 @@ class _PublishSheetState extends State<PublishSheet> {
     if (!listed) await openInBrowser(url);
   });
 
+  /// The site's own panel; the site may come back changed, or withdrawn.
+  Future<void> _openSite(SiteBook book) async {
+    await SiteSettingsSheet.show(context, access: widget.access, book: book);
+    final next = await widget.access.publisher.book();
+    if (mounted) setState(() => _book = next);
+  }
+
   Future<void> _withdraw() => _run(() async {
     await widget.access.publisher.withdraw(widget.entry.id);
     final next = await widget.access.publisher.book();
@@ -333,6 +341,27 @@ class _PublishSheetState extends State<PublishSheet> {
     final page = _page;
     final ready = !_busy && _fields.isNotEmpty;
     return [
+      Row(
+        children: [
+          Expanded(
+            child: Text(
+              book.home.toString(),
+              key: const ValueKey('publish-site'),
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: ModusPalette.of(context).muted,
+              ),
+            ),
+          ),
+          TextButton.icon(
+            key: const ValueKey('publish-site-settings'),
+            onPressed: _busy ? null : () => _openSite(book),
+            icon: const Icon(Icons.palette_outlined),
+            label: Text(l10n.siteSettingsOpen),
+          ),
+        ],
+      ),
+      const SizedBox(height: Spacing.m),
       if (page != null) ...[
         _PageLink(url: book.pageUrl(page.slug), listed: page.listed),
         const SizedBox(height: Spacing.l),
