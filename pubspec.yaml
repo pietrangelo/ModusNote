@@ -11,6 +11,7 @@ workspace:
   - packages/blob_storage_media
   - packages/collaboration_access_control
   - packages/offline_sync
+  - packages/publishing
   - packages/identity_cryptography_adapters
   - packages/blob_storage_media_adapters
   - packages/blob_storage_media_recorder_adapters
