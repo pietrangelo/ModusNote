@@ -495,7 +495,11 @@
   "recordingLimit": "Stops by itself at {length}",
   "@recordingLimit": {
     "description": "Recording sheet: the longest take, after which recording stops and the take is kept.",
-    "placeholders": {"length": {"type": "String"}}
+    "placeholders": {
+      "length": {
+        "type": "String"
+      }
+    }
   },
   "recordingEncrypted": "Encrypted while it is recorded. Nothing is stored in clear.",
   "@recordingEncrypted": {
@@ -642,7 +646,11 @@
   "conflictCopyTitle": "{title} (conflict copy)",
   "@conflictCopyTitle": {
     "description": "Title of a note kept because another device changed the same note at the same time.",
-    "placeholders": {"title": {"type": "String"}}
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
   },
   "conflictCopyUntitled": "Conflict copy",
   "@conflictCopyUntitled": {
@@ -651,7 +659,11 @@
   "conflictCopiesKept": "{count, plural, =1{Another device changed a note at the same time as this one: this device's version is kept as a copy.} other{Another device changed {count} notes at the same time as this one: this device's versions are kept as copies.}}",
   "@conflictCopiesKept": {
     "description": "Snackbar after a sync: edits of this device lost to concurrent edits and were kept as conflict copies.",
-    "placeholders": {"count": {"type": "int"}}
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
   },
   "editorChangedElsewhere": "This note changed on another device too. Where you both wrote, your version stays; the other one is kept as a copy.",
   "@editorChangedElsewhere": {
@@ -2555,5 +2567,330 @@
     }
   },
   "siteWithdrawConfirm": "Withdraw",
-  "siteWithdrawn": "Site withdrawn"
+  "siteWithdrawn": "Site withdrawn",
+  "iconRecipe": "Recipe",
+  "@iconRecipe": {
+    "description": "Name of the recipe icon in the category dialog."
+  },
+  "tintSage": "Sage",
+  "@tintSage": {
+    "description": "Name of the sage tint in the category dialog."
+  },
+  "ingredientNameHint": "Ingredient",
+  "@ingredientNameHint": {
+    "description": "Hint of the name of an ingredient."
+  },
+  "ingredientAmountHint": "Amount",
+  "@ingredientAmountHint": {
+    "description": "Hint of the amount of an ingredient, a number."
+  },
+  "ingredientUnitLabel": "Unit",
+  "@ingredientUnitLabel": {
+    "description": "Label of the unit of an ingredient."
+  },
+  "ingredientNoUnit": "none",
+  "@ingredientNoUnit": {
+    "description": "The unit choice meaning: a number alone, counted in pieces."
+  },
+  "ingredientQuantityHint": "Or in words, e.g. to taste",
+  "@ingredientQuantityHint": {
+    "description": "Hint of the words of quantity of an ingredient."
+  },
+  "ingredientLinkHint": "Where to buy it (https, optional)",
+  "@ingredientLinkHint": {
+    "description": "Hint of the shop link of an ingredient."
+  },
+  "ingredientLinkInvalid": "Only https addresses",
+  "@ingredientLinkInvalid": {
+    "description": "Error under a shop link that is not https."
+  },
+  "ingredientAmountInvalid": "Not a positive number",
+  "@ingredientAmountInvalid": {
+    "description": "Error under an amount that is not a positive number."
+  },
+  "addIngredient": "Add an ingredient",
+  "@addIngredient": {
+    "description": "Button under the ingredients."
+  },
+  "removeIngredient": "Remove the ingredient",
+  "@removeIngredient": {
+    "description": "Tooltip of the button removing an ingredient."
+  },
+  "stepHint": "What to do",
+  "@stepHint": {
+    "description": "Hint of the text of a preparation step."
+  },
+  "addStep": "Add a step",
+  "@addStep": {
+    "description": "Button under the preparation steps."
+  },
+  "removeStep": "Remove the step",
+  "@removeStep": {
+    "description": "Tooltip of the button removing a step."
+  },
+  "moveStepUp": "Move up",
+  "@moveStepUp": {
+    "description": "Tooltip of the button moving a step up."
+  },
+  "moveStepDown": "Move down",
+  "@moveStepDown": {
+    "description": "Tooltip of the button moving a step down."
+  },
+  "addStepPicture": "Add a picture",
+  "@addStepPicture": {
+    "description": "Button adding a picture to a step."
+  },
+  "unitGram": "g",
+  "@unitGram": {
+    "description": "Abbreviation of grams."
+  },
+  "unitKilogram": "kg",
+  "@unitKilogram": {
+    "description": "Abbreviation of kilograms."
+  },
+  "unitMillilitre": "ml",
+  "@unitMillilitre": {
+    "description": "Abbreviation of millilitres."
+  },
+  "unitCentilitre": "cl",
+  "@unitCentilitre": {
+    "description": "Abbreviation of centilitres."
+  },
+  "unitDecilitre": "dl",
+  "@unitDecilitre": {
+    "description": "Abbreviation of decilitres."
+  },
+  "unitLitre": "l",
+  "@unitLitre": {
+    "description": "Abbreviation of litres."
+  },
+  "unitOunce": "oz",
+  "@unitOunce": {
+    "description": "Abbreviation of ounces."
+  },
+  "unitPound": "lb",
+  "@unitPound": {
+    "description": "Abbreviation of pounds."
+  },
+  "schemaRecipeLabel": "Recipe",
+  "@schemaRecipeLabel": {
+    "description": "Localization of the seed schema key schema.recipe.label."
+  },
+  "schemaRecipeFieldTitle": "Name",
+  "@schemaRecipeFieldTitle": {
+    "description": "Localization of the seed schema key schema.recipe.field.title."
+  },
+  "schemaRecipeFieldDescription": "Description",
+  "@schemaRecipeFieldDescription": {
+    "description": "Localization of the seed schema key schema.recipe.field.description."
+  },
+  "schemaRecipeFieldPhotos": "Photos",
+  "@schemaRecipeFieldPhotos": {
+    "description": "Localization of the seed schema key schema.recipe.field.photos."
+  },
+  "schemaRecipeFieldServings": "Servings",
+  "@schemaRecipeFieldServings": {
+    "description": "Localization of the seed schema key schema.recipe.field.servings."
+  },
+  "schemaRecipeFieldIngredients": "Ingredients",
+  "@schemaRecipeFieldIngredients": {
+    "description": "Localization of the seed schema key schema.recipe.field.ingredients."
+  },
+  "schemaRecipeFieldSteps": "Preparation",
+  "@schemaRecipeFieldSteps": {
+    "description": "Localization of the seed schema key schema.recipe.field.steps."
+  },
+  "schemaRecipeFieldPrepTime": "Preparation time (minutes)",
+  "@schemaRecipeFieldPrepTime": {
+    "description": "Localization of the seed schema key schema.recipe.field.prep_time."
+  },
+  "schemaRecipeFieldCookTime": "Cooking time (minutes)",
+  "@schemaRecipeFieldCookTime": {
+    "description": "Localization of the seed schema key schema.recipe.field.cook_time."
+  },
+  "schemaRecipeFieldRestTime": "Resting time (minutes)",
+  "@schemaRecipeFieldRestTime": {
+    "description": "Localization of the seed schema key schema.recipe.field.rest_time."
+  },
+  "schemaRecipeFieldMethods": "Cooking methods",
+  "@schemaRecipeFieldMethods": {
+    "description": "Localization of the seed schema key schema.recipe.field.methods."
+  },
+  "schemaRecipeFieldOvenTemperature": "Oven temperature (°C)",
+  "@schemaRecipeFieldOvenTemperature": {
+    "description": "Localization of the seed schema key schema.recipe.field.oven_temperature."
+  },
+  "schemaRecipeFieldOvenMode": "Oven mode",
+  "@schemaRecipeFieldOvenMode": {
+    "description": "Localization of the seed schema key schema.recipe.field.oven_mode."
+  },
+  "schemaRecipeFieldDifficulty": "Difficulty",
+  "@schemaRecipeFieldDifficulty": {
+    "description": "Localization of the seed schema key schema.recipe.field.difficulty."
+  },
+  "schemaRecipeFieldTags": "Tags",
+  "@schemaRecipeFieldTags": {
+    "description": "Localization of the seed schema key schema.recipe.field.tags."
+  },
+  "schemaRecipeFieldMethodsOven": "Oven",
+  "@schemaRecipeFieldMethodsOven": {
+    "description": "Localization of the seed schema key schema.recipe.field.methods.oven."
+  },
+  "schemaRecipeFieldMethodsStovetop": "Stovetop",
+  "@schemaRecipeFieldMethodsStovetop": {
+    "description": "Localization of the seed schema key schema.recipe.field.methods.stovetop."
+  },
+  "schemaRecipeFieldMethodsAirFryer": "Air fryer",
+  "@schemaRecipeFieldMethodsAirFryer": {
+    "description": "Localization of the seed schema key schema.recipe.field.methods.air_fryer."
+  },
+  "schemaRecipeFieldMethodsMicrowave": "Microwave",
+  "@schemaRecipeFieldMethodsMicrowave": {
+    "description": "Localization of the seed schema key schema.recipe.field.methods.microwave."
+  },
+  "schemaRecipeFieldMethodsSteam": "Steam",
+  "@schemaRecipeFieldMethodsSteam": {
+    "description": "Localization of the seed schema key schema.recipe.field.methods.steam."
+  },
+  "schemaRecipeFieldMethodsGrill": "Grill",
+  "@schemaRecipeFieldMethodsGrill": {
+    "description": "Localization of the seed schema key schema.recipe.field.methods.grill."
+  },
+  "schemaRecipeFieldMethodsPressureCooker": "Pressure cooker",
+  "@schemaRecipeFieldMethodsPressureCooker": {
+    "description": "Localization of the seed schema key schema.recipe.field.methods.pressure_cooker."
+  },
+  "schemaRecipeFieldMethodsSlowCooker": "Slow cooker",
+  "@schemaRecipeFieldMethodsSlowCooker": {
+    "description": "Localization of the seed schema key schema.recipe.field.methods.slow_cooker."
+  },
+  "schemaRecipeFieldMethodsBarbecue": "Barbecue",
+  "@schemaRecipeFieldMethodsBarbecue": {
+    "description": "Localization of the seed schema key schema.recipe.field.methods.barbecue."
+  },
+  "schemaRecipeFieldMethodsNoCook": "No cooking",
+  "@schemaRecipeFieldMethodsNoCook": {
+    "description": "Localization of the seed schema key schema.recipe.field.methods.no_cook."
+  },
+  "schemaRecipeFieldOvenModeStatic": "Conventional",
+  "@schemaRecipeFieldOvenModeStatic": {
+    "description": "Localization of the seed schema key schema.recipe.field.oven_mode.static."
+  },
+  "schemaRecipeFieldOvenModeFan": "Fan",
+  "@schemaRecipeFieldOvenModeFan": {
+    "description": "Localization of the seed schema key schema.recipe.field.oven_mode.fan."
+  },
+  "schemaRecipeFieldOvenModeGrill": "Grill",
+  "@schemaRecipeFieldOvenModeGrill": {
+    "description": "Localization of the seed schema key schema.recipe.field.oven_mode.grill."
+  },
+  "unitTeaspoon": "{count, plural, =1{teaspoon} other{teaspoons}}",
+  "@unitTeaspoon": {
+    "description": "A unit of an ingredient, for an amount of count.",
+    "placeholders": {
+      "count": {
+        "type": "num",
+        "format": "decimalPattern"
+      }
+    }
+  },
+  "unitTablespoon": "{count, plural, =1{tablespoon} other{tablespoons}}",
+  "@unitTablespoon": {
+    "description": "A unit of an ingredient, for an amount of count.",
+    "placeholders": {
+      "count": {
+        "type": "num",
+        "format": "decimalPattern"
+      }
+    }
+  },
+  "unitCup": "{count, plural, =1{cup} other{cups}}",
+  "@unitCup": {
+    "description": "A unit of an ingredient, for an amount of count.",
+    "placeholders": {
+      "count": {
+        "type": "num",
+        "format": "decimalPattern"
+      }
+    }
+  },
+  "unitPiece": "{count, plural, =1{piece} other{pieces}}",
+  "@unitPiece": {
+    "description": "A unit of an ingredient, for an amount of count.",
+    "placeholders": {
+      "count": {
+        "type": "num",
+        "format": "decimalPattern"
+      }
+    }
+  },
+  "unitSlice": "{count, plural, =1{slice} other{slices}}",
+  "@unitSlice": {
+    "description": "A unit of an ingredient, for an amount of count.",
+    "placeholders": {
+      "count": {
+        "type": "num",
+        "format": "decimalPattern"
+      }
+    }
+  },
+  "unitClove": "{count, plural, =1{clove} other{cloves}}",
+  "@unitClove": {
+    "description": "A unit of an ingredient, for an amount of count.",
+    "placeholders": {
+      "count": {
+        "type": "num",
+        "format": "decimalPattern"
+      }
+    }
+  },
+  "unitPinch": "{count, plural, =1{pinch} other{pinches}}",
+  "@unitPinch": {
+    "description": "A unit of an ingredient, for an amount of count.",
+    "placeholders": {
+      "count": {
+        "type": "num",
+        "format": "decimalPattern"
+      }
+    }
+  },
+  "stepNumber": "Step {number}",
+  "@stepNumber": {
+    "description": "Heading of a preparation step.",
+    "placeholders": {
+      "number": {
+        "type": "int"
+      }
+    }
+  },
+  "recipeMinutes": "{minutes} min",
+  "@recipeMinutes": {
+    "description": "A time under an hour.",
+    "placeholders": {
+      "minutes": {
+        "type": "int"
+      }
+    }
+  },
+  "recipeHours": "{hours} h {minutes} min",
+  "@recipeHours": {
+    "description": "A time of an hour or more; minutes may be 0.",
+    "placeholders": {
+      "hours": {
+        "type": "int"
+      },
+      "minutes": {
+        "type": "int"
+      }
+    }
+  },
+  "recipeWholeHours": "{hours} h",
+  "@recipeWholeHours": {
+    "description": "A time of whole hours.",
+    "placeholders": {
+      "hours": {
+        "type": "int"
+      }
+    }
+  }
 }

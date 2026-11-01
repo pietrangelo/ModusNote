@@ -160,6 +160,39 @@ abstract final class EntryCodec {
           },
       ],
     },
+    // [name, amount or null, unit or null, quantity, link or null].
+    IngredientsValue(:final items) => {
+      'kind': 'ingredients',
+      'value': [
+        for (final item in items)
+          [
+            item.name,
+            item.amount,
+            item.unit?.name,
+            item.quantity,
+            item.link?.url,
+          ],
+      ],
+    },
+    // [text, blob, caption, blob, caption, ...]: flat, so a step stays
+    // within the nesting the decoder allows.
+    StepsValue(:final steps) => {
+      'kind': 'steps',
+      'value': [
+        for (final step in steps)
+          [
+            step.text,
+            for (final picture in step.pictures) ...[
+              picture.blob.value,
+              picture.caption,
+            ],
+          ],
+      ],
+    },
+    ChoiceSetValue(:final options) => {
+      'kind': 'choice_set',
+      'value': [...options]..sort(),
+    },
   };
 
   static FieldValue _decodeValue(JsonObject json) {
@@ -208,7 +241,64 @@ abstract final class EntryCodec {
             ),
           },
       ]),
+      'ingredients' => IngredientsValue([
+        for (final item in json.list('value'))
+          switch (item) {
+            [
+              final String name,
+              final num? amount,
+              final String? unit,
+              final String quantity,
+              final String? link,
+            ] =>
+              Ingredient(
+                name,
+                amount: amount,
+                unit: unit == null ? null : _unitNamed(unit),
+                quantity: quantity,
+                link: link == null ? null : WebLink(link),
+              ),
+            _ => throw const EntryFormatException(
+              'an ingredient is [name, amount, unit, quantity, link]',
+            ),
+          },
+      ]),
+      'steps' => StepsValue([
+        for (final step in json.list('value'))
+          switch (step) {
+            [final String text, ...final pictures]
+                when pictures.length.isEven =>
+              PreparationStep(
+                text,
+                pictures: [
+                  for (var i = 0; i < pictures.length; i += 2)
+                    switch ((pictures[i], pictures[i + 1])) {
+                      (final String blob, final String caption) =>
+                        ImageAttachment(BlobId(blob), caption: caption),
+                      _ => throw const EntryFormatException(
+                        'a step picture is a blob and a caption',
+                      ),
+                    },
+                ],
+              ),
+            _ => throw const EntryFormatException(
+              'a step is [text, blob, caption, ...]',
+            ),
+          },
+      ]),
+      'choice_set' => switch (json.strings('value')) {
+        final options when options.toSet().length == options.length =>
+          ChoiceSetValue(options.toSet()),
+        _ => throw const EntryFormatException('duplicate options'),
+      },
       _ => throw const EntryFormatException('unknown value kind'),
     };
+  }
+
+  static IngredientUnit _unitNamed(String name) {
+    for (final unit in IngredientUnit.values) {
+      if (unit.name == name) return unit;
+    }
+    throw const EntryFormatException('unknown unit');
   }
 }

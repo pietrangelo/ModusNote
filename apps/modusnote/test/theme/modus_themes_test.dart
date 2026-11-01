@@ -79,6 +79,7 @@ void main() {
           palette.gold,
           palette.success,
           palette.rose,
+          palette.sage,
         ]) {
           expect(
             contrast(palette.onAccent, fill),
@@ -152,6 +153,7 @@ void main() {
             palette.violet,
             palette.success,
             palette.rose,
+            palette.sage,
           ].map(oklchLightness);
           for (final accent in accents) {
             expect(accent, closeTo(accents.first, 0.01));

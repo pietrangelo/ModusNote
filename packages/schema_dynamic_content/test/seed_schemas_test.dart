@@ -16,6 +16,7 @@ void main() {
       'book_character',
       'book_place',
       'credential',
+      'recipe',
       'quick_note',
     ]);
   });

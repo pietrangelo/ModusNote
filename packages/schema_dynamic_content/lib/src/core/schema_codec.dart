@@ -99,6 +99,15 @@ abstract final class SchemaCodec {
       'maxLength': maxLength,
     },
     UrlFieldType() => {'kind': 'url'},
+    IngredientsFieldType(:final maxItems) => {
+      'kind': 'ingredients',
+      'maxItems': maxItems,
+    },
+    StepsFieldType(:final maxItems) => {'kind': 'steps', 'maxItems': maxItems},
+    ChoiceSetFieldType(:final options) => {
+      'kind': 'choice_set',
+      'options': options,
+    },
   };
 
   static SchemaDefinition _decodeSchema(JsonObject json) {
@@ -210,6 +219,18 @@ abstract final class SchemaCodec {
         () => PasswordFieldType(maxLength: json.integer('maxLength')),
       ),
       'url' => (<String>{}, () => const UrlFieldType()),
+      'ingredients' => (
+        {'maxItems'},
+        () => IngredientsFieldType(maxItems: json.integer('maxItems')),
+      ),
+      'steps' => (
+        {'maxItems'},
+        () => StepsFieldType(maxItems: json.integer('maxItems')),
+      ),
+      'choice_set' => (
+        {'options'},
+        () => ChoiceSetFieldType(json.strings('options')),
+      ),
       _ => throw SchemaFormatException('unknown field kind "$kind"'),
     };
     json.allowOnly({'kind', ...allowed});

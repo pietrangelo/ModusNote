@@ -12,6 +12,7 @@ import 'credentials/url_input.dart';
 import 'editor/inline_picture.dart';
 import 'editor/markdown_controller.dart';
 import 'editor/markdown_toolbar.dart';
+import 'recipes/recipe_inputs.dart';
 import 'schema_text.dart';
 import '../theme/modus_palette.dart';
 
@@ -332,6 +333,27 @@ class _DynamicFormRendererState extends State<DynamicFormRenderer> {
         openLink: widget.attachments?.openLink,
         onChanged: set,
       ),
+      IngredientsFieldType() => IngredientsInput(
+        label: label,
+        error: error,
+        value: value is IngredientsValue ? value : null,
+        onChanged: (v, {required unreadable}) =>
+            _set(field.key, v, unreadable: unreadable),
+      ),
+      StepsFieldType() => StepsInput(
+        label: label,
+        error: error,
+        value: value is StepsValue ? value : null,
+        hooks: widget.attachments ?? _noAttachments,
+        onChanged: set,
+      ),
+      ChoiceSetFieldType(:final options) => ChoiceSetInput(
+        label: label,
+        error: error,
+        options: {for (final o in options) o: text.option(field, o)},
+        value: value is ChoiceSetValue ? value.options : const {},
+        onChanged: set,
+      ),
       AudioBlobFieldType() => _AudioInput(
         label: label,
         error: error,
@@ -468,7 +490,7 @@ final class _PageLayout {
         for (final field in fields)
           if (rest(field) &&
               field.type is! AudioBlobFieldType &&
-              field.type is! AttachmentsFieldType)
+              !_underBody(field.type))
             field,
       ],
       [
@@ -477,10 +499,16 @@ final class _PageLayout {
       ],
       [
         for (final field in fields)
-          if (rest(field) && field.type is AttachmentsFieldType) field,
+          if (rest(field) && _underBody(field.type)) field,
       ],
     );
   }
+
+  /// Pictures and links, ingredients and steps: content under the body.
+  static bool _underBody(FieldType type) =>
+      type is AttachmentsFieldType ||
+      type is IngredientsFieldType ||
+      type is StepsFieldType;
 
   final FieldDefinition? title;
   final FieldDefinition? body;
@@ -489,7 +517,8 @@ final class _PageLayout {
   /// Recordings: content, not details, so they never fold away.
   final List<FieldDefinition> recordings;
 
-  /// Pictures and links, under the body: content too.
+  /// Pictures and links, ingredients and steps, under the body: content
+  /// too, in the order the schema declares them.
   final List<FieldDefinition> attachments;
 }
 

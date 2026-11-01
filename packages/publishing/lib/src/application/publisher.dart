@@ -94,6 +94,7 @@ final class Publisher {
     required SchemaDefinition schema,
     required String Function(FieldDefinition field) labelOf,
     required String Function(FieldDefinition field, FieldValue value) describe,
+    String Function(Ingredient item)? ingredientLine,
     bool draft = false,
     PublicationLayout? layout,
   }) async {
@@ -126,6 +127,7 @@ final class Publisher {
           media: uploaded,
           labelOf: labelOf,
           describe: describe,
+          ingredientLine: ingredientLine,
           listed: !draft,
           layout: layout,
         );

@@ -18,4 +18,8 @@ abstract final class ModusColors {
   /// The fourth accent, for dream notes (2026-10-11): apart from gold,
   /// violet and cyan, and above AA as text on both dark backgrounds.
   static const lucidRose = Color(0xFFF07CA8);
+
+  /// The fifth accent, for recipes (2026-11-01): a fresh green, apart from
+  /// cyan, and above AA as text on both dark backgrounds.
+  static const freshSage = Color(0xFF7FD19B);
 }

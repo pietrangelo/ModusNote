@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:modusnote/backup/markdown_export.dart';
 import 'package:modusnote/backup/zip_writer.dart';
 import 'package:modusnote/l10n/generated/app_localizations_it.dart';
+import 'package:modusnote/notes/recipes/recipe_text.dart';
 import 'package:modusnote/notes/schema_text.dart';
 import 'package:schema_dynamic_content/schema_dynamic_content.dart';
 
@@ -60,6 +61,7 @@ void main() {
       MarkdownExport(
         schemas: SeedSchemas.all,
         labels: SchemaText(AppLocalizationsIt()),
+        recipes: RecipeText(AppLocalizationsIt()),
         words: (
           untitled: 'Senza titolo',
           recording: 'registrazione (non inclusa)',
@@ -90,6 +92,56 @@ void main() {
     expect(text, startsWith('# Notturno in La\n\n'));
     expect(text, contains('Prima strofa\n\n**ritornello**'));
     expect(text, contains(':** 92'));
+  });
+
+  test('a recipe lists its ingredients and numbers its steps', () {
+    final blob = BlobId('f' * 32);
+    final recipe = entry('a' * 32, SeedSchemas.recipeV1, {
+      'title': const TextValue('Pane'),
+      'ingredients': IngredientsValue([
+        Ingredient(
+          'Farina',
+          amount: 0.5,
+          unit: IngredientUnit.kilogram,
+          link: WebLink('https://example.org/farina'),
+        ),
+        Ingredient('Sale', quantity: 'q.b.'),
+      ]),
+      'steps': StepsValue([
+        PreparationStep(
+          'Impasta.\nRiposa.',
+          pictures: [ImageAttachment(blob, caption: 'Liscio')],
+        ),
+        PreparationStep('Inforna.'),
+      ]),
+      'methods': ChoiceSetValue({'steam', 'oven'}),
+    });
+
+    final text = unzip(export().archive([recipe], at: DateTime(2026)))
+        .values
+        .single;
+
+    expect(
+      text,
+      contains(
+        '## Ingredienti\n\n'
+        '- 0,5 kg Farina ([example.org](<https://example.org/farina>))\n'
+        '- q.b. Sale\n',
+      ),
+    );
+    expect(
+      text,
+      contains(
+        '## Preparazione\n\n'
+        '1. Impasta.\n'
+        '   Riposa.\n'
+        '   - immagine (non inclusa): Liscio\n'
+        '2. Inforna.\n',
+      ),
+    );
+    // In the order the type offers them.
+    expect(text, contains(':** Forno, Vapore'));
+    expect(text, isNot(contains(blob.value)));
   });
 
   test('a picture in the text is named, never left as an address', () {

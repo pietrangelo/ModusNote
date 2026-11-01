@@ -384,3 +384,132 @@ final class UrlFieldType extends FieldType {
   @override
   int get hashCode => (UrlFieldType).hashCode;
 }
+
+/// A recipe's ingredients ([IngredientsValue]): each with a name of one
+/// safe line, optional words of quantity, and a link to buy it that is
+/// only ever `https`, since it may end up on a public page.
+final class IngredientsFieldType extends FieldType {
+  IngredientsFieldType({this.maxItems = 89}) {
+    _requireRange(maxItems > 0 && maxItems <= maxAllowedItems);
+  }
+
+  static const maxAllowedItems = 233;
+  static const maxName = 200;
+  static const maxQuantity = 80;
+
+  final int maxItems;
+
+  @override
+  List<ViolationCode> check(FieldValue value) {
+    if (value is! IngredientsValue) return const [ViolationCode.typeMismatch];
+    final items = value.items;
+    return [
+      if (items.isEmpty) ViolationCode.missingRequired,
+      if (items.length > maxItems) ViolationCode.tooManyItems,
+      if (items.any((item) => item.name.trim().isEmpty))
+        ViolationCode.emptyItem,
+      if (items.any(
+        (item) =>
+            _length(item.name) > maxName ||
+            _length(item.quantity) > maxQuantity,
+      ))
+        ViolationCode.tooLong,
+      if (items.any(
+        (item) =>
+            containsUnsafeCharacters(item.name) ||
+            containsUnsafeCharacters(item.quantity),
+      ))
+        ViolationCode.invalidCharacters,
+      if (items.any((item) => item.link?.url.startsWith('https://') == false))
+        ViolationCode.invalidUrl,
+    ];
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is IngredientsFieldType && other.maxItems == maxItems;
+
+  @override
+  int get hashCode => Object.hash(IngredientsFieldType, maxItems);
+}
+
+/// The steps of a preparation ([StepsValue]): Markdown and pictures. The
+/// pictures of all the steps are bounded together, like the attachments
+/// of a page, and each appears once.
+final class StepsFieldType extends FieldType {
+  StepsFieldType({this.maxItems = 55}) {
+    _requireRange(maxItems > 0 && maxItems <= maxAllowedItems);
+  }
+
+  static const maxAllowedItems = 89;
+  static const maxText = 10000;
+  static const maxPicturesPerStep = 8;
+  static const maxPictures = AttachmentsFieldType.maxAllowedItems;
+
+  final int maxItems;
+
+  @override
+  List<ViolationCode> check(FieldValue value) {
+    if (value is! StepsValue) return const [ViolationCode.typeMismatch];
+    final steps = value.steps;
+    final pictures = value.pictures.toList();
+    return [
+      if (steps.isEmpty) ViolationCode.missingRequired,
+      if (steps.length > maxItems ||
+          pictures.length > maxPictures ||
+          steps.any((step) => step.pictures.length > maxPicturesPerStep))
+        ViolationCode.tooManyItems,
+      if (steps.any(
+        (step) => step.text.trim().isEmpty && step.pictures.isEmpty,
+      ))
+        ViolationCode.emptyItem,
+      if (steps.any((step) => _length(step.text) > maxText))
+        ViolationCode.tooLong,
+      if (pictures.toSet().length != pictures.length)
+        ViolationCode.duplicateItem,
+    ];
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is StepsFieldType && other.maxItems == maxItems;
+
+  @override
+  int get hashCode => Object.hash(StepsFieldType, maxItems);
+}
+
+/// Any number of options from a closed set ([ChoiceSetValue]), such as
+/// the ways a dish is cooked. Options are identifiers, like those of a
+/// [ChoiceFieldType].
+final class ChoiceSetFieldType extends FieldType {
+  ChoiceSetFieldType(List<String> options)
+    : options = List.unmodifiable(options) {
+    if (options.isEmpty ||
+        options.length > ChoiceFieldType.maxOptions ||
+        options.toSet().length != options.length ||
+        !options.every(_optionKey.hasMatch)) {
+      throw const InvalidSchemaException(SchemaInvariant.invalidChoiceOptions);
+    }
+  }
+
+  final List<String> options;
+
+  @override
+  List<ViolationCode> check(FieldValue value) => switch (value) {
+    ChoiceSetValue(:final options) when options.isEmpty => const [
+      ViolationCode.missingRequired,
+    ],
+    ChoiceSetValue(options: final chosen)
+        when !chosen.every(options.contains) =>
+      const [ViolationCode.invalidChoice],
+    ChoiceSetValue() => const [],
+    _ => const [ViolationCode.typeMismatch],
+  };
+
+  @override
+  bool operator ==(Object other) =>
+      other is ChoiceSetFieldType && listEquals(other.options, options);
+
+  @override
+  int get hashCode => Object.hash(ChoiceSetFieldType, Object.hashAll(options));
+}

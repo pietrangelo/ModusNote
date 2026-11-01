@@ -48,6 +48,7 @@ import 'unreadable_notice.dart';
 import 'vault_note_store.dart';
 import 'vault_shelf_gate.dart';
 import '../theme/modus_palette.dart';
+import '../notes/recipes/recipe_text.dart';
 
 /// Moves a UTF-8 passphrase into native memory and wipes the buffer.
 typedef PasswordFactory = PasswordSecret Function(Uint8List utf8Bytes);
@@ -823,6 +824,7 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
           markdown: (at) => MarkdownExport(
             schemas: widget.catalog.current,
             labels: SchemaText(l10n),
+            recipes: RecipeText(l10n),
             words: (
               untitled: l10n.untitled,
               recording: l10n.markdownRecording,

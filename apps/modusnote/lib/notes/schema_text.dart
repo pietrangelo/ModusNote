@@ -167,6 +167,44 @@ final class SchemaText {
     'schema.book_place.field.period' => _l10n.schemaBookPlaceFieldPeriod,
     'schema.book_place.field.attachments' =>
       _l10n.schemaBookPlaceFieldAttachments,
+    'schema.recipe.label' => _l10n.schemaRecipeLabel,
+    'schema.recipe.field.title' => _l10n.schemaRecipeFieldTitle,
+    'schema.recipe.field.description' => _l10n.schemaRecipeFieldDescription,
+    'schema.recipe.field.photos' => _l10n.schemaRecipeFieldPhotos,
+    'schema.recipe.field.servings' => _l10n.schemaRecipeFieldServings,
+    'schema.recipe.field.ingredients' => _l10n.schemaRecipeFieldIngredients,
+    'schema.recipe.field.steps' => _l10n.schemaRecipeFieldSteps,
+    'schema.recipe.field.prep_time' => _l10n.schemaRecipeFieldPrepTime,
+    'schema.recipe.field.cook_time' => _l10n.schemaRecipeFieldCookTime,
+    'schema.recipe.field.rest_time' => _l10n.schemaRecipeFieldRestTime,
+    'schema.recipe.field.methods' => _l10n.schemaRecipeFieldMethods,
+    'schema.recipe.field.oven_temperature' =>
+      _l10n.schemaRecipeFieldOvenTemperature,
+    'schema.recipe.field.oven_mode' => _l10n.schemaRecipeFieldOvenMode,
+    'schema.recipe.field.difficulty' => _l10n.schemaRecipeFieldDifficulty,
+    'schema.recipe.field.tags' => _l10n.schemaRecipeFieldTags,
+    'schema.recipe.field.methods.oven' => _l10n.schemaRecipeFieldMethodsOven,
+    'schema.recipe.field.methods.stovetop' =>
+      _l10n.schemaRecipeFieldMethodsStovetop,
+    'schema.recipe.field.methods.air_fryer' =>
+      _l10n.schemaRecipeFieldMethodsAirFryer,
+    'schema.recipe.field.methods.microwave' =>
+      _l10n.schemaRecipeFieldMethodsMicrowave,
+    'schema.recipe.field.methods.steam' => _l10n.schemaRecipeFieldMethodsSteam,
+    'schema.recipe.field.methods.grill' => _l10n.schemaRecipeFieldMethodsGrill,
+    'schema.recipe.field.methods.pressure_cooker' =>
+      _l10n.schemaRecipeFieldMethodsPressureCooker,
+    'schema.recipe.field.methods.slow_cooker' =>
+      _l10n.schemaRecipeFieldMethodsSlowCooker,
+    'schema.recipe.field.methods.barbecue' =>
+      _l10n.schemaRecipeFieldMethodsBarbecue,
+    'schema.recipe.field.methods.no_cook' =>
+      _l10n.schemaRecipeFieldMethodsNoCook,
+    'schema.recipe.field.oven_mode.static' =>
+      _l10n.schemaRecipeFieldOvenModeStatic,
+    'schema.recipe.field.oven_mode.fan' => _l10n.schemaRecipeFieldOvenModeFan,
+    'schema.recipe.field.oven_mode.grill' =>
+      _l10n.schemaRecipeFieldOvenModeGrill,
     'schema.credential.label' => _l10n.schemaCredentialLabel,
     'schema.credential.field.description' =>
       _l10n.schemaCredentialFieldDescription,
