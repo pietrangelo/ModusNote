@@ -76,6 +76,54 @@ void main() {
   String? state(WidgetTester tester) =>
       saved.evaluate().isEmpty ? null : tester.widget<Text>(saved).data;
 
+  group('a recipe', () {
+    DynamicEntry bread() => existing(SeedSchemas.recipeV1, {
+      'title': const TextValue('Pane'),
+      'ingredients': IngredientsValue([
+        Ingredient('Farina', amount: 500, unit: IngredientUnit.gram),
+      ]),
+      'steps': StepsValue([PreparationStep('Impasta.')]),
+    });
+
+    testWidgets('opens in cooking mode and makes a shopping list', (
+      tester,
+    ) async {
+      await store.save(bread());
+      await open(tester, entry: bread(), schema: SeedSchemas.recipeV1);
+
+      await tester.tap(find.byKey(const ValueKey('cooking-mode')));
+      await tester.pumpAndSettle();
+      expect(find.text('500 g Farina'), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('add-to-shopping')));
+      await tester.pumpAndSettle();
+
+      final lists = [
+        for (final entry in store.entries)
+          if (entry.schemaId == SeedSchemas.taskV2.id) entry,
+      ];
+      expect(lists, hasLength(1));
+      expect(
+        lists.single.attributes[FieldKey('title')],
+        const TextValue('Spesa: Pane'),
+      );
+      expect(
+        lists.single.attributes[FieldKey('items')],
+        ChecklistValue([const ChecklistItem('500 g Farina')]),
+      );
+    });
+
+    testWidgets('other notes have no cooking mode', (tester) async {
+      final note = existing(SeedSchemas.quickNoteV1, {
+        'content': const TextValue('Ciao'),
+      });
+      await store.save(note);
+      await open(tester, entry: note);
+
+      expect(find.byKey(const ValueKey('cooking-mode')), findsNothing);
+    });
+  });
+
   group('saving', () {
     testWidgets('typing saves the note a moment later, with no button', (
       tester,

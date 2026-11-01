@@ -36,6 +36,9 @@ import 'links/note_links_section.dart';
 import 'links/note_picker.dart';
 import 'note_appearance.dart';
 import 'note_store.dart';
+import 'note_title.dart';
+import 'recipes/cooking_mode.dart';
+import 'recipes/shopping_list.dart';
 import 'schema_text.dart';
 import '../theme/modus_palette.dart';
 
@@ -554,6 +557,28 @@ class NoteEditorScreenState extends State<NoteEditorScreen>
     return null;
   }
 
+  /// Opens [recipe] to cook from; a shopping list made there is a new
+  /// to-do note.
+  Future<void> _cook(DynamicEntry recipe) {
+    final l10n = AppLocalizations.of(context);
+    final title = NoteTitle.of(recipe, _schema);
+    return CookingModeScreen.show(
+      context,
+      entry: recipe,
+      title: title,
+      openImage: _openImage,
+      onShopping: (List<String> lines) async {
+        final list = ShoppingList.of(
+          id: _newEntryId(),
+          title: l10n.shoppingListTitle(title),
+          lines: lines,
+          at: widget.clock().toUtc(),
+        );
+        if (list != null) await widget.store.save(list);
+      },
+    );
+  }
+
   Future<Uint8List> _openImage(BlobId blob) {
     final images = widget.store.images;
     final image = _pictures[blob] ?? widget.store.imageOf(blob);
@@ -838,6 +863,15 @@ class NoteEditorScreenState extends State<NoteEditorScreen>
                 icon: const Icon(Icons.center_focus_weak),
                 selectedIcon: const Icon(Icons.center_focus_strong),
               ),
+              if (_saved case final saved?
+                  when !focused && Recipe.isRecipe(saved))
+                IconButton(
+                  key: const ValueKey('cooking-mode'),
+                  // What is cooked from is the recipe as saved.
+                  onPressed: _dirty ? null : () => _cook(saved),
+                  tooltip: l10n.cookingMode,
+                  icon: const Icon(Icons.soup_kitchen_outlined),
+                ),
               if (_saved case final saved?
                   when !focused &&
                       publishing != null &&

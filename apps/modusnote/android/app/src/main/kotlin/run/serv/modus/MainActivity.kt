@@ -32,6 +32,20 @@ class MainActivity : FlutterActivity() {
         super.configureFlutterEngine(flutterEngine)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, BiometricKeys.CHANNEL)
             .setMethodCallHandler(BiometricKeys(this))
+        // Cooking mode keeps the screen on while a recipe is open. The view's
+        // own property, not a window flag: no code here ever clears a window
+        // flag, so FLAG_SECURE cannot be dropped by mistake. It only holds
+        // while the view is visible, so leaving the app drops it too.
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "run.serv.modus/screen")
+            .setMethodCallHandler { call, result ->
+                val on = call.argument<Boolean>("on")
+                if (call.method != "keepOn" || on == null) {
+                    result.notImplemented()
+                    return@setMethodCallHandler
+                }
+                window.decorView.keepScreenOn = on
+                result.success(null)
+            }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "run.serv.modus/clipboard")
             .setMethodCallHandler { call, result ->
                 val text = call.argument<String>("text")
