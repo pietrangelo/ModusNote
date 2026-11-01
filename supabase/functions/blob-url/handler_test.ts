@@ -195,11 +195,13 @@ describe("deleting", () => {
     assert.equal(response.status, 200);
     assert.deepEqual(await response.json(), { deleted: 2 });
     assert.deepEqual(calls, [{ token: "member-token", workspace, access: "write" }]);
+    // The deletes run concurrently and each signs asynchronously, so they
+    // reach R2 in no fixed order: compare them as a set.
     assert.deepEqual(
-      r2Calls.map(({ method, url }) => [method, url.host, url.pathname]),
+      r2Calls.map(({ method, url }) => [method, url.host, url.pathname]).sort(),
       [
-        ["DELETE", "acct.r2.cloudflarestorage.com", `/modus-blobs/${workspace}/take-1.enc`],
         ["DELETE", "acct.r2.cloudflarestorage.com", `/modus-blobs/${workspace}/photo_2.enc`],
+        ["DELETE", "acct.r2.cloudflarestorage.com", `/modus-blobs/${workspace}/take-1.enc`],
       ],
     );
     assert.match(
