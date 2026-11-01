@@ -103,11 +103,21 @@ final class PageSlug {
   static const maxLength = 89;
   static const fallback = 'pagina';
 
+  /// The address of a site's cookbook.
+  static const cookbook = 'ricette';
+
+  /// Addresses inside a site that are not pages.
+  static const reserved = {cookbook};
+
   final String value;
 
-  /// This slug, or the first `<slug>-<n>` from 2 up that [taken] lacks.
+  /// Whether serv.pub keeps this address for itself.
+  bool get isReserved => reserved.contains(value);
+
+  /// This slug, or the first `<slug>-<n>` from 2 up that [taken] lacks;
+  /// never a [reserved] one.
   PageSlug freeAmong(Set<PageSlug> taken) {
-    if (!taken.contains(this)) return this;
+    if (!taken.contains(this) && !isReserved) return this;
     for (var n = 2; ; n++) {
       final suffix = '-$n';
       final base = value.length + suffix.length > maxLength

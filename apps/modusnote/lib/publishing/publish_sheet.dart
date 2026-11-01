@@ -53,6 +53,7 @@ class PublishSheet extends StatefulWidget {
     required this.access,
     required this.entry,
     required this.schema,
+    this.category = '',
     super.key,
   });
 
@@ -60,18 +61,27 @@ class PublishSheet extends StatefulWidget {
   final DynamicEntry entry;
   final SchemaDefinition schema;
 
+  /// The name of the note's category: a recipe's section in the cookbook.
+  final String category;
+
   static Future<void> show(
     BuildContext context, {
     required PublishingAccess access,
     required DynamicEntry entry,
     required SchemaDefinition schema,
+    String category = '',
   }) => showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
     useSafeArea: true,
     showDragHandle: true,
     constraints: const BoxConstraints(maxWidth: Extents.xxl),
-    builder: (_) => PublishSheet(access: access, entry: entry, schema: schema),
+    builder: (_) => PublishSheet(
+      access: access,
+      entry: entry,
+      schema: schema,
+      category: category,
+    ),
   );
 
   @override
@@ -84,10 +94,25 @@ class _PublishSheetState extends State<PublishSheet> {
   late final Set<FieldKey> _fields;
   late PublicationLayout _layout;
   var _pictures = true;
+
+  /// Whether the cookbook shows the note's category: its name is the
+  /// person's own and leaves the vault only when they see it and agree.
+  var _withCategory = true;
   var _loading = true;
   var _busy = false;
   SiteBook? _book;
   String? _problem;
+
+  bool get _isRecipe => widget.schema.id.name == Recipe.schema;
+
+  /// The layouts this note may take: a recipe's own first.
+  List<PublicationLayout> get _layouts => [
+    if (_isRecipe) PublicationLayout.recipe,
+    PublicationLayout.essay,
+    PublicationLayout.goldenSection,
+    PublicationLayout.goldenCover,
+    PublicationLayout.book,
+  ];
 
   bool get _hasPictures =>
       AttachmentsValue.imagesOf(widget.entry).isNotEmpty ||
@@ -183,6 +208,11 @@ class _PublishSheetState extends State<PublishSheet> {
     if (book == null) return;
     final texts = SchemaText(AppLocalizations.of(context));
     final recipes = RecipeText(AppLocalizations.of(context));
+    final words = RecipeWords(
+      unit: recipes.unit,
+      option: texts.option,
+      category: _withCategory ? widget.category : '',
+    );
     final locale = Localizations.localeOf(context).toLanguageTag();
     if (!await widget.access.confirm()) return;
     final content = PublicationPolicy.compose(
@@ -199,6 +229,7 @@ class _PublishSheetState extends State<PublishSheet> {
       labelOf: (field) => texts.label(field.label),
       describe: (field, value) => _describe(texts, locale, field, value),
       ingredientLine: recipes.line,
+      recipeWords: words,
       draft: !listed,
       layout: _layout,
     );
@@ -374,6 +405,16 @@ class _PublishSheetState extends State<PublishSheet> {
       const SizedBox(height: Spacing.m),
       if (page != null) ...[
         _PageLink(url: book.pageUrl(page.slug), listed: page.listed),
+        if (page.listed && _layout == PublicationLayout.recipe)
+          Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: TextButton.icon(
+              key: const ValueKey('publish-open-cookbook'),
+              onPressed: () => openInBrowser(book.cookbookUrl),
+              icon: const Icon(Icons.menu_book_outlined),
+              label: Text(l10n.publishOpenCookbook),
+            ),
+          ),
         const SizedBox(height: Spacing.l),
       ],
       Text(l10n.publishFields, style: theme.textTheme.titleMedium),
@@ -399,12 +440,7 @@ class _PublishSheetState extends State<PublishSheet> {
         spacing: Spacing.s,
         runSpacing: Spacing.s,
         children: [
-          for (final layout in const [
-            PublicationLayout.essay,
-            PublicationLayout.goldenSection,
-            PublicationLayout.goldenCover,
-            PublicationLayout.book,
-          ])
+          for (final layout in _layouts)
             ChoiceChip(
               key: ValueKey('publish-layout-${layout.name}'),
               label: Text(switch (layout) {
@@ -412,6 +448,7 @@ class _PublishSheetState extends State<PublishSheet> {
                   l10n.publishLayoutGoldenSection,
                 PublicationLayout.goldenCover => l10n.publishLayoutGoldenCover,
                 PublicationLayout.book => l10n.publishLayoutBook,
+                PublicationLayout.recipe => l10n.publishLayoutRecipe,
                 _ => l10n.publishLayoutEssay,
               }),
               selected: _layout == layout,
@@ -421,6 +458,27 @@ class _PublishSheetState extends State<PublishSheet> {
             ),
         ],
       ),
+      if (_layout == PublicationLayout.recipe) ...[
+        const SizedBox(height: Spacing.s),
+        Text(
+          l10n.publishLayoutRecipeHelp,
+          key: const ValueKey('publish-recipe-help'),
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: ModusPalette.of(context).muted,
+          ),
+        ),
+        if (widget.category.trim().isNotEmpty)
+          SwitchListTile(
+            key: const ValueKey('publish-category'),
+            contentPadding: EdgeInsets.zero,
+            value: _withCategory,
+            onChanged: _busy
+                ? null
+                : (on) => setState(() => _withCategory = on),
+            title: Text(l10n.publishRecipeCategory(widget.category.trim())),
+            subtitle: Text(l10n.publishRecipeCategoryHelp),
+          ),
+      ],
       if (_hasPictures) ...[
         const SizedBox(height: Spacing.s),
         SwitchListTile(
@@ -452,9 +510,11 @@ class _PublishSheetState extends State<PublishSheet> {
               child: FilledButton(
                 key: const ValueKey('publish-confirm'),
                 onPressed: ready ? () => _publish(listed: true) : null,
-                child: Text(
-                  page != null ? l10n.publishUpdate : l10n.publishConfirm,
-                ),
+                child: Text(switch ((page, _layout)) {
+                  (_?, _) => l10n.publishUpdate,
+                  (null, PublicationLayout.recipe) => l10n.publishToCookbook,
+                  _ => l10n.publishConfirm,
+                }),
               ),
             ),
           ],

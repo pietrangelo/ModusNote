@@ -46,6 +46,22 @@ void main() {
       },
     );
 
+    test('Fresco is a light cream, with an evening version on dark', () {
+      final light = SitePalette.of(const SiteTheme(BaseTheme.fresco));
+      expect(light.isDark, isFalse);
+      expect(light.background.hex, '#FBF8F1');
+      expect(light.surface.hex, '#FFFFFF');
+      expect(light.text.hex, '#1D1A16');
+      expect(light.accent.hex, '#A9461B');
+      final dark = SitePalette.of(const SiteTheme(BaseTheme.frescoDark));
+      expect(dark.isDark, isTrue);
+      expect(dark.background.hex, '#13161D');
+      expect(dark.accent.hex, '#E6905A');
+      // Livelier than the app's paper theme: the photos come first.
+      final paper = SitePalette.of(const SiteTheme(BaseTheme.paper));
+      expect(Oklch.of(light.accent).c, greaterThan(Oklch.of(paper.accent).c));
+    });
+
     test('every theme, every accent hue, every background hue is AA', () {
       final hues = [null, for (var h = 0; h < 360; h += 15) h.toDouble()];
       for (final base in BaseTheme.values) {

@@ -881,6 +881,11 @@ class NoteEditorScreenState extends State<NoteEditorScreen>
                           access: publishing,
                           entry: saved,
                           schema: _schema,
+                          category: switch (_category) {
+                            final id? =>
+                              widget.store.categories[id]?.name.value ?? '',
+                            null => '',
+                          },
                         ),
                   tooltip: l10n.publishAction,
                   icon: const Icon(Icons.public),

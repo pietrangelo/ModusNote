@@ -95,6 +95,7 @@ final class Publisher {
     required String Function(FieldDefinition field) labelOf,
     required String Function(FieldDefinition field, FieldValue value) describe,
     String Function(Ingredient item)? ingredientLine,
+    RecipeWords? recipeWords,
     bool draft = false,
     PublicationLayout? layout,
   }) async {
@@ -102,9 +103,14 @@ final class Publisher {
     final book = await _site();
     final page = book.pages[entry];
     final previousDraft = book.drafts[entry];
+    // A page published before its address was kept for the cookbook
+    // moves to a free one.
+    final kept = page?.slug;
     final slug = draft
         ? _draftSlug(content.slug, book.taken)
-        : page?.slug ?? content.slug.freeAmong(book.taken);
+        : kept != null && !kept.isReserved
+        ? kept
+        : content.slug.freeAmong(book.taken);
     final published = await _withKey(book, (key) async {
       final uploaded = <BlobId, MediaId>{};
       try {
@@ -128,6 +134,7 @@ final class Publisher {
           labelOf: labelOf,
           describe: describe,
           ingredientLine: ingredientLine,
+          recipeWords: recipeWords,
           listed: !draft,
           layout: layout,
         );
@@ -156,6 +163,9 @@ final class Publisher {
       if (previousDraft != null) {
         await _deletePageQuietly(key, book, previousDraft.slug);
         await _deleteQuietly(key, book, previousDraft.media);
+      }
+      if (stale != null && stale.slug != slug) {
+        await _deletePageQuietly(key, book, stale.slug);
       }
       if (stale != null) {
         await _deleteQuietly(

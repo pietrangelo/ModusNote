@@ -18,17 +18,23 @@ enum PublicationLayout {
   /// Contents in the narrow column, the chapter in the wide one.
   book,
 
+  /// A recipe: the cover in a golden rectangle, then the ingredients in
+  /// the narrow column (38.2 %) and the steps in the wide one; listed in
+  /// the site's cookbook.
+  recipe,
+
   /// A grid of golden-rectangle cards: a site's home.
   collection;
 
   List<double> get columns => switch (this) {
     goldenSection => [Golden.major, Golden.minor],
-    book => [Golden.minor, Golden.major],
+    book || recipe => [Golden.minor, Golden.major],
     essay || goldenCover || collection => const [1.0],
   };
 
   /// Width over height of the opening block, if the layout has one.
-  double? get coverAspect => this == goldenCover ? Golden.phi : null;
+  double? get coverAspect =>
+      this == goldenCover || this == recipe ? Golden.phi : null;
 
   /// Width over height of a card, if the layout shows cards.
   double? get cardAspect => this == collection ? Golden.phi : null;
@@ -39,7 +45,8 @@ enum PublicationLayout {
   /// of a type keeps it.
   static PublicationLayout forSchemaName(String name) => switch (name) {
     'book' || 'book_chapter' => book,
-    'song_sketch' || 'dream_log' || 'recipe' => goldenCover,
+    'recipe' => recipe,
+    'song_sketch' || 'dream_log' => goldenCover,
     'book_character' || 'book_place' => goldenSection,
     _ => essay,
   };

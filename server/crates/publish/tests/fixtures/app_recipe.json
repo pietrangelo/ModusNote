@@ -1,0 +1,96 @@
+{
+  "title": "Parmigiana",
+  "layout": "recipe",
+  "listed": true,
+  "blocks": [
+    {
+      "kind": "links",
+      "label": "schema.recipe.field.photos",
+      "items": [
+        {
+          "url": "https://example.org/storia",
+          "title": "La storia"
+        }
+      ]
+    },
+    {
+      "kind": "text",
+      "label": "schema.recipe.field.oven_temperature",
+      "text": "180"
+    }
+  ],
+  "recipe": {
+    "category": "Secondi",
+    "description": "Melanzane fritte, *sugo* e basilico.\n\nil piatto",
+    "cover": [
+      {
+        "media": "AAAAAAAAAAAAAAAAAAAAAA",
+        "caption": "La teglia"
+      },
+      {
+        "media": "BBBBBBBBBBBBBBBBBBBBBB",
+        "caption": ""
+      }
+    ],
+    "servings": 4,
+    "prep": 40,
+    "cook": 45,
+    "rest": 0,
+    "methods": [
+      "Forno",
+      "Fornelli"
+    ],
+    "difficulty": 2,
+    "ingredients": [
+      {
+        "name": "Melanzane",
+        "amount": 1.5,
+        "unit": "kilogram",
+        "one": "kg",
+        "other": "kg",
+        "quantity": "",
+        "link": "https://example.org/melanzane"
+      },
+      {
+        "name": "Olio",
+        "amount": 2,
+        "unit": "tablespoon",
+        "one": "cucchiaio",
+        "other": "cucchiai",
+        "quantity": "abbondanti"
+      },
+      {
+        "name": "Uova",
+        "amount": 3,
+        "one": "",
+        "other": "",
+        "quantity": ""
+      },
+      {
+        "name": "Sale",
+        "one": "",
+        "other": "",
+        "quantity": "q.b."
+      }
+    ],
+    "steps": [
+      {
+        "text": "Friggi le melanzane.",
+        "pictures": [
+          {
+            "media": "CCCCCCCCCCCCCCCCCCCCCC",
+            "caption": "Dorate"
+          }
+        ]
+      },
+      {
+        "text": "Inforna a 180°.",
+        "pictures": []
+      }
+    ],
+    "tags": [
+      "estate",
+      "vegetariana"
+    ]
+  }
+}
