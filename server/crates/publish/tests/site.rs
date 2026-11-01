@@ -255,6 +255,21 @@ fn the_cookbook_address_is_not_a_page() {
 }
 
 #[test]
+fn a_site_with_a_cookbook_holds_more_pages() {
+    let mut site = claimed().with_limits(SiteLimits { pages: 1, cookbook_pages: 3, ..SiteLimits::default() });
+    put(&mut site, &owner(), "diario", &page("Diario", "x")).unwrap();
+    assert_eq!(put(&mut site, &owner(), "altro", &page("Altro", "x")), Err(SiteError::Full));
+    // Recipes for the cookbook have its room, and so has the site then.
+    put(&mut site, &owner(), "pane", &recipe("Pane", "Lievitati", true)).unwrap();
+    put(&mut site, &owner(), "altro", &page("Altro", "x")).unwrap();
+    assert_eq!(put(&mut site, &owner(), "seadas", &recipe("Seadas", "Dolci", true)), Err(SiteError::Full));
+    // A draft recipe is not the cookbook's.
+    let mut plain = claimed().with_limits(SiteLimits { pages: 1, cookbook_pages: 3, ..SiteLimits::default() });
+    put(&mut plain, &owner(), "diario", &page("Diario", "x")).unwrap();
+    assert_eq!(put(&mut plain, &owner(), "bozza", &recipe("Bozza", "Dolci", false)), Err(SiteError::Full));
+}
+
+#[test]
 fn a_site_with_a_cookbook_holds_more_files() {
     let mut site = claimed().with_limits(SiteLimits {
         media: 1,

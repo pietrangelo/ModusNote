@@ -38,8 +38,9 @@ pub struct SiteLimits {
     pub media: usize,
     pub media_bytes: u64,
     pub media_file: u64,
-    /// Files and bytes for a site with a cookbook: recipes are mostly
-    /// photographs.
+    /// Pages, files and bytes for a site with a cookbook: a cookbook is
+    /// many recipes, mostly photographs.
+    pub cookbook_pages: usize,
     pub cookbook_media: usize,
     pub cookbook_bytes: u64,
 }
@@ -51,8 +52,9 @@ impl Default for SiteLimits {
             media: 377,
             media_bytes: 144 << 20,
             media_file: 21 << 20,
-            cookbook_media: 987,
-            cookbook_bytes: 610 << 20,
+            cookbook_pages: 1597,
+            cookbook_media: 2584,
+            cookbook_bytes: 1597 << 20,
         }
     }
 }
@@ -240,7 +242,14 @@ impl<S: Store, C: SignatureCheck> Site<S, C> {
         }
         let key = format!("{PAGES}{slug}");
         let new = self.store.get(&key)?.is_none();
-        if new && self.store.list(PAGES, None, usize::MAX)?.len() >= self.limits.pages {
+        // A recipe for the cookbook, or any page of a site that has one,
+        // counts against the cookbook's room.
+        let pages = if (page.listed && page.recipe.is_some()) || self.has_cookbook()? {
+            self.limits.pages.max(self.limits.cookbook_pages)
+        } else {
+            self.limits.pages
+        };
+        if new && self.store.list(PAGES, None, usize::MAX)?.len() >= pages {
             return Err(SiteError::Full);
         }
         let listed = match &page.recipe {
