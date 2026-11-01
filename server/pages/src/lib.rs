@@ -12,8 +12,21 @@
 //! [`route`] and [`headers`] are the HTTP surface without the runtime.
 #![forbid(unsafe_code)]
 
+use publish::cookbook::PATH as COOKBOOK;
 use publish::names::{media_id, page_slug, site_name};
 use publish::render::FONT_FILES;
+
+/// The longest query passed on to a site's object: a search and its
+/// filters, or other servings. A longer one is dropped.
+pub const MAX_QUERY: usize = 512;
+
+/// `query` as it may reach a site's object.
+pub fn passed_query(query: Option<&str>) -> String {
+    match query {
+        Some(q) if !q.is_empty() && q.len() <= MAX_QUERY => format!("?{q}"),
+        _ => String::new(),
+    }
+}
 
 #[cfg(target_arch = "wasm32")]
 mod runtime;
@@ -30,14 +43,19 @@ pub enum PublicRoute {
     /// A site's Atom feed.
     Feed(String),
     Page(String, String),
+    /// A site's cookbook: its showcase, or a search in it.
+    Cookbook(String),
+    /// One category of a site's cookbook.
+    CookbookCategory(String, String),
     Media(String, String),
     /// One of the fonts the stylesheets name, from this Worker's assets.
     Font(&'static str),
     NotFound,
 }
 
-/// Maps a path to what serv.pub serves there. The query is ignored (the
-/// stylesheet carries a version in it only to bust caches).
+/// Maps a path to what serv.pub serves there. The query is passed only to
+/// pages and the cookbook (the stylesheet carries a version in it only to
+/// bust caches).
 pub fn route(method: &str, path: &str) -> PublicRoute {
     if method != "GET" && method != "HEAD" {
         return PublicRoute::NotFound;
@@ -56,6 +74,11 @@ pub fn route(method: &str, path: &str) -> PublicRoute {
         [site, "style.css"] if site_name(site) => PublicRoute::Style((*site).to_owned()),
         // A page's address has no dot, so no page is there.
         [site, "feed.xml"] if site_name(site) => PublicRoute::Feed((*site).to_owned()),
+        // No page may take the cookbook's address.
+        [site, COOKBOOK] if site_name(site) => PublicRoute::Cookbook((*site).to_owned()),
+        [site, COOKBOOK, category] if site_name(site) && page_slug(category) => {
+            PublicRoute::CookbookCategory((*site).to_owned(), (*category).to_owned())
+        }
         [site, slug] if site_name(site) && page_slug(slug) => PublicRoute::Page((*site).to_owned(), (*slug).to_owned()),
         [site, "m", id] if site_name(site) && media_id(id) => PublicRoute::Media((*site).to_owned(), (*id).to_owned()),
         _ => PublicRoute::NotFound,
@@ -114,6 +137,11 @@ mod tests {
         assert_eq!(route("HEAD", "/quaderno/style.css"), PublicRoute::Style("quaderno".into()));
         assert_eq!(route("GET", "/quaderno/il-faro"), PublicRoute::Page("quaderno".into(), "il-faro".into()));
         assert_eq!(route("GET", "/quaderno/feed.xml"), PublicRoute::Feed("quaderno".into()));
+        assert_eq!(route("GET", "/quaderno/ricette"), PublicRoute::Cookbook("quaderno".into()));
+        assert_eq!(
+            route("GET", "/quaderno/ricette/pane-e-lievitati"),
+            PublicRoute::CookbookCategory("quaderno".into(), "pane-e-lievitati".into())
+        );
         assert_eq!(route("GET", "/fonts/literata-italic.woff2"), PublicRoute::Font("literata-italic"));
         for name in FONT_FILES {
             assert_eq!(route("GET", &format!("/fonts/{name}.woff2")), PublicRoute::Font(name));
@@ -147,6 +175,10 @@ mod tests {
             "/fonts/LICENCES.txt",
             "/fonts/inter.woff2/x",
             "/quaderno/feed.rss",
+            "/quaderno/ricette/",
+            "/quaderno/ricette/Dolci",
+            "/quaderno/ricette/a/b",
+            "/quaderno/ricette/../x",
         ] {
             assert_eq!(route("GET", path), PublicRoute::NotFound, "{path}");
         }
@@ -162,5 +194,15 @@ mod tests {
         assert!(!csp.contains("script-src"));
         assert!(h.iter().any(|(n, v)| *n == "X-Content-Type-Options" && v == "nosniff"));
         assert!(!FRONT.contains("<script") && !NOT_FOUND.contains("<script"));
+        // The cookbook's search is a form to the same origin, nowhere else.
+        assert!(csp.contains("form-action 'self'"));
+    }
+
+    #[test]
+    fn only_short_queries_reach_a_site() {
+        assert_eq!(passed_query(None), "");
+        assert_eq!(passed_query(Some("")), "");
+        assert_eq!(passed_query(Some("q=pane&p=4")), "?q=pane&p=4");
+        assert_eq!(passed_query(Some(&"a".repeat(MAX_QUERY + 1))), "");
     }
 }

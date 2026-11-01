@@ -12,8 +12,11 @@
 //! - [`Site`]: one site's use cases on the [`sync::Store`] port, writes
 //!   signed by the site's own key.
 
+pub mod colour;
+pub mod cookbook;
 pub mod names;
 pub mod page;
+pub mod recipe;
 pub mod render;
 pub mod settings;
 mod site;

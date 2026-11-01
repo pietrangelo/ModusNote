@@ -6,9 +6,10 @@
 use serde::{Deserialize, Serialize};
 
 use crate::names::media_id;
+use crate::recipe::Recipe;
 use crate::text::{safe_line, safe_text};
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Page {
     pub title: String,
@@ -16,7 +17,12 @@ pub struct Page {
     /// A listed page is on the site's home and in its feed; an unlisted one
     /// (a draft for the preview) only at its address, never indexed.
     pub listed: bool,
+    /// The note's other fields; a recipe may have none.
     pub blocks: Vec<Block>,
+    /// A recipe, with the [`Layout::Recipe`] layout and only with it: it
+    /// joins the site's cookbook when the page is listed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recipe: Option<Recipe>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -26,6 +32,7 @@ pub enum Layout {
     GoldenSection,
     GoldenCover,
     Book,
+    Recipe,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -88,6 +95,8 @@ pub enum Invalid {
     Item,
     Url,
     Media,
+    /// A recipe without the recipe layout, or the layout without one.
+    Recipe,
 }
 
 pub const MAX_TITLE: usize = 200;
@@ -110,8 +119,15 @@ impl Page {
         if !safe_line(&self.title, MAX_TITLE) {
             return Err(Invalid::Title);
         }
-        if self.blocks.is_empty() || self.blocks.len() > MAX_BLOCKS {
+        let recipe = matches!(self.layout, Layout::Recipe);
+        if recipe != self.recipe.is_some() {
+            return Err(Invalid::Recipe);
+        }
+        if (self.blocks.is_empty() && !recipe) || self.blocks.len() > MAX_BLOCKS {
             return Err(Invalid::Blocks);
+        }
+        if let Some(recipe) = &self.recipe {
+            recipe.check()?;
         }
         self.blocks.iter().try_for_each(Block::check)
     }
@@ -119,7 +135,7 @@ impl Page {
     /// Every media file the page shows, in order: they must be uploaded
     /// before the page.
     pub fn media(&self) -> Vec<String> {
-        let mut out = Vec::new();
+        let mut out = self.recipe.as_ref().map(Recipe::media).unwrap_or_default();
         for block in &self.blocks {
             match block {
                 Block::Image { media, .. } | Block::Audio { media, .. } => out.push(media.clone()),
@@ -210,6 +226,7 @@ pub(crate) fn sample() -> Page {
         title: "Il faro".into(),
         layout: Layout::Essay,
         listed: true,
+        recipe: None,
         blocks: vec![
             Block::Markdown { label: String::new(), text: "# Prima\n\nLa luce *gira*.".into() },
             Block::Tags { label: "Tag".into(), items: vec!["mare".into(), "notte".into()] },
@@ -266,6 +283,19 @@ mod tests {
         ] {
             assert_eq!(link(bad), Err(Invalid::Url), "{bad}");
         }
+    }
+
+    #[test]
+    fn a_recipe_needs_its_layout_and_may_have_no_blocks() {
+        let recipe = Page { layout: Layout::Recipe, recipe: Some(crate::recipe::sample()), blocks: vec![], ..sample() };
+        assert_eq!(recipe.check(), Ok(()));
+        let json = serde_json::to_vec(&recipe).unwrap();
+        assert_eq!(Page::parse(&json), Ok(recipe.clone()));
+        assert_eq!(Page { layout: Layout::Essay, ..recipe.clone() }.check(), Err(Invalid::Recipe));
+        assert_eq!(Page { layout: Layout::Recipe, ..sample() }.check(), Err(Invalid::Recipe));
+        assert_eq!(recipe.media(), ["CCCCCCCCCCCCCCCC", "DDDDDDDDDDDDDDDD"]);
+        // Pages without a recipe keep their wire format.
+        assert!(!String::from_utf8(serde_json::to_vec(&sample()).unwrap()).unwrap().contains("recipe"));
     }
 
     #[test]

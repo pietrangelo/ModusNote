@@ -43,7 +43,7 @@ pub const FEED_ENTRIES: usize = 21;
 
 /// The policy every page and stylesheet goes out with.
 pub const CSP: &str = "default-src 'none'; style-src 'self'; img-src 'self'; media-src 'self'; font-src 'self'; \
-                       base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
+                       base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
 
 fn options() -> Options {
     Options::ENABLE_TABLES | Options::ENABLE_STRIKETHROUGH | Options::ENABLE_TASKLISTS
@@ -217,7 +217,7 @@ pub fn plain(markdown: &str) -> String {
 
 /// `text` cut to at most [`EXCERPT`] characters, at a space when there is
 /// one, with an ellipsis when cut.
-fn cut(text: &str) -> String {
+pub(crate) fn cut(text: &str) -> String {
     if text.chars().count() <= EXCERPT {
         return text.to_owned();
     }
@@ -235,7 +235,7 @@ const EXCERPT_SOURCE: usize = 4181;
 
 /// The start of `text`, at most [`EXCERPT_SOURCE`] bytes, a character never
 /// cut in half.
-fn head_of(text: &str) -> &str {
+pub(crate) fn head_of(text: &str) -> &str {
     if text.len() <= EXCERPT_SOURCE {
         return text;
     }
@@ -271,15 +271,22 @@ pub fn first_image(page: &Page, uploaded: &dyn Fn(&str) -> bool) -> Option<Strin
 }
 
 /// What a page tells link previews about itself.
-struct Meta<'a> {
+pub(crate) struct Meta<'a> {
     /// Its path on serv.pub.
-    path: String,
-    description: &'a str,
-    image: Option<String>,
-    article: bool,
+    pub(crate) path: String,
+    pub(crate) description: &'a str,
+    pub(crate) image: Option<String>,
+    pub(crate) article: bool,
 }
 
-fn head(settings: &SiteSettings, site: &str, title: &str, indexable: bool, style: &str, meta: &Meta<'_>) -> String {
+pub(crate) fn head(
+    settings: &SiteSettings,
+    site: &str,
+    title: &str,
+    indexable: bool,
+    style: &str,
+    meta: &Meta<'_>,
+) -> String {
     let robots = if indexable { "" } else { "<meta name=\"robots\" content=\"noindex, nofollow\">\n" };
     let url = escape(&format!("{ORIGIN}{}", meta.path));
     let mut tags = format!(
@@ -319,7 +326,7 @@ fn masthead(settings: &SiteSettings, site: &str) -> String {
     format!(r#"<header class="site"><a href="/{site}/">{}</a></header>"#, escape(&settings.title))
 }
 
-fn footer() -> &'static str {
+pub(crate) fn footer() -> &'static str {
     "<footer class=\"site\"><p>Modus Notes · serv.pub</p></footer>\n</body>\n</html>\n"
 }
 
@@ -327,7 +334,7 @@ fn label(text: &str) -> String {
     if text.is_empty() { String::new() } else { format!("<h2 class=\"label\">{}</h2>", escape(text)) }
 }
 
-fn block(block: &Block, site: &str, uploaded: &dyn Fn(&str) -> bool) -> String {
+pub(crate) fn block(block: &Block, site: &str, uploaded: &dyn Fn(&str) -> bool) -> String {
     let media = |id: &str| uploaded(id).then(|| format!("/{site}/m/{id}"));
     match block {
         Block::Markdown { label: l, text } => {
@@ -405,6 +412,7 @@ pub fn page(
         Layout::GoldenSection => "golden-section",
         Layout::GoldenCover => "golden-cover",
         Layout::Book => "book",
+        Layout::Recipe => "essay",
     };
     out.push_str(&format!("<body class=\"{layout}\">\n{}\n", masthead(settings, site)));
     let title = if page.title.is_empty() { String::new() } else { format!("<h1>{}</h1>", escape(&page.title)) };
@@ -438,7 +446,9 @@ pub fn page(
                 render(&aside)
             ));
         }
-        Layout::Essay => out.push_str(&format!("<main><article>{title}{}</article></main>\n", render(&main))),
+        Layout::Essay | Layout::Recipe => {
+            out.push_str(&format!("<main><article>{title}{}</article></main>\n", render(&main)))
+        }
     }
     out.push_str(footer());
     out

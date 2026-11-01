@@ -107,6 +107,34 @@ def main():
     seen(visit("/api/info"), 404, "and no API")
     seen(visit(f"/{name}/nessuna"), 404, "a page that does not exist")
 
+    seen(visit(f"/{name}/ricette"), 404, "no cookbook without recipes")
+    recipe = {"title": "Pane di <semola>", "layout": "recipe", "listed": True, "blocks": [], "recipe": {
+        "category": "Pane e lievitati", "description": "Crosta sottile.", "servings": 4, "prep": 30, "cook": 45,
+        "cover": [{"media": pic, "caption": "Il pane"}], "methods": ["Forno"], "difficulty": 2,
+        "ingredients": [{"name": "Semola", "amount": 500, "unit": "gram", "one": "g", "other": "g",
+                         "link": "https://esempio.it/semola"},
+                        {"name": "Sale", "quantity": "q.b."}],
+        "steps": [{"text": "Impasta e lascia riposare **2 ore**."}, {"text": "Inforna."}]}}
+    expect(call("PUT", f"{s}/p/ricette", owner, recipe), 404, "no page at the cookbook's address")
+    expect(call("PUT", f"{s}/p/pane", owner, recipe), 201, "a recipe")
+    status, html, headers = seen(visit(f"/{name}/pane"), 200, "the recipe's page")
+    assert "<h1>Pane di &lt;semola&gt;</h1>" in html and "<span>4 porzioni</span>" in html, html
+    assert 'rel="nofollow ugc sponsored noopener noreferrer">su esempio.it</a>' in html, html
+    assert "<script" not in html.lower(), "no structured data on a site that is not indexable"
+    status, html, _ = seen(visit(f"/{name}/pane?p=8"), 200, "the recipe for 8")
+    assert '<span class="qty">1000 g</span>' in html and "noindex" in html, html
+    status, html, headers = seen(visit(f"/{name}/ricette"), 200, "the cookbook")
+    assert 'class="band c0"' in html and f'href="/{name}/ricette/pane-e-lievitati"' in html, html
+    assert "form-action 'self'" in headers["Content-Security-Policy"], headers
+    status, html, _ = seen(visit(f"/{name}/ricette?q=SEMOLA&t=120"), 200, "a search")
+    assert f'href="/{name}/pane"' in html and "1 ricetta" in html, html
+    status, html, _ = seen(visit(f"/{name}/ricette?q=%3Cscript%3E"), 200, "a search for markup")
+    assert "<script>" not in html and "Nessuna ricetta trovata" in html, html
+    seen(visit(f"/{name}/ricette/pane-e-lievitati"), 200, "a category")
+    seen(visit(f"/{name}/ricette/nessuna"), 404, "a category without recipes")
+    status, css, _ = seen(visit(f"/{name}/style.css"), 200, "the stylesheet with the category's colours")
+    assert ".c0{--cat:#" in css, css
+
     expect(call("DELETE", f"{s}/p/il-faro", owner), 200, "the owner takes a page down")
     seen(visit(f"/{name}/il-faro"), 404, "the page is gone")
     expect(call("DELETE", s, stranger), 403, "a stranger cannot take the site down")

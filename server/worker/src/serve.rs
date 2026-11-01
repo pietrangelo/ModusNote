@@ -337,6 +337,8 @@ pub const INTERNAL_STYLE: &str = "/internal/style";
 pub const INTERNAL_FEED: &str = "/internal/feed";
 pub const INTERNAL_PAGE: &str = "/internal/page/";
 pub const INTERNAL_MEDIA: &str = "/internal/media/";
+/// The cookbook's showcase and search; with `/<category>`, one category.
+pub const INTERNAL_COOKBOOK: &str = "/internal/cookbook";
 
 /// What a site's object answers: a JSON reply to the app, or a page, a
 /// stylesheet or a file's type to the pages Worker.
@@ -364,8 +366,12 @@ pub fn site<S: Store, C: SignatureCheck>(
             SiteDone::Css(site.style_css()?)
         } else if path == INTERNAL_FEED {
             SiteDone::Feed(site.feed_xml()?)
+        } else if path == INTERNAL_COOKBOOK {
+            SiteDone::Html(site.cookbook_html(incoming.query)?)
+        } else if let Some(category) = path.strip_prefix(INTERNAL_COOKBOOK).and_then(|p| p.strip_prefix('/')) {
+            SiteDone::Html(site.category_html(category)?)
         } else if let Some(slug) = path.strip_prefix(INTERNAL_PAGE) {
-            SiteDone::Html(site.page_html(slug)?)
+            SiteDone::Html(site.page_html(slug, incoming.query)?)
         } else if let Some(id) = path.strip_prefix(INTERNAL_MEDIA) {
             SiteDone::MediaType(site.media_type(id)?)
         } else {

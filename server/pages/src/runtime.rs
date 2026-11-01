@@ -5,7 +5,9 @@ use js_sys::Reflect;
 use wasm_bindgen::JsCast;
 use worker::{Context, Env, ObjectNamespace, Request, Response, ResponseBody, Result, Stub, event};
 
-use crate::{FONT_CACHE, FRONT, MEDIA_CACHE, NO_CACHE, NOT_FOUND, PAGE_CACHE, PublicRoute, ROBOTS, headers, route};
+use crate::{
+    FONT_CACHE, FRONT, MEDIA_CACHE, NO_CACHE, NOT_FOUND, PAGE_CACHE, PublicRoute, ROBOTS, headers, passed_query, route,
+};
 
 const SITES: &str = "SITES";
 const BLOBS: &str = "BLOBS";
@@ -101,10 +103,26 @@ async fn serve(req: &Request, env: &Env) -> Result<Response> {
             let bytes = reply.bytes().await?;
             with_headers(Response::from_bytes(bytes)?, "font/woff2", FONT_CACHE)
         }
-        PublicRoute::Page(site, slug) => match read(env, &site, &format!("/internal/page/{slug}")).await? {
-            Some(body) => text(200, &body, html, PAGE_CACHE),
-            None => not_found(),
-        },
+        PublicRoute::Page(site, slug) => {
+            let path = format!("/internal/page/{slug}{}", passed_query(url.query()));
+            match read(env, &site, &path).await? {
+                Some(body) => text(200, &body, html, PAGE_CACHE),
+                None => not_found(),
+            }
+        }
+        PublicRoute::Cookbook(site) => {
+            let path = format!("/internal/cookbook{}", passed_query(url.query()));
+            match read(env, &site, &path).await? {
+                Some(body) => text(200, &body, html, PAGE_CACHE),
+                None => not_found(),
+            }
+        }
+        PublicRoute::CookbookCategory(site, category) => {
+            match read(env, &site, &format!("/internal/cookbook/{category}")).await? {
+                Some(body) => text(200, &body, html, PAGE_CACHE),
+                None => not_found(),
+            }
+        }
         PublicRoute::Media(site, id) => {
             let Some(kind) = read(env, &site, &format!("/internal/media/{id}")).await? else { return not_found() };
             let Some(kind) = publish::MediaType::parse(&kind) else { return not_found() };

@@ -111,13 +111,13 @@ fn pages_render_and_only_listed_ones_are_on_the_home() {
         "blocks": [{"kind": "markdown", "label": "", "text": "x"}]})
     .to_string();
     put(&mut site, &owner(), "bozza-k3j9", draft.as_bytes()).unwrap();
-    let html = site.page_html("il-faro").unwrap();
+    let html = site.page_html("il-faro", None).unwrap();
     assert!(html.contains("<em>luce</em>"));
     let home = site.home_html().unwrap();
     assert!(home.contains("/quaderno/il-faro"));
     assert!(!home.contains("bozza"));
-    assert!(site.page_html("bozza-k3j9").unwrap().contains("noindex"));
-    assert_eq!(site.page_html("nessuna"), Err(SiteError::NotFound));
+    assert!(site.page_html("bozza-k3j9", None).unwrap().contains("noindex"));
+    assert_eq!(site.page_html("nessuna", None), Err(SiteError::NotFound));
     assert!(site.style_css().unwrap().contains("--bg:#090C15"));
 }
 
@@ -129,13 +129,19 @@ fn a_page_needs_its_files_uploaded_first() {
     let path = format!("/api/s/quaderno/m/{PIC}?type=jpeg");
     site.admit_media(&call(&owner(), "PUT", &path, b"").request(), PIC, MediaType::Jpeg, 1000).unwrap();
     assert_eq!(put(&mut site, &owner(), "foto", &body), Ok(true));
-    assert!(site.page_html("foto").unwrap().contains(&format!("src=\"/quaderno/m/{PIC}\"")));
+    assert!(site.page_html("foto", None).unwrap().contains(&format!("src=\"/quaderno/m/{PIC}\"")));
     assert_eq!(site.media_type(PIC), Ok(MediaType::Jpeg));
 }
 
 #[test]
 fn limits_hold() {
-    let mut site = claimed().with_limits(SiteLimits { pages: 1, media: 1, media_bytes: 1500, media_file: 1000 });
+    let mut site = claimed().with_limits(SiteLimits {
+        pages: 1,
+        media: 1,
+        media_bytes: 1500,
+        media_file: 1000,
+        ..SiteLimits::default()
+    });
     put(&mut site, &owner(), "uno", &page("Uno", "x")).unwrap();
     assert_eq!(put(&mut site, &owner(), "due", &page("Due", "x")), Err(SiteError::Full));
     let admit = |site: &mut Site<MemoryStore, StrictEd25519>, id: &str, size: u64| {
@@ -185,4 +191,87 @@ fn media_types_by_their_first_bytes() {
     assert!(!MediaType::Png.matches(b"<html><script>"));
     assert!(!MediaType::Webp.matches(b"RIFF\0\0\0\0WAVEfmt "));
     assert_eq!(MediaType::parse("svg"), None, "no SVG: it can carry script");
+}
+
+fn recipe(title: &str, category: &str, listed: bool) -> Vec<u8> {
+    serde_json::json!({
+        "title": title, "layout": "recipe", "listed": listed, "blocks": [],
+        "recipe": {
+            "category": category, "description": "Buona.", "servings": 4, "prep": 10, "cook": 20,
+            "methods": ["Forno"],
+            "ingredients": [
+                {"name": "Farina", "amount": 500, "unit": "gram", "one": "g", "other": "g"},
+                {"name": "Sale", "quantity": "q.b."}
+            ],
+            "steps": [{"text": "Impasta e inforna."}]
+        }
+    })
+    .to_string()
+    .into_bytes()
+}
+
+#[test]
+fn listed_recipes_make_a_cookbook_with_lasting_category_colours() {
+    let mut site = claimed();
+    assert_eq!(site.cookbook_html(None), Err(SiteError::NotFound), "no cookbook without recipes");
+    put(&mut site, &owner(), "pane", &recipe("Pane", "Lievitati", true)).unwrap();
+    put(&mut site, &owner(), "crostata", &recipe("Crostata", "Dolci", true)).unwrap();
+    put(&mut site, &owner(), "bozza-k3j9", &recipe("Bozza", "Bozze", false)).unwrap();
+    put(&mut site, &owner(), "focaccia", &recipe("Focaccia", "Lievitati", true)).unwrap();
+
+    let showcase = site.cookbook_html(None).unwrap();
+    assert!(showcase.contains("class=\"band c0\"") && showcase.contains("<h2>Lievitati</h2>"));
+    assert!(showcase.contains("class=\"band c1\"") && showcase.contains("<h2>Dolci</h2>"));
+    assert!(!showcase.contains("Bozz"), "drafts stay out of the cookbook");
+    let css = site.style_css().unwrap();
+    assert!(css.contains(".c1{--cat:#") && !css.contains(".c2{"));
+
+    let search = site.cookbook_html(Some("q=FOCACCIA")).unwrap();
+    assert!(search.contains("/quaderno/focaccia") && !search.contains("/quaderno/pane\""));
+    assert!(site.category_html("dolci").unwrap().contains("/quaderno/crostata"));
+    assert_eq!(site.category_html("bozze"), Err(SiteError::NotFound));
+
+    let html = site.page_html("pane", Some("p=8")).unwrap();
+    assert!(html.contains("<span class=\"qty\">1000 g</span>"), "scaled for 8");
+    assert!(html.contains("/quaderno/focaccia"), "another of its category");
+
+    // Withdrawing every Lievitati recipe and publishing a new one keeps Dolci's colours.
+    site.delete_page(&call(&owner(), "DELETE", "/api/s/quaderno/p/pane", b"").request(), "pane").unwrap();
+    put(&mut site, &owner(), "focaccia", &page("Focaccia", "ora è un testo")).unwrap();
+    put(&mut site, &owner(), "zuppa", &recipe("Zuppa", "Minestre", true)).unwrap();
+    let showcase = site.cookbook_html(None).unwrap();
+    assert!(!showcase.contains("Lievitati") && !showcase.contains("/quaderno/focaccia"));
+    assert!(showcase.contains("class=\"band c1\"") && showcase.contains("class=\"band c2\""));
+}
+
+#[test]
+fn the_cookbook_address_is_not_a_page() {
+    let mut site = claimed();
+    assert_eq!(put(&mut site, &owner(), "ricette", &page("Ricette", "x")), Err(SiteError::NotFound));
+}
+
+#[test]
+fn a_site_with_a_cookbook_holds_more_files() {
+    let mut site = claimed().with_limits(SiteLimits {
+        media: 1,
+        media_bytes: 100,
+        cookbook_media: 3,
+        cookbook_bytes: 300,
+        ..SiteLimits::default()
+    });
+    let admit = |site: &mut Site<MemoryStore, StrictEd25519>, id: &str, size: u64| {
+        site.admit_media(
+            &call(&owner(), "PUT", &format!("/api/s/quaderno/m/{id}?type=png"), b"").request(),
+            id,
+            MediaType::Png,
+            size,
+        )
+    };
+    assert_eq!(admit(&mut site, PIC, 100), Ok(()));
+    assert_eq!(admit(&mut site, "BBBBBBBBBBBBBBBB", 10), Err(SiteError::Full));
+    put(&mut site, &owner(), "pane", &recipe("Pane", "Lievitati", true)).unwrap();
+    assert_eq!(admit(&mut site, "BBBBBBBBBBBBBBBB", 150), Ok(()));
+    assert_eq!(admit(&mut site, "CCCCCCCCCCCCCCCC", 100), Err(SiteError::Full), "bytes");
+    assert_eq!(admit(&mut site, "CCCCCCCCCCCCCCCC", 50), Ok(()));
+    assert_eq!(admit(&mut site, "DDDDDDDDDDDDDDDD", 1), Err(SiteError::Full), "files");
 }
