@@ -40,6 +40,7 @@ import 'note_title.dart';
 import 'recipes/cooking_mode.dart';
 import 'recipes/shopping_list.dart';
 import 'schema_text.dart';
+import 'vault_scopes.dart';
 import '../theme/modus_palette.dart';
 
 /// Where an edit stands, as the app bar shows it.
@@ -669,7 +670,7 @@ class NoteEditorScreenState extends State<NoteEditorScreen>
     CategoryId? category,
   }) async {
     final navigator = Navigator.of(context);
-    final autoLock = AutoLockScope.maybeOf(context);
+    final scopes = VaultScopes.of(context);
     await _flush();
     if (!mounted) return;
     final screen = NoteEditorScreen(
@@ -682,14 +683,8 @@ class NoteEditorScreenState extends State<NoteEditorScreen>
       clock: widget.clock,
       openLink: widget.openLink,
     );
-    // A pushed route sits beside the library, not under it: it gets the
-    // vault's auto-lock passed along explicitly.
     await navigator.push(
-      MaterialPageRoute<void>(
-        builder: (_) => autoLock == null
-            ? screen
-            : AutoLockScope(autoLock: autoLock, child: screen),
-      ),
+      MaterialPageRoute<void>(builder: (_) => scopes.around(screen)),
     );
   }
 
