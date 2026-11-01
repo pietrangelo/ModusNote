@@ -12,7 +12,7 @@ Telefoni e browser sono gli unici a tenere chiavi e testo in chiaro. Un solo Wor
 
 ![Architettura di rete: dispositivi, Worker Cloudflare con Static Assets, Durable Objects e R2 nell'UE, GitHub Actions e Google Play](docs/architettura-rete.svg)
 
-Fino al 23 ottobre 2026 la sincronizzazione passava da Supabase (PostgreSQL, Auth con codice email, Edge Functions) e il client web da Cloudflare Pages: Supabase resta in sola lettura per qualche settimana, poi si spegne (vedi `supabase/`).
+Fino al 23 ottobre 2026 la sincronizzazione passava da Supabase (PostgreSQL, Auth con codice email, Edge Functions) e il client web da Cloudflare Pages: Supabase resta in sola lettura per qualche settimana, poi si spegne; il suo codice non è più nel repository (si ritrova nella cronologia git).
 
 ### Applicazione
 
