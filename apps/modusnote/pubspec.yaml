@@ -34,6 +34,9 @@ dependencies:
   flutter_local_notifications: 22.3.2
   timezone: ^0.11.0
   video_player: ^2.14.1
+  pdf: ^3.13.1
+  file_picker: ^13.3.1
+  image: ^4.12.0
 
 dev_dependencies:
   crypto: ^3.0.7
@@ -51,6 +54,8 @@ flutter:
     # they are plain assets: a font in `fonts:` is fetched at every start
     # of the web client.
     - assets/fonts/reading/
+    # The cookbook's typefaces, loaded only to print one.
+    - assets/fonts/book/
   fonts:
     - family: PlusJakartaSans
       fonts:

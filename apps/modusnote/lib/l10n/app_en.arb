@@ -3037,5 +3037,123 @@
   "stepTimerDone": "Time is up",
   "@stepTimerDone": {
     "description": "Shown when a step timer ends."
+  },
+  "cookbookContents": "Contents",
+  "@cookbookContents": {
+    "description": "The heading of a cookbook's table of contents."
+  },
+  "cookbookIngredientIndex": "Index of ingredients",
+  "@cookbookIngredientIndex": {
+    "description": "The heading of the index of ingredients at the end of a cookbook."
+  },
+  "cookbookSteps": "Method",
+  "@cookbookSteps": {
+    "description": "The heading of a recipe's steps in a cookbook."
+  },
+  "cookbookPrep": "Prep",
+  "@cookbookPrep": {
+    "description": "Label of the preparation time in a cookbook."
+  },
+  "cookbookCook": "Cook",
+  "@cookbookCook": {
+    "description": "Label of the cooking time in a cookbook."
+  },
+  "cookbookRest": "Rest",
+  "@cookbookRest": {
+    "description": "Label of the resting time in a cookbook."
+  },
+  "cookbookTotal": "Total",
+  "@cookbookTotal": {
+    "description": "Label of the total time in a cookbook."
+  },
+  "cookbookDifficulty": "Difficulty",
+  "@cookbookDifficulty": {
+    "description": "Label of a recipe's difficulty in a cookbook."
+  },
+  "cookbookScanForVideo": "Scan the code to watch the video",
+  "@cookbookScanForVideo": {
+    "description": "Caption under the QR code of a step's video in a printed cookbook."
+  },
+  "cookbookVideoInNote": "This step's video is in the note",
+  "@cookbookVideoInNote": {
+    "description": "Printed where a step has a video that is not published."
+  },
+  "cookbookMadeWith": "Made with Modus Notes",
+  "@cookbookMadeWith": {
+    "description": "The line on a cookbook's cover."
+  },
+  "cookbookExport": "Export the cookbook",
+  "@cookbookExport": {
+    "description": "Button that makes a book of the recipes in a category."
+  },
+  "cookbookExportTitle": "Export «{name}» as a book",
+  "@cookbookExportTitle": {
+    "description": "Title of the cookbook export sheet.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "cookbookWarning": "The file is not encrypted: whoever gets it reads every recipe, photos included. It is made on this device, without going through the server.",
+  "@cookbookWarning": {
+    "description": "Warning before a cookbook export."
+  },
+  "cookbookPdf": "PDF, to print",
+  "@cookbookPdf": {
+    "description": "Format choice."
+  },
+  "cookbookEpub": "EPUB, for e-readers",
+  "@cookbookEpub": {
+    "description": "Format choice."
+  },
+  "cookbookPageSize": "Page size",
+  "@cookbookPageSize": {
+    "description": "Label of the page size choice."
+  },
+  "cookbookGolden": "Golden",
+  "@cookbookGolden": {
+    "description": "Page size of golden proportion, 144 × 233 mm."
+  },
+  "cookbookAction": "Export",
+  "@cookbookAction": {
+    "description": "Button that makes the cookbook file."
+  },
+  "cookbookWorking": "Making the book…",
+  "@cookbookWorking": {
+    "description": "Shown while the cookbook is made."
+  },
+  "cookbookSaved": "Cookbook exported",
+  "@cookbookSaved": {
+    "description": "Shown when the file is saved."
+  },
+  "cookbookEmpty": "There are no recipes in this category.",
+  "@cookbookEmpty": {
+    "description": "Shown when a category has no recipes to export."
+  },
+  "cookbookTooLarge": "Too many recipes for one book: export a smaller category.",
+  "@cookbookTooLarge": {
+    "description": "Shown past the most recipes in a book."
+  },
+  "cookbookFailed": "The book could not be made.",
+  "@cookbookFailed": {
+    "description": "Shown when the export fails."
+  },
+  "cookbookPictures": "With the photos",
+  "@cookbookPictures": {
+    "description": "Switch that puts the photos in the book."
+  },
+  "cookbookRecipeCount": "{count, plural, =1{1 recipe} other{{count} recipes}}",
+  "@cookbookRecipeCount": {
+    "description": "How many recipes a cookbook holds.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "cookbookWatchVideo": "Watch the video",
+  "@cookbookWatchVideo": {
+    "description": "Link to a step's video on its published page, in an ebook."
   }
 }

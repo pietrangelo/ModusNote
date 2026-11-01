@@ -14,6 +14,10 @@ import '../attachments/note_images.dart';
 import '../backup/backup_sheet.dart';
 import '../backup/file_exchange.dart';
 import '../backup/markdown_export.dart';
+import '../cookbook/book_picture.dart';
+import '../cookbook/cookbook.dart';
+import '../cookbook/cookbook_pages.dart';
+import '../cookbook/cookbook_sheet.dart';
 import '../audio/note_playback.dart';
 import '../audio/note_recorder.dart';
 import '../appearance/appearance_scope.dart';
@@ -843,6 +847,59 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
     }
   }
 
+  /// Makes a book of the recipes in [category] of the open vault, after
+  /// the passphrase: the file is in clear.
+  Future<void> _cookbook(CategoryId category, String name) async {
+    final files = widget.files;
+    if (files == null) return;
+    if (_stage case _Open(:final store, :final publishing)) {
+      if (!await _confirmed()) return;
+      if (!mounted) return;
+      final locale = Localizations.localeOf(context).toLanguageTag();
+      await showCookbookSheet(
+        context,
+        root: category,
+        name: name,
+        tools: CookbookTools(
+          files: files,
+          collect: (root, l10n) async {
+            final site = await publishing?.publisher.book();
+            return Cookbook.collect(
+              tree: store.categories,
+              root: root,
+              entries: store.entries,
+              categoryOf: store.categoryOf,
+              compose: CookbookPages(
+                schemas: widget.catalog.current,
+                texts: SchemaText(l10n),
+                recipes: RecipeText(l10n),
+                locale: locale,
+                site: site,
+              ).compose,
+              palette: SitePalette.of(
+                SiteTheme(
+                  BaseTheme.fresco,
+                  accentHue: site?.settings.theme.accentHue,
+                ),
+              ),
+            );
+          },
+          picture: (blob, side) async {
+            final image = store.imageOf(blob);
+            final images = store.images;
+            if (image == null || images == null) return null;
+            final original = await images.open(image);
+            try {
+              return await bookPicture(original, side: side);
+            } finally {
+              original.fillRange(0, original.length, 0);
+            }
+          },
+        ),
+      );
+    }
+  }
+
   /// Sets up or turns off the passkey of the open vault.
   Future<void> _passkeySettings() async {
     final keeper = widget.keeper;
@@ -1028,6 +1085,7 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
             onNotices: notices == null ? null : _showNotices,
             onLock: _lock,
             onBackup: widget.files == null ? null : _backup,
+            onCookbook: widget.files == null ? null : _cookbook,
             onPasskey: widget.keeper.offersPasskeys ? _passkeySettings : null,
             passkeyLabel: widget.secondFactor.settings(
               AppLocalizations.of(context),

@@ -10,6 +10,7 @@ library;
 export 'src/application/ports.dart';
 export 'src/application/publisher.dart';
 
+export 'src/core/category_colours.dart';
 export 'src/core/color.dart';
 export 'src/core/golden.dart';
 export 'src/core/layout.dart';
