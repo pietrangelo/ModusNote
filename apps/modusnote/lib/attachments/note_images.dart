@@ -14,7 +14,16 @@ abstract interface class ImageChooser {
   Future<Uint8List?> choose();
 }
 
-/// The pictures of the vault's notes: picked from the device straight into
+/// Port: lets the person pick or record one short video, as bytes. Null
+/// when they cancel. Like [ImageChooser], no copy of its own is left.
+abstract interface class VideoChooser {
+  /// From the camera when [camera], else from the device's videos. Throws
+  /// [VideoTooLargeException] for a file past [VideoProbe.maxBytes],
+  /// before reading it.
+  Future<Uint8List?> choose({required bool camera});
+}
+
+/// The pictures of the vault's notes, and the videos of recipes' steps: picked from the device straight into
 /// blobs sealed under the current GroupKey, and opened again in memory,
 /// downloaded first when another device added them.
 final class NoteImages {
@@ -22,10 +31,12 @@ final class NoteImages {
     required this.blobs,
     required this._engine,
     required this._chooser,
+    this._videoChooser,
     this._ensureLocal,
     this._clock = DateTime.now,
     Random? random,
   }) : _images = ImageStorage(storage: blobs),
+       _videos = VideoStorage(storage: blobs),
        _random = random ?? Random.secure();
 
   /// Where pictures land, beside the recordings.
@@ -33,6 +44,11 @@ final class NoteImages {
   final ImageStorage _images;
   final SyncEngine _engine;
   final ImageChooser _chooser;
+  final VideoStorage _videos;
+  final VideoChooser? _videoChooser;
+
+  /// Whether videos can be added here; off where nothing picks them.
+  bool get takesVideos => _videoChooser != null;
   final Future<void> Function(SealedBlob blob)? _ensureLocal;
   final DateTime Function() _clock;
   final Random _random;
@@ -67,6 +83,35 @@ final class NoteImages {
     return _images.open(
       image.metadata,
       contentKey: _engine.contentKeyFor(image.epoch),
+    );
+  }
+
+  /// A video the person picks or records, cleaned of its metadata and
+  /// sealed; null when they cancel. Throws [UnsupportedVideoException] or
+  /// [VideoTooLargeException] for a file this app does not keep.
+  Future<KeyedVideo?> chooseVideo({required bool camera}) async {
+    final bytes = await _videoChooser?.choose(camera: camera);
+    if (bytes == null) return null;
+    try {
+      final epoch = _engine.currentEpoch;
+      final metadata = await _videos.seal(
+        bytes,
+        id: _newBlobId(),
+        contentKey: _engine.contentKeyFor(epoch),
+        at: _clock(),
+      );
+      return KeyedVideo(epoch: epoch, metadata: metadata);
+    } finally {
+      bytes.fillRange(0, bytes.length, 0);
+    }
+  }
+
+  /// The video's bytes, checked against its metadata; errors as [open].
+  Future<Uint8List> openVideo(KeyedVideo video) async {
+    await _ensureLocal?.call(video.blob);
+    return _videos.open(
+      video.metadata,
+      contentKey: _engine.contentKeyFor(video.epoch),
     );
   }
 

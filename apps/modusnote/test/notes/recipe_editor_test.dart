@@ -16,6 +16,7 @@ final ingredients = FieldKey('ingredients');
 final steps = FieldKey('steps');
 final methods = FieldKey('methods');
 final picture = BlobId('p' * 32);
+final clip = BlobId('v' * 32);
 
 void main() {
   late List<FormDraft> drafts;
@@ -25,6 +26,7 @@ void main() {
     WidgetTester tester, {
     Map<FieldKey, FieldValue> values = const {},
     Future<BlobId?> Function()? addImage,
+    Future<BlobId?> Function({required bool camera})? addVideo,
   }) => pumpApp(
     tester,
     Scaffold(
@@ -37,6 +39,10 @@ void main() {
             openImage: (_) async => Uint8List(0),
             openLink: (_) async => false,
             addImage: addImage,
+            addVideo: addVideo,
+            openVideo: (_) async => Uint8List(0),
+            videoLength: (blob) =>
+                blob == clip ? const Duration(seconds: 42) : null,
           ),
         ),
       ),
@@ -134,6 +140,46 @@ void main() {
     );
     expect(find.text('Fase 1'), findsOneWidget);
     expect(find.text('Fase 2'), findsOneWidget);
+  });
+
+  testWidgets('a step is given a video, recorded or chosen, and loses it', (
+    tester,
+  ) async {
+    final asked = <bool>[];
+    await render(
+      tester,
+      addVideo: ({required camera}) async {
+        asked.add(camera);
+        return clip;
+      },
+    );
+    await tester.enterText(input('step-text-0'), 'Impasta');
+    await tester.tap(input('step-add-video-0'));
+    await tester.pumpAndSettle();
+    expect(find.text('Registra un video'), findsOneWidget);
+    await tester.tap(find.text('Registra un video'));
+    await tester.pumpAndSettle();
+
+    expect(asked, [true]);
+    expect(
+      drafts.last.values[steps],
+      StepsValue([PreparationStep('Impasta', video: clip)]),
+    );
+    expect(find.text('Video · 0:42'), findsOneWidget);
+    // One video a step: the button gives way to the clip.
+    expect(input('step-add-video-0'), findsNothing);
+
+    await tester.tap(input('step-remove-video-0'));
+    await tester.pump();
+    expect(drafts.last.values[steps], StepsValue([PreparationStep('Impasta')]));
+    expect(input('step-add-video-0'), findsOneWidget);
+  });
+
+  testWidgets('without a place for videos there is no video button', (
+    tester,
+  ) async {
+    await render(tester);
+    expect(input('step-add-video-0'), findsNothing);
   });
 
   testWidgets('methods are chips to turn on and off', (tester) async {

@@ -85,5 +85,9 @@
             <action android:name="android.intent.action.VIEW"/>
             <data android:scheme="http"/>
         </intent>
+        <!-- A step's short video is recorded by the camera app. -->
+        <intent>
+            <action android:name="android.media.action.VIDEO_CAPTURE"/>
+        </intent>
     </queries>
 </manifest>

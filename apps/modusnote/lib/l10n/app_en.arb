@@ -2652,6 +2652,24 @@
     "description": "Tooltip of the button moving a step down."
   },
   "addStepPicture": "Add a picture",
+  "stepVideo": "Step video",
+  "addStepVideo": "Add a video",
+  "recordStepVideo": "Record a video",
+  "chooseStepVideo": "Choose from the gallery",
+  "removeStepVideo": "Remove the video",
+  "videoPlay": "Play",
+  "videoPause": "Pause",
+  "videoOpenFailed": "The video cannot be opened",
+  "videoUnsupported": "Only MP4 or MOV videos up to a minute and 21 MB: the app does not re-encode them",
+  "videoAddFailed": "The video could not be added",
+  "stepVideoLength": "Video · {length}",
+  "@stepVideoLength": {
+    "placeholders": {
+      "length": {
+        "type": "String"
+      }
+    }
+  },
   "@addStepPicture": {
     "description": "Button adding a picture to a step."
   },

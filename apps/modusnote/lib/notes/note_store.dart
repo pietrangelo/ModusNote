@@ -23,6 +23,9 @@ abstract interface class NoteStore implements Listenable {
 
   KeyedImage? imageOf(BlobId id);
 
+  /// The video of a recipe's step, from the note that holds it.
+  KeyedVideo? videoOf(BlobId id);
+
   /// Records takes for audio fields; null where there is nowhere to keep
   /// them (the web preview), which turns the record button off.
   NoteRecorder? get recorder;
@@ -35,14 +38,15 @@ abstract interface class NoteStore implements Listenable {
   /// keep them (the web preview), which turns the add button off.
   NoteImages? get images;
 
-  /// Saves [entry] with the [takes] recorded and the [pictures] added
-  /// while editing it. Those it does not reference, and recordings and
+  /// Saves [entry] with the [takes] recorded and the [pictures] and
+  /// [clips] (the videos of a recipe's steps) added while editing it. Those it does not reference, and recordings and
   /// pictures it no longer references, are deleted. A new note is filed
   /// in [newIn]; an existing one stays where it is.
   Future<void> save(
     DynamicEntry entry, {
     Iterable<KeyedRecording> takes = const [],
     Iterable<KeyedImage> pictures = const [],
+    Iterable<KeyedVideo> clips = const [],
     CategoryId? newIn,
   });
 
@@ -122,6 +126,14 @@ final class InMemoryNoteStore extends ChangeNotifier implements NoteStore {
   }
 
   @override
+  KeyedVideo? videoOf(BlobId id) {
+    for (final note in _notes.values) {
+      if (note.videos[id] case final video?) return video;
+    }
+    return null;
+  }
+
+  @override
   NoteRecorder? get recorder => null;
 
   @override
@@ -135,6 +147,7 @@ final class InMemoryNoteStore extends ChangeNotifier implements NoteStore {
     DynamicEntry entry, {
     Iterable<KeyedRecording> takes = const [],
     Iterable<KeyedImage> pictures = const [],
+    Iterable<KeyedVideo> clips = const [],
     CategoryId? newIn,
   }) async {
     _notes[entry.id] = switch (_notes[entry.id]) {
@@ -142,10 +155,13 @@ final class InMemoryNoteStore extends ChangeNotifier implements NoteStore {
         entry,
         known: takes,
         pictures: pictures,
+        clips: clips,
         category: newIn,
       ),
       final before =>
-        before.edited(entry, takes: takes, pictures: pictures).restored(),
+        before
+            .edited(entry, takes: takes, pictures: pictures, clips: clips)
+            .restored(),
     };
     notifyListeners();
   }
@@ -216,6 +232,7 @@ final class InMemoryNoteStore extends ChangeNotifier implements NoteStore {
       },
       known: note.recordings.values,
       pictures: note.images.values,
+      clips: note.videos.values,
       category: note.category,
     );
     copies[id] = copy;

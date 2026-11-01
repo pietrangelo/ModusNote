@@ -191,6 +191,10 @@ fn media_types_by_their_first_bytes() {
     assert!(!MediaType::Png.matches(b"<html><script>"));
     assert!(!MediaType::Webp.matches(b"RIFF\0\0\0\0WAVEfmt "));
     assert_eq!(MediaType::parse("svg"), None, "no SVG: it can carry script");
+    assert_eq!(MediaType::parse("mp4"), Some(MediaType::Mp4));
+    assert_eq!(MediaType::Mp4.content_type(), "video/mp4");
+    assert!(MediaType::Mp4.matches(b"\0\0\0\x20ftypisom\0\0\x02\0"));
+    assert!(!MediaType::Mp4.matches(b"<html><body>video"));
 }
 
 fn recipe(title: &str, category: &str, listed: bool) -> Vec<u8> {

@@ -116,6 +116,7 @@ class _PublishSheetState extends State<PublishSheet> {
 
   bool get _hasPictures =>
       AttachmentsValue.imagesOf(widget.entry).isNotEmpty ||
+      StepsValue.videosOf(widget.entry).isNotEmpty ||
       widget.entry.attributes.values.any(
         (v) => v is TextValue && InlineImages.find(v.text).isNotEmpty,
       );

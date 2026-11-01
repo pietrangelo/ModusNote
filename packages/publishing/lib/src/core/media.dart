@@ -12,13 +12,18 @@ enum MediaKind {
   png('image/png'),
   webp('image/webp'),
   ogg('audio/ogg'),
-  webm('audio/webm');
+  webm('audio/webm'),
+
+  /// A recipe step's short clip, cleaned of its metadata on the device.
+  mp4('video/mp4');
 
   const MediaKind(this.contentType);
 
   final String contentType;
 
   bool get isImage => this == jpeg || this == png || this == webp;
+
+  bool get isVideo => this == mp4;
 }
 
 /// The name of one uploaded file on a site: random and new for every

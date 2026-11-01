@@ -72,7 +72,7 @@ jobs:
           hook=packages/blob_storage_media_adapters/hook/build.dart
           version=$(sed -n "s/^const opusVersion = '\(.*\)';/\1/p" "$hook")
           pinned=$(grep -A1 '^const opusSha256' "$hook" | grep -o '[0-9a-f]\{64\}')
-          published=$(curl -fsSL https://downloads.xiph.org/releases/opus/SHA256SUMS.txt \
+          published=$(curl -fsSL --retry 5 --retry-all-errors --retry-delay 10 https://downloads.xiph.org/releases/opus/SHA256SUMS.txt \
             | grep " opus-$version.tar.gz$" | cut -d' ' -f1)
           echo "opus $version pinned=$pinned published=$published"
           test -n "$published" && test "$pinned" = "$published"

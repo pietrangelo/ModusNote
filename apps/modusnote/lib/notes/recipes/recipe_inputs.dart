@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:schema_dynamic_content/schema_dynamic_content.dart';
 
@@ -8,6 +9,7 @@ import '../../theme/golden_ratio.dart';
 import '../../theme/modus_palette.dart';
 import '../attachments/attachment_dialogs.dart';
 import '../attachments/attachments_input.dart';
+import '../attachments/video_viewer.dart';
 import 'recipe_text.dart';
 
 /// Reports a field that may hold input that cannot become a value yet.
@@ -383,14 +385,17 @@ class _IngredientsInputState extends State<IngredientsInput> {
 final class _StepRow {
   _StepRow([PreparationStep? step])
     : text = TextEditingController(text: step?.text ?? ''),
-      pictures = [...?step?.pictures];
+      pictures = [...?step?.pictures],
+      video = step?.video;
 
   final key = UniqueKey();
   final TextEditingController text;
   final List<ImageAttachment> pictures;
+  BlobId? video;
   final focus = FocusNode();
 
-  bool get blank => text.text.trim().isEmpty && pictures.isEmpty;
+  bool get blank =>
+      text.text.trim().isEmpty && pictures.isEmpty && video == null;
 
   void dispose() {
     text.dispose();
@@ -445,7 +450,11 @@ class _StepsInputState extends State<StepsInput> {
     final steps = [
       for (final row in _rows)
         if (!row.blank)
-          PreparationStep(row.text.text.trim(), pictures: row.pictures),
+          PreparationStep(
+            row.text.text.trim(),
+            pictures: row.pictures,
+            video: row.video,
+          ),
     ];
     widget.onChanged(steps.isEmpty ? null : StepsValue(steps));
   }
@@ -474,6 +483,103 @@ class _StepsInputState extends State<StepsInput> {
     final blob = await add();
     if (blob == null || !mounted) return;
     _update(() => row.pictures.add(ImageAttachment(blob)));
+  }
+
+  Future<void> _addVideo(
+    _StepRow row,
+    Future<BlobId?> Function({required bool camera}) add, {
+    required bool camera,
+  }) async {
+    final blob = await add(camera: camera);
+    if (blob == null || !mounted) return;
+    _update(() => row.video = blob);
+  }
+
+  /// «0:42»: a clip is at most a minute.
+  static String _length(Duration length) =>
+      '${length.inMinutes}:${(length.inSeconds % 60).toString().padLeft(2, '0')}';
+
+  Widget _video(BuildContext context, _StepRow row, int index) {
+    final l10n = AppLocalizations.of(context);
+    final palette = ModusPalette.of(context);
+    final video = row.video;
+    final open = widget.hooks.openVideo;
+    if (video != null) {
+      final length = widget.hooks.videoLength?.call(video);
+      return Padding(
+        padding: const EdgeInsets.only(top: Spacing.s),
+        child: Row(
+          children: [
+            TextButton.icon(
+              key: ValueKey('step-video-$index'),
+              icon: const Icon(Icons.play_circle_outline),
+              label: Text(
+                length == null
+                    ? l10n.stepVideo
+                    : l10n.stepVideoLength(_length(length)),
+              ),
+              onPressed: open == null
+                  ? null
+                  : () => VideoViewer.show(context, bytes: open(video)),
+            ),
+            const Spacer(),
+            IconButton(
+              key: ValueKey('step-remove-video-$index'),
+              icon: const Icon(Icons.close, size: IconSizes.inline),
+              color: palette.muted,
+              tooltip: l10n.removeStepVideo,
+              onPressed: () => _update(() => row.video = null),
+            ),
+          ],
+        ),
+      );
+    }
+    final add = widget.hooks.addVideo;
+    if (add == null) return const SizedBox.shrink();
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: PopupMenuButton<bool>(
+        key: ValueKey('step-add-video-$index'),
+        tooltip: l10n.addStepVideo,
+        onSelected: (camera) => _addVideo(row, add, camera: camera),
+        itemBuilder: (_) => [
+          // A browser here has no camera of its own.
+          if (!kIsWeb)
+            PopupMenuItem(
+              key: const ValueKey('step-record-video'),
+              value: true,
+              child: Text(l10n.recordStepVideo),
+            ),
+          PopupMenuItem(
+            key: const ValueKey('step-choose-video'),
+            value: false,
+            child: Text(l10n.chooseStepVideo),
+          ),
+        ],
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: Spacing.s,
+            vertical: Spacing.xs,
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.videocam_outlined,
+                size: IconSizes.inline,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+              const SizedBox(width: Spacing.xs),
+              Text(
+                l10n.addStepVideo,
+                style: Theme.of(context).textTheme.labelLarge
+                    ?.copyWith(color: Theme.of(context).colorScheme.primary),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -593,6 +699,7 @@ class _StepsInputState extends State<StepsInput> {
                         : () => _addPicture(row, addImage),
                   ),
                 ),
+                _video(context, row, index),
               ],
             ),
           ),

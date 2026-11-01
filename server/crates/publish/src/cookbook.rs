@@ -681,7 +681,17 @@ pub fn recipe_page(
                 .map(|p| format!("<img src=\"/{site}/m/{}\" alt=\"{}\" loading=\"lazy\">", p.media, escape(&p.caption)))
                 .collect();
             let pictures = if pictures.is_empty() { pictures } else { format!("<div class=\"pics\">{pictures}</div>") };
-            out.push_str(&format!("<li><div>{}{pictures}</div></li>", markdown(&step.text, site, uploaded)));
+            // No autoplay, nothing loaded before it is asked for but its
+            // first frame's size: the page stays light.
+            let video = match &step.video {
+                Some(id) if uploaded(id) => {
+                    format!(
+                        "<video class=\"clip\" controls playsinline preload=\"metadata\" src=\"/{site}/m/{id}\"></video>"
+                    )
+                }
+                _ => String::new(),
+            };
+            out.push_str(&format!("<li><div>{}{pictures}{video}</div></li>", markdown(&step.text, site, uploaded)));
         }
         out.push_str("</ol></section>\n");
     }
@@ -788,6 +798,7 @@ background:var(--tint,var(--bg));color:var(--cat,var(--accent));text-decoration:
 .steps li p:last-child{{margin-bottom:0}}\n\
 .pics{{display:grid;grid-template-columns:61.8fr 38.2fr;gap:{xs}px;margin-top:{s}px}}\
 .pics img{{aspect-ratio:{PHI:.3}/1;object-fit:cover;margin:0}}\n\
+.clip{{display:block;width:100%;max-height:610px;margin-top:{s}px;border-radius:{xs}px;background:var(--surface)}}\n\
 .notes{{margin-top:{xl}px}}\n\
 .more{{margin-top:{xxl}px;padding-top:{xl}px;border-top:1px solid var(--surface)}}\n\
 .back{{display:inline-block;margin-top:{l}px;font-weight:600;color:var(--cat,var(--accent))}}\n\
@@ -931,6 +942,22 @@ mod tests {
         assert!(html.contains("<span class=\"photo\"></span>"), "a cover not uploaded is not shown");
         assert_eq!(category_page(SITE, &settings::sample(), &categories(), &[], "primi", "1", &|_| true), None);
         assert_eq!(category_page(SITE, &settings::sample(), &categories(), &entries(), "x", "1", &|_| true), None);
+    }
+
+    #[test]
+    fn a_steps_video_plays_only_when_asked_and_only_if_uploaded() {
+        let mut r = recipe::sample();
+        r.steps[1].video = Some("VVVVVVVVVVVVVVVV".into());
+        let page = recipe_page_of(r.clone());
+        let html = recipe_page(SITE, "p", &settings::sample(), &page, &r, &categories(), &[], None, "1", &|_| true);
+        assert!(html.contains(
+            "<video class=\"clip\" controls playsinline preload=\"metadata\" src=\"/quaderno/m/VVVVVVVVVVVVVVVV\"></video>"
+        ));
+        assert!(!html.contains("autoplay"));
+        let missing = recipe_page(SITE, "p", &settings::sample(), &page, &r, &categories(), &[], None, "1", &|id| {
+            id != "VVVVVVVVVVVVVVVV"
+        });
+        assert!(!missing.contains("<video"));
     }
 
     #[test]

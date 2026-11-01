@@ -51,18 +51,22 @@ final class RecipeIngredient {
   };
 }
 
-/// One step: Markdown, and its pictures.
+/// One step: Markdown, its pictures and its short video.
 @immutable
 final class RecipeStep {
-  RecipeStep(this.text, [List<RecipePicture> pictures = const []])
+  RecipeStep(this.text, [List<RecipePicture> pictures = const [], this.video])
     : pictures = List.unmodifiable(pictures);
 
   final String text;
   final List<RecipePicture> pictures;
 
+  /// The uploaded, cleaned copy of the step's video.
+  final MediaId? video;
+
   Map<String, Object> toJson() => {
     'text': text,
     'pictures': [for (final p in pictures) p.toJson()],
+    'video': ?video?.value,
   };
 }
 
@@ -133,7 +137,10 @@ final class PageRecipe {
   /// Every file the recipe shows.
   Iterable<MediaId> get media => [
     for (final p in cover) p.media,
-    for (final step in steps) ...[for (final p in step.pictures) p.media],
+    for (final step in steps) ...[
+      for (final p in step.pictures) p.media,
+      ?step.video,
+    ],
   ];
 
   Map<String, Object> toJson() => {

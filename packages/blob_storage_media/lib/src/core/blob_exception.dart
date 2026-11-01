@@ -90,6 +90,24 @@ final class ImageTooLargeException extends BlobException {
   String get message => 'picture too large';
 }
 
+/// Bytes that are not an MP4 (or QuickTime) video this app keeps: one
+/// moov, its samples in mdat, a video track, not fragmented.
+final class UnsupportedVideoException extends BlobException {
+  const UnsupportedVideoException();
+
+  @override
+  String get message => 'not a video this app keeps';
+}
+
+/// A video past `VideoProbe.maxBytes`, `VideoProbe.maxDuration` or the
+/// limits in pixels: the app does not re-encode, so it refuses.
+final class VideoTooLargeException extends BlobException {
+  const VideoTooLargeException();
+
+  @override
+  String get message => 'video too long or too large';
+}
+
 /// A recording longer than playback holds in memory
 /// (`DecodedAudio.maxDuration`).
 final class RecordingTooLongException extends BlobException {

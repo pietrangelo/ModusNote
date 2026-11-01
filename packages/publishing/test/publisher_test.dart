@@ -363,6 +363,36 @@ void main() {
     expect((sent['ingredients']! as List).single, containsPair('one', 'g'));
   });
 
+  test('a video the layout does not show is not left on the site', () async {
+    await publisher.claim(name, settings);
+    final clip = BlobId('c' * 32);
+    media.ready[clip] = PreparedMedia(MediaKind.mp4, Uint8List(16));
+    final recipe = SeedSchemas.recipeV1;
+    final e = entry(recipe, {
+      'title': const TextValue('Pane'),
+      'steps': StepsValue([PreparationStep('Impasta', video: clip)]),
+    });
+    Future<void> publishAs(PublicationLayout layout) => publisher.publish(
+      entry: e.id,
+      content: PublicationPolicy.compose(
+        entry: e,
+        schema: recipe,
+        fields: keys_(['title', 'steps']),
+      ),
+      schema: recipe,
+      labelOf: labelOf,
+      describe: describe,
+      layout: layout,
+    );
+    await publishAs(PublicationLayout.essay);
+    expect(server.files, isEmpty);
+    await publishAs(PublicationLayout.recipe);
+    expect(server.files.values, [MediaKind.mp4]);
+    final sent = server.pages['pane']!['recipe']! as Map<String, Object?>;
+    final step = (sent['steps']! as List).single as Map<String, Object?>;
+    expect(step['video'], server.files.keys.single);
+  });
+
   test('two notes with one title get two addresses', () async {
     await publisher.claim(name, settings);
     await publish('# Il faro\n\nA.');

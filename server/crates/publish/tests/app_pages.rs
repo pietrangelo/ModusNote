@@ -21,6 +21,8 @@ fn the_apps_recipe_is_a_valid_page() {
     assert_eq!(recipe.cover.len(), 2);
     assert_eq!(recipe.steps.len(), 2);
     assert_eq!(page.blocks.len(), 2);
+    assert_eq!(recipe.steps[1].video.as_deref(), Some("EEEEEEEEEEEEEEEEEEEEEE"));
+    assert!(page.media().contains(&"EEEEEEEEEEEEEEEEEEEEEE".to_owned()));
 }
 
 #[test]

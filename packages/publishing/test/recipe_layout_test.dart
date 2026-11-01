@@ -15,10 +15,12 @@ void main() {
   final second = blob('b');
   final stepPicture = blob('c');
   final notUploaded = blob('d');
+  final clip = blob('e');
   final uploaded = {
     cover: copy('A'),
     second: copy('B'),
     stepPicture: copy('C'),
+    clip: copy('E'),
   };
 
   final values = <String, FieldValue>{
@@ -58,7 +60,7 @@ void main() {
           ImageAttachment(notUploaded),
         ],
       ),
-      PreparationStep('Inforna a 180°.'),
+      PreparationStep('Inforna a 180°.', video: clip),
     ]),
     'prep_time': NumberValue(40),
     'cook_time': NumberValue(45),
@@ -172,7 +174,9 @@ void main() {
     ]);
     expect(steps.first.pictures.map((p) => p.media), [copy('C')]);
     expect(steps.first.pictures.single.caption, 'Dorate');
-    expect(page.media, [copy('A'), copy('B'), copy('C')]);
+    expect(steps.last.video, copy('E'));
+    expect(steps.first.video, isNull);
+    expect(page.media, [copy('A'), copy('B'), copy('C'), copy('E')]);
   });
 
   test('the other fields stay blocks, the links among the photos too', () {
@@ -184,6 +188,25 @@ void main() {
     final links = blocks.first as LinksBlock;
     expect(links.items.single.url, 'https://example.org/storia');
     expect((blocks.last as TextBlock).text, '180');
+  });
+
+  test('without pictures, a step\'s video stays home too', () {
+    final content = PublicationPolicy.compose(
+      entry: entry(recipe, values),
+      schema: recipe,
+      fields: keys(values.keys),
+      includePictures: false,
+    );
+    expect(content.videos, isEmpty);
+    expect(content.images, isEmpty);
+    expect(
+      PublicationPolicy.compose(
+        entry: entry(recipe, values),
+        schema: recipe,
+        fields: keys(values.keys),
+      ).videos,
+      [clip],
+    );
   });
 
   test('only the fields the person chose', () {

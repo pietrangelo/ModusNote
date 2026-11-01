@@ -174,8 +174,9 @@ abstract final class EntryCodec {
           ],
       ],
     },
-    // [text, blob, caption, blob, caption, ...]: flat, so a step stays
-    // within the nesting the decoder allows.
+    // [text, blob, caption, blob, caption, ..., video?]: flat, so a step
+    // stays within the nesting the decoder allows; an odd one out at the
+    // end is the step's video.
     StepsValue(:final steps) => {
       'kind': 'steps',
       'value': [
@@ -186,6 +187,7 @@ abstract final class EntryCodec {
               picture.blob.value,
               picture.caption,
             ],
+            ?step.video?.value,
           ],
       ],
     },
@@ -266,23 +268,29 @@ abstract final class EntryCodec {
       'steps' => StepsValue([
         for (final step in json.list('value'))
           switch (step) {
-            [final String text, ...final pictures]
-                when pictures.length.isEven =>
-              PreparationStep(
-                text,
-                pictures: [
-                  for (var i = 0; i < pictures.length; i += 2)
-                    switch ((pictures[i], pictures[i + 1])) {
-                      (final String blob, final String caption) =>
-                        ImageAttachment(BlobId(blob), caption: caption),
+            [final String text, ...final rest] => PreparationStep(
+              text,
+              pictures: [
+                for (var i = 0; i + 1 < rest.length; i += 2)
+                  switch ((rest[i], rest[i + 1])) {
+                    (final String blob, final String caption) =>
+                      ImageAttachment(BlobId(blob), caption: caption),
+                    _ => throw const EntryFormatException(
+                      'a step picture is a blob and a caption',
+                    ),
+                  },
+              ],
+              video: rest.length.isOdd
+                  ? switch (rest.last) {
+                      final String blob => BlobId(blob),
                       _ => throw const EntryFormatException(
-                        'a step picture is a blob and a caption',
+                        'a step video is a blob',
                       ),
-                    },
-                ],
-              ),
+                    }
+                  : null,
+            ),
             _ => throw const EntryFormatException(
-              'a step is [text, blob, caption, ...]',
+              'a step is [text, blob, caption, ..., video]',
             ),
           },
       ]),

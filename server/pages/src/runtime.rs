@@ -3,10 +3,11 @@
 
 use js_sys::Reflect;
 use wasm_bindgen::JsCast;
-use worker::{Context, Env, ObjectNamespace, Request, Response, ResponseBody, Result, Stub, event};
+use worker::{Context, Env, ObjectNamespace, Range, Request, Response, ResponseBody, Result, Stub, event};
 
 use crate::{
-    FONT_CACHE, FRONT, MEDIA_CACHE, NO_CACHE, NOT_FOUND, PAGE_CACHE, PublicRoute, ROBOTS, headers, passed_query, route,
+    FONT_CACHE, FRONT, MEDIA_CACHE, NO_CACHE, NOT_FOUND, PAGE_CACHE, PublicRoute, ROBOTS, byte_range, headers,
+    passed_query, route,
 };
 
 const SITES: &str = "SITES";
@@ -126,14 +127,38 @@ async fn serve(req: &Request, env: &Env) -> Result<Response> {
         PublicRoute::Media(site, id) => {
             let Some(kind) = read(env, &site, &format!("/internal/media/{id}")).await? else { return not_found() };
             let Some(kind) = publish::MediaType::parse(&kind) else { return not_found() };
-            let Some(object) = env.bucket(BLOBS)?.get(format!("pub/{site}/{id}")).execute().await? else {
-                return not_found();
+            let bucket = env.bucket(BLOBS)?;
+            let key = format!("pub/{site}/{id}");
+            let (object, part) = match byte_range(req.headers().get("Range")?.as_deref()) {
+                None => (bucket.get(key).execute().await?, None),
+                Some((first, last)) => {
+                    let Some(head) = bucket.head(key.clone()).await? else { return not_found() };
+                    let size = head.size();
+                    if first >= size {
+                        let mut response = text(416, "", "text/plain", NO_CACHE)?;
+                        response.headers_mut().set("Content-Range", &format!("bytes */{size}"))?;
+                        return Ok(response);
+                    }
+                    let last = last.map_or(size - 1, |last| last.min(size - 1));
+                    let range = Range::OffsetWithLength { offset: first, length: last - first + 1 };
+                    (bucket.get(key).range(range).execute().await?, Some((first, last, size)))
+                }
             };
-            let size = object.size();
+            let Some(object) = object else { return not_found() };
+            let length = match part {
+                Some((first, last, _)) => last - first + 1,
+                None => object.size(),
+            };
             let Some(body) = object.body() else { return not_found() };
             let body: ResponseBody = body.response_body()?;
-            let mut response = with_headers(Response::from_body(body)?, kind.content_type(), MEDIA_CACHE)?;
-            response.headers_mut().set("Content-Length", &size.to_string())?;
+            let response = Response::from_body(body)?.with_status(if part.is_some() { 206 } else { 200 });
+            let mut response = with_headers(response, kind.content_type(), MEDIA_CACHE)?;
+            let headers = response.headers_mut();
+            headers.set("Content-Length", &length.to_string())?;
+            headers.set("Accept-Ranges", "bytes")?;
+            if let Some((first, last, size)) = part {
+                headers.set("Content-Range", &format!("bytes {first}-{last}/{size}"))?;
+            }
             Ok(response)
         }
         PublicRoute::NotFound => not_found(),

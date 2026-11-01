@@ -98,6 +98,8 @@ pub enum MediaType {
     Ogg,
     /// Recordings made in a browser (Opus in WebM).
     Webm,
+    /// A recipe step's short clip, cleaned of its metadata by the app.
+    Mp4,
 }
 
 impl MediaType {
@@ -108,6 +110,7 @@ impl MediaType {
             "webp" => Some(Self::Webp),
             "ogg" => Some(Self::Ogg),
             "webm" => Some(Self::Webm),
+            "mp4" => Some(Self::Mp4),
             _ => None,
         }
     }
@@ -119,6 +122,7 @@ impl MediaType {
             Self::Webp => "webp",
             Self::Ogg => "ogg",
             Self::Webm => "webm",
+            Self::Mp4 => "mp4",
         }
     }
 
@@ -129,6 +133,7 @@ impl MediaType {
             Self::Webp => "image/webp",
             Self::Ogg => "audio/ogg",
             Self::Webm => "audio/webm",
+            Self::Mp4 => "video/mp4",
         }
     }
 
@@ -141,6 +146,8 @@ impl MediaType {
             Self::Ogg => bytes.starts_with(b"OggS"),
             // The EBML header every Matroska file opens with.
             Self::Webm => bytes.starts_with(&[0x1A, 0x45, 0xDF, 0xA3]),
+            // The file type box an MP4 or QuickTime file opens with.
+            Self::Mp4 => bytes.len() >= 12 && &bytes[4..8] == b"ftyp",
         }
     }
 }

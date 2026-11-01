@@ -114,7 +114,11 @@ final class Publisher {
     final published = await _withKey(book, (key) async {
       final uploaded = <BlobId, MediaId>{};
       try {
-        for (final blob in {...content.images, ...content.audio}) {
+        for (final blob in {
+          ...content.images,
+          ...content.audio,
+          ...content.videos,
+        }) {
           final prepared = await _media.prepare(blob);
           if (prepared == null) continue;
           final id = MediaId.random(_random);
@@ -139,6 +143,13 @@ final class Publisher {
           layout: layout,
         );
         await _gateway.putPage(key, book.name, slug, document.toJson());
+        // A file the layout does not show (a step's video on a page of
+        // blocks) would stay on the site with nothing pointing at it.
+        await _deleteQuietly(
+          key,
+          book,
+          uploaded.values.where((id) => !document.media.contains(id)),
+        );
         return PublishedPage(
           slug: slug,
           title: document.title,
