@@ -233,6 +233,8 @@ class _SiteSettingsSheetState extends State<SiteSettingsSheet> {
                       BaseTheme.modus => l10n.themeModus,
                       BaseTheme.restful => l10n.themeRestful,
                       BaseTheme.paper => l10n.themePaper,
+                      BaseTheme.fresco => l10n.themeFresco,
+                      BaseTheme.frescoDark => l10n.themeFrescoDark,
                     }),
                     selected: _settings.theme.base == base,
                     onSelected: _busy ? null : (_) => _theme(base: base),

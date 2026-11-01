@@ -274,6 +274,94 @@ void main() {
     expect(find.text('Pagina ritirata'), findsOneWidget);
   });
 
+  testWidgets('a recipe goes to the cookbook, in its category and words', (
+    tester,
+  ) async {
+    books.book = SiteBook(
+      name: SiteName('quaderno'),
+      settings: SiteSettings(title: 'Quaderno', lang: 'it'),
+    );
+    final keys = _Keys()..kept.add('quaderno');
+    final recipe = SeedSchemas.recipeV1;
+    final pane = (DynamicEntry.restore(
+      schema: recipe,
+      id: EntryId('note-2'),
+      attributes: {
+        FieldKey('title'): const TextValue('Pane'),
+        FieldKey('ingredients'): IngredientsValue([
+          Ingredient('Olio', amount: 2, unit: IngredientUnit.tablespoon),
+        ]),
+        FieldKey('methods'): ChoiceSetValue({'oven'}),
+      },
+      audit: AuditTrail(createdAt: at, updatedAt: at, revision: 1),
+    ) as Valid<DynamicEntry>).value;
+    await pumpApp(
+      tester,
+      Scaffold(
+        body: PublishSheet(
+          access: PublishingAccess(
+            publisher: Publisher(
+              gateway: server,
+              keys: keys,
+              books: books,
+              media: _Media(),
+              isConfirmed: () => confirmed,
+            ),
+            confirm: () async => confirmed = true,
+          ),
+          entry: pane,
+          schema: recipe,
+          category: 'Pane e lievitati',
+        ),
+      ),
+    );
+    // A recipe starts with its own layout, which only a recipe offers.
+    final chip = tester.widget<ChoiceChip>(
+      find.byKey(const ValueKey('publish-layout-recipe')),
+    );
+    expect(chip.selected, isTrue);
+    expect(find.byKey(const ValueKey('publish-recipe-help')), findsOneWidget);
+    expect(find.text('Pubblica nel ricettario'), findsOneWidget);
+
+    await tap(tester, 'publish-confirm');
+    await tester.pumpAndSettle();
+
+    final page = server.pages['pane']!;
+    expect(page['layout'], 'recipe');
+    final sent = page['recipe']! as Map<String, Object?>;
+    expect(sent['category'], 'Pane e lievitati');
+    expect(sent['methods'], ['Forno']);
+    final olio = (sent['ingredients']! as List).single as Map;
+    expect((olio['one'], olio['other']), ('cucchiaio', 'cucchiai'));
+    expect(find.byKey(const ValueKey('publish-open-cookbook')), findsOneWidget);
+
+    // The category's name is the person's own: shown, and left out
+    // when they say so.
+    expect(find.text('Mostra la categoria «Pane e lievitati»'), findsOneWidget);
+    await tap(tester, 'publish-category');
+    await tester.pumpAndSettle();
+    await tap(tester, 'publish-confirm');
+    await tester.pumpAndSettle();
+    final again = server.pages['pane']!['recipe']! as Map<String, Object?>;
+    expect(again['category'], '');
+
+    // Another layout makes it an ordinary page, out of the cookbook.
+    await tap(tester, 'publish-layout-essay');
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('publish-recipe-help')), findsNothing);
+    expect(find.byKey(const ValueKey('publish-open-cookbook')), findsNothing);
+  });
+
+  testWidgets('only a recipe is offered the recipe layout', (tester) async {
+    books.book = SiteBook(
+      name: SiteName('quaderno'),
+      settings: SiteSettings(title: 'Quaderno', lang: 'it'),
+    );
+    await open(tester);
+    expect(find.byKey(const ValueKey('publish-layout-recipe')), findsNothing);
+    expect(find.text('Pubblica'), findsOneWidget);
+  });
+
   group('the site panel', () {
     Future<void> openSite(WidgetTester tester) async {
       books.book = SiteBook(
@@ -322,6 +410,8 @@ void main() {
         find.byKey(const ValueKey('site-about')),
         'Note di mare.',
       );
+      expect(find.text('Fresco'), findsOneWidget);
+      expect(find.text('Fresco scuro'), findsOneWidget);
       await tap(tester, 'site-theme-paper');
       await tester.pumpAndSettle();
       final accent = find.descendant(

@@ -88,6 +88,9 @@ final class SiteBook {
 
   Uri pageUrl(PageSlug slug) => Uri.parse('${name.url}/${slug.value}');
 
+  /// The site's cookbook: its listed recipes, by category, with a search.
+  Uri get cookbookUrl => Uri.parse('${name.url}/${PageSlug.cookbook}');
+
   /// The note each published page shows, for links between them.
   Map<EntryId, PageSlug> get slugs => {
     for (final MapEntry(:key, :value) in pages.entries) key: value.slug,

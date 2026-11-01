@@ -2109,6 +2109,8 @@
   "@themePaperHint": {
     "description": "Theme hint."
   },
+  "themeFresco": "Fresh",
+  "themeFrescoDark": "Fresh, dark",
   "pageMoods": "Match the note type",
   "@pageMoods": {
     "description": "Appearance sheet switch: the page of a note takes the mood of its type."
@@ -2518,6 +2520,19 @@
   "publishLayoutGoldenSection": "Golden section",
   "publishLayoutGoldenCover": "Golden cover",
   "publishLayoutBook": "Book",
+  "publishLayoutRecipe": "Recipe",
+  "publishLayoutRecipeHelp": "With this layout the recipe joins the site's cookbook, in its category, and readers can change the servings.",
+  "publishToCookbook": "Publish to the cookbook",
+  "publishOpenCookbook": "Open the cookbook",
+  "publishRecipeCategory": "Show the category “{name}”",
+  "@publishRecipeCategory": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "publishRecipeCategoryHelp": "The category's name becomes public: it is the cookbook's section the recipe appears in.",
   "publishPictures": "Include pictures",
   "publishPicturesHelp": "Re-encoded: the photo's place, date and device stay out.",
   "publishPreview": "Preview",

@@ -308,6 +308,61 @@ void main() {
     },
   );
 
+  test('a page at the cookbook\'s address moves off it', () async {
+    await publisher.claim(name, settings);
+    // Published before serv.pub kept the address for the cookbook.
+    server.pages['ricette'] = {'title': 'Ricette'};
+    books.book = books.book!.withPage(
+      EntryId('note-1'),
+      PublishedPage(
+        slug: PageSlug('ricette'),
+        title: 'Ricette',
+        listed: true,
+        media: const [],
+        at: DateTime.utc(2026, 10, 1),
+      ),
+    );
+    final url = await publish('# Ricette\n\nLe mie.');
+    expect(url.path, '/quaderno/ricette-2');
+    expect(server.pages.keys, ['ricette-2']);
+    expect(books.book!.slugs.values, [PageSlug('ricette-2')]);
+  });
+
+  test('a recipe reaches serv.pub structured, in the cookbook', () async {
+    await publisher.claim(name, settings);
+    final recipe = SeedSchemas.recipeV1;
+    final e = entry(recipe, {
+      'title': const TextValue('Pane'),
+      'servings': NumberValue(2),
+      'ingredients': IngredientsValue([
+        Ingredient('Farina', amount: 500, unit: IngredientUnit.gram),
+      ]),
+    });
+    final url = await publisher.publish(
+      entry: e.id,
+      content: PublicationPolicy.compose(
+        entry: e,
+        schema: recipe,
+        fields: keys_(['title', 'servings', 'ingredients']),
+      ),
+      schema: recipe,
+      labelOf: labelOf,
+      describe: describe,
+      recipeWords: RecipeWords(
+        unit: (_, _) => 'g',
+        option: (_, o) => o,
+        category: 'Pane e lievitati',
+      ),
+    );
+    expect(url.path, '/quaderno/pane');
+    final page = server.pages['pane']!;
+    expect(page['layout'], 'recipe');
+    final sent = page['recipe']! as Map<String, Object?>;
+    expect(sent['category'], 'Pane e lievitati');
+    expect(sent['servings'], 2);
+    expect((sent['ingredients']! as List).single, containsPair('one', 'g'));
+  });
+
   test('two notes with one title get two addresses', () async {
     await publisher.claim(name, settings);
     await publish('# Il faro\n\nA.');

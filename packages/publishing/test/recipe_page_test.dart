@@ -4,6 +4,8 @@ import 'package:test/test.dart';
 
 import 'fixtures.dart';
 
+/// A recipe published with a layout of any note: its fields become
+/// blocks. The recipe layout is in recipe_layout_test.dart.
 void main() {
   final recipe = schema('recipe', [
     field('title', TextFieldType(maxLength: 200)),
@@ -57,6 +59,7 @@ void main() {
       null => '${item.name}, ${item.quantity}',
     },
     listed: true,
+    layout: PublicationLayout.goldenCover,
   );
 
   test('the pictures of the steps are uploaded with the page', () {
@@ -107,6 +110,7 @@ void main() {
       labelOf: labelOf,
       describe: describe,
       listed: true,
+      layout: PublicationLayout.goldenCover,
     );
     final steps = doc.blocks.whereType<MarkdownBlock>().last.text;
     expect(steps, isNot(contains('image:')));
@@ -121,6 +125,7 @@ void main() {
       labelOf: labelOf,
       describe: describe,
       listed: true,
+      layout: PublicationLayout.goldenCover,
     );
     expect(
       doc.blocks.whereType<MarkdownBlock>().first.text,

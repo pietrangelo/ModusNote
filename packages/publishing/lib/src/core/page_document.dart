@@ -3,6 +3,7 @@ import 'package:schema_dynamic_content/schema_dynamic_content.dart';
 
 import 'layout.dart';
 import 'media.dart';
+import 'page_recipe.dart';
 import 'publication_policy.dart';
 import 'publishing_exception.dart';
 
@@ -116,7 +117,8 @@ final class AudioBlock extends PageBlock {
 }
 
 /// A page as serv.pub takes it (`PUT /api/s/<site>/p/<slug>`): its title,
-/// layout, whether the site's home lists it, and its parts.
+/// layout, whether the site's home lists it, and its parts; a page of the
+/// [PublicationLayout.recipe] layout, and only one, carries its [recipe].
 @immutable
 final class PageDocument {
   PageDocument({
@@ -124,16 +126,28 @@ final class PageDocument {
     required this.layout,
     required this.listed,
     required List<PageBlock> blocks,
-  }) : blocks = List.unmodifiable(blocks);
+    this.recipe,
+  }) : blocks = List.unmodifiable(blocks) {
+    if ((layout == PublicationLayout.recipe) != (recipe != null)) {
+      throw const NotPublishableException('a recipe needs its layout');
+    }
+  }
 
   final String title;
   final PublicationLayout layout;
   final bool listed;
   final List<PageBlock> blocks;
+  final PageRecipe? recipe;
 
   /// Every file the page shows, each once, in order.
   List<MediaId> get media {
     final out = <MediaId>{};
+    if (recipe case final recipe?) {
+      out.addAll(recipe.media);
+      for (final step in recipe.steps) {
+        out.addAll(PageComposer.mediaIn(step.text));
+      }
+    }
     for (final block in blocks) {
       switch (block) {
         case ImageBlock(:final media) || AudioBlock(:final media):
@@ -154,9 +168,11 @@ final class PageDocument {
       PublicationLayout.goldenSection => 'golden_section',
       PublicationLayout.goldenCover => 'golden_cover',
       PublicationLayout.book => 'book',
+      PublicationLayout.recipe => 'recipe',
     },
     'listed': listed,
     'blocks': [for (final block in blocks) block.toJson()],
+    if (recipe case final recipe?) 'recipe': recipe.toJson(),
   };
 }
 
@@ -201,14 +217,24 @@ abstract final class PageComposer {
     required String Function(FieldDefinition field, FieldValue value) describe,
     required bool listed,
     String Function(Ingredient item)? ingredientLine,
+    RecipeWords? recipeWords,
     PublicationLayout? layout,
   }) {
+    final chosen = layout ?? content.layout;
+    final cooking = chosen == PublicationLayout.recipe;
+    if (cooking && schema.id.name != Recipe.schema) {
+      throw const NotPublishableException('only a recipe has that layout');
+    }
+    final recipe = cooking
+        ? _RecipeDraft(recipeWords ?? RecipeWords.plain, media)
+        : null;
     final blocks = <PageBlock>[];
     var first = true;
     for (final field in schema.fields) {
       final value = content.fields[field.key];
       if (value == null) continue;
       final label = line(labelOf(field), maxLabel);
+      if (recipe != null && recipe.take(field, value, label, blocks)) continue;
       switch (value) {
         case TextValue(:final text) when field.type is UrlFieldType:
           if (WebLink.parse(text) case final link?) {
@@ -309,7 +335,9 @@ abstract final class PageComposer {
       }
       if (value is TextValue) first = false;
     }
-    if (blocks.isEmpty) {
+    // A recipe is a page even with nothing but its name: the cookbook
+    // lists it.
+    if (blocks.isEmpty && recipe == null) {
       throw const NotPublishableException('nothing to publish');
     }
     if (blocks.length > maxBlocks) {
@@ -317,10 +345,21 @@ abstract final class PageComposer {
     }
     return PageDocument(
       title: line(content.title, maxTitle),
-      layout: layout ?? content.layout,
+      layout: chosen,
       listed: listed,
       blocks: blocks,
+      recipe: recipe?.build(),
     );
+  }
+
+  /// [text] with at most [max] UTF-16 code units, a character never cut
+  /// in half.
+  static String _cut(String text, int max) {
+    if (text.length <= max) return text;
+    var cut = max;
+    final last = text.codeUnitAt(cut - 1);
+    if (last >= 0xD800 && last <= 0xDBFF) cut--;
+    return text.substring(0, cut);
   }
 
   static String _named(Ingredient item) => item.name;
@@ -381,20 +420,14 @@ abstract final class PageComposer {
     // blob id never reaches the page, and serv.pub never sees a picture
     // that was not uploaded.
     final uploaded = {for (final id in media.values) id.value};
-    var safe = out
+    final safe = out
         .toString()
         .replaceAllMapped(
           _residualImage,
           (m) => uploaded.contains(m.group(1)) ? m.group(0)! : 'image:',
         )
         .replaceAll(_unsafeInText, ' ');
-    if (safe.length > maxMarkdown) {
-      var cut = maxMarkdown;
-      final last = safe.codeUnitAt(cut - 1);
-      if (last >= 0xD800 && last <= 0xDBFF) cut--;
-      safe = safe.substring(0, cut);
-    }
-    return safe;
+    return _cut(safe, maxMarkdown);
   }
 
   /// The text without its first line when that line is the title.
@@ -406,5 +439,191 @@ abstract final class PageComposer {
     final heading = lines[index].replaceFirst(RegExp(r'^\s*#{1,6}\s+'), '');
     if (line(heading, maxTitle) != title) return text;
     return lines.sublist(index + 1).join('\n');
+  }
+}
+
+/// How the parts of a recipe read in the person's language, for a page of
+/// the [PublicationLayout.recipe] layout: the name of a unit for [count]
+/// of it, the name of a field's option, and the note's category.
+final class RecipeWords {
+  const RecipeWords({
+    required this.unit,
+    required this.option,
+    this.category = '',
+  });
+
+  /// The wire's own names: what a test, or a build without words, shows.
+  static final plain = RecipeWords(
+    unit: (unit, _) => unit.name,
+    option: (_, option) => option,
+  );
+
+  final String Function(IngredientUnit unit, num count) unit;
+  final String Function(FieldDefinition field, String option) option;
+  final String category;
+}
+
+/// The recipe of a page, gathered field by field within serv.pub's limits:
+/// what does not fit is left out, never sent to be refused.
+final class _RecipeDraft {
+  _RecipeDraft(this._words, this._media);
+
+  final RecipeWords _words;
+  final Map<BlobId, MediaId> _media;
+
+  static final _description = FieldKey('description');
+  static final _photos = FieldKey('photos');
+  static final _methods = FieldKey('methods');
+  static final _difficulty = FieldKey('difficulty');
+  static final _tags = FieldKey('tags');
+
+  var _text = '';
+  final _cover = <RecipePicture>[];
+  int? _servings;
+  int? _prep;
+  int? _cook;
+  int? _rest;
+  var _ways = <String>[];
+  int? _level;
+  final _ingredients = <RecipeIngredient>[];
+  final _steps = <RecipeStep>[];
+  var _labels = <String>[];
+
+  /// Whether [value] of [field] is part of the recipe; if not it becomes a
+  /// block of the page, like any note's. Links among the photos are added
+  /// to [blocks] under [label].
+  bool take(
+    FieldDefinition field,
+    FieldValue value,
+    String label,
+    List<PageBlock> blocks,
+  ) {
+    final key = field.key;
+    switch (value) {
+      case TextValue(:final text) when key == _description:
+        // The site shows it as plain text: pictures become their caption.
+        _text = PageComposer._cut(
+          PageComposer._markdown(text, const {}).trim(),
+          PageRecipe.maxDescription,
+        );
+      case AttachmentsValue(:final items) when key == _photos:
+        final links = <WebLink>[];
+        for (final item in items) {
+          switch (item) {
+            case ImageAttachment(:final blob, :final caption):
+              if (_media[blob] case final id?
+                  when _cover.length < PageRecipe.maxCover) {
+                _cover.add(_picture(id, caption));
+              }
+            case WebLink():
+              links.add(item);
+          }
+        }
+        if (links.isNotEmpty) {
+          blocks.add(
+            LinksBlock(label, links.take(PageComposer.maxItems).toList()),
+          );
+        }
+      case NumberValue(:final number) when key == Recipe.servings:
+        _servings = _whole(number, 1, PageRecipe.maxServings);
+      case NumberValue(:final number) when key == Recipe.prepTime:
+        _prep = _whole(number, 0, PageRecipe.maxMinutes);
+      case NumberValue(:final number) when key == Recipe.cookTime:
+        _cook = _whole(number, 0, PageRecipe.maxMinutes);
+      case NumberValue(:final number) when key == Recipe.restTime:
+        _rest = _whole(number, 0, PageRecipe.maxMinutes);
+      case ChoiceSetValue(:final options) when key == _methods:
+        final order = switch (field.type) {
+          ChoiceSetFieldType(options: final all) => all.where(options.contains),
+          _ => options,
+        };
+        _ways = _lines(
+          order.map((o) => _words.option(field, o)),
+          PageRecipe.maxMethods,
+          PageRecipe.maxCategory,
+        );
+      case RatingValue(:final rating) when key == _difficulty:
+        _level = rating >= 1 && rating <= 3 ? rating : null;
+      case TagListValue(:final tags) when key == _tags:
+        _labels = _lines(tags, PageRecipe.maxTags, PageRecipe.maxTag);
+      case IngredientsValue(:final items):
+        for (final item in items.take(PageRecipe.maxIngredients)) {
+          if (_ingredient(item) case final kept?) _ingredients.add(kept);
+        }
+      case StepsValue(:final steps):
+        var pictures = 0;
+        for (final step in steps.take(PageRecipe.maxSteps)) {
+          final kept = <RecipePicture>[];
+          for (final picture in step.pictures) {
+            if (kept.length == PageRecipe.maxStepPictures ||
+                pictures == PageRecipe.maxPictures) {
+              break;
+            }
+            if (_media[picture.blob] case final id?) {
+              kept.add(_picture(id, picture.caption));
+              pictures++;
+            }
+          }
+          final text = PageComposer._cut(
+            PageComposer._markdown(step.text, _media).trim(),
+            PageRecipe.maxStep,
+          );
+          if (text.trim().isEmpty && kept.isEmpty) continue;
+          _steps.add(RecipeStep(text, kept));
+        }
+      default:
+        return false;
+    }
+    return true;
+  }
+
+  PageRecipe build() => PageRecipe(
+    category: PageComposer.line(_words.category, PageRecipe.maxCategory),
+    description: _text,
+    cover: _cover,
+    servings: _servings,
+    prep: _prep,
+    cook: _cook,
+    rest: _rest,
+    methods: _ways,
+    difficulty: _level,
+    ingredients: _ingredients,
+    steps: _steps,
+    tags: _labels,
+  );
+
+  static RecipePicture _picture(MediaId id, String caption) =>
+      RecipePicture(id, PageComposer.line(caption, PageComposer.maxShort));
+
+  static int? _whole(num number, int min, int max) {
+    if (!number.isFinite) return null;
+    final whole = number.round();
+    return whole >= min && whole <= max ? whole : null;
+  }
+
+  static List<String> _lines(Iterable<String> items, int count, int max) => [
+    for (final item in items)
+      if (PageComposer.line(item, max) case final text when text.isNotEmpty)
+        text,
+  ].take(count).toList();
+
+  RecipeIngredient? _ingredient(Ingredient item) {
+    final name = PageComposer.line(item.name, PageRecipe.maxName);
+    if (name.isEmpty) return null;
+    final amount = item.amount;
+    final unit = amount == null ? null : item.unit;
+    String label(num count) => unit == null
+        ? ''
+        : PageComposer.line(_words.unit(unit, count), PageRecipe.maxUnit);
+    final link = item.link?.url;
+    return RecipeIngredient(
+      name,
+      amount: amount,
+      unit: unit,
+      one: label(1),
+      other: label(2),
+      quantity: PageComposer.line(item.quantity, PageRecipe.maxQuantity),
+      link: link != null && link.startsWith('https://') ? link : null,
+    );
   }
 }

@@ -5,8 +5,10 @@ import 'golden.dart';
 import 'publishing_exception.dart';
 
 /// The themes of the app, offered to published pages too, so a page looks
-/// like the note it comes from.
-enum BaseTheme { modus, restful, paper }
+/// like the note it comes from; and Fresco, a cookbook's: a warm cream
+/// with livelier colours that let the photos of the dishes stand out, or
+/// its evening version on a dark ground.
+enum BaseTheme { modus, restful, paper, fresco, frescoDark }
 
 /// What a site chooses about colour: a base theme and, optionally, the hue
 /// of its accent and of its background. Only hues: lightness and chroma
@@ -146,6 +148,22 @@ final class SitePalette {
       text: '#262F38',
       secondary: '#57606A',
       accent: '#7B5600',
+    ),
+    BaseTheme.fresco: _Base(
+      dark: false,
+      background: '#FBF8F1',
+      surface: '#FFFFFF',
+      text: '#1D1A16',
+      secondary: '#5E574C',
+      accent: '#A9461B',
+    ),
+    BaseTheme.frescoDark: _Base(
+      dark: true,
+      background: '#13161D',
+      surface: '#1B1F28',
+      text: '#F4F1EA',
+      secondary: '#AFA899',
+      accent: '#E6905A',
     ),
   };
 }

@@ -93,7 +93,7 @@ void main() {
         );
         expect(
           PublicationLayout.forSchemaName('recipe'),
-          PublicationLayout.goldenCover,
+          PublicationLayout.recipe,
         );
         expect(
           PublicationLayout.forSchemaName('book_character'),

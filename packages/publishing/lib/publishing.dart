@@ -16,6 +16,7 @@ export 'src/core/layout.dart';
 export 'src/core/media.dart';
 export 'src/core/names.dart';
 export 'src/core/page_document.dart';
+export 'src/core/page_recipe.dart';
 export 'src/core/publication_policy.dart';
 export 'src/core/publishing_exception.dart';
 export 'src/core/site_book.dart';
