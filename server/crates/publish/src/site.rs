@@ -14,6 +14,7 @@ use ledger::{MemberKey, SignatureCheck};
 use serde::{Deserialize, Serialize};
 use sync::{Denied, Request, Store, Unavailable, authenticate};
 
+use crate::cookbook::{self, Category, Listed, Query};
 use crate::names::{media_id, page_slug};
 use crate::page::Page;
 use crate::render::{self, Entry};
@@ -25,6 +26,10 @@ const STYLE: &str = "style";
 const PAGES: &str = "page/";
 const MEDIA: &str = "media/";
 const BYTES: &str = "bytes";
+/// The cookbook's index: one entry per listed recipe, by slug.
+const RECIPES: &str = "recipe/";
+/// The cookbook's categories, by slug, with the order they came in.
+const CATEGORIES: &str = "category/";
 
 /// What one site may hold.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -33,11 +38,22 @@ pub struct SiteLimits {
     pub media: usize,
     pub media_bytes: u64,
     pub media_file: u64,
+    /// Files and bytes for a site with a cookbook: recipes are mostly
+    /// photographs.
+    pub cookbook_media: usize,
+    pub cookbook_bytes: u64,
 }
 
 impl Default for SiteLimits {
     fn default() -> Self {
-        Self { pages: 233, media: 377, media_bytes: 144 << 20, media_file: 21 << 20 }
+        Self {
+            pages: 233,
+            media: 377,
+            media_bytes: 144 << 20,
+            media_file: 21 << 20,
+            cookbook_media: 987,
+            cookbook_bytes: 610 << 20,
+        }
     }
 }
 
@@ -205,7 +221,7 @@ impl<S: Store, C: SignatureCheck> Site<S, C> {
     /// Publishes or replaces a page. Its files must be uploaded first, so a
     /// page never shows a broken picture.
     pub fn put_page(&mut self, request: &Request<'_>, slug: &str, body: &[u8]) -> Result<bool, SiteError> {
-        if !page_slug(slug) {
+        if !page_slug(slug) || slug == cookbook::PATH {
             return Err(SiteError::NotFound);
         }
         let page = Page::parse(body).map_err(|_| SiteError::Invalid)?;
@@ -220,10 +236,48 @@ impl<S: Store, C: SignatureCheck> Site<S, C> {
         if new && self.store.list(PAGES, None, usize::MAX)?.len() >= self.limits.pages {
             return Err(SiteError::Full);
         }
+        let listed = match &page.recipe {
+            Some(recipe) if page.listed => Some(Listed::of(slug, &page, recipe, request.now_ms)),
+            _ => None,
+        };
+        let category = match &listed {
+            Some(entry) => self.category_for(entry)?,
+            None => None,
+        };
         let stored =
             serde_json::to_vec(&Stored { page, updated_ms: request.now_ms }).map_err(|_| SiteError::Invalid)?;
-        self.store.put(&key, &stored)?;
+        let index = format!("{RECIPES}{slug}");
+        let entry = match &listed {
+            Some(entry) => Some(serde_json::to_vec(entry).map_err(|_| SiteError::Invalid)?),
+            None => None,
+        };
+        self.store.transaction(|store| {
+            store.put(&key, &stored)?;
+            match &entry {
+                Some(entry) => store.put(&index, entry)?,
+                None => store.delete(&index)?,
+            }
+            if let Some((key, value)) = &category {
+                store.put(key, value)?;
+                // A new category brings its colours to the stylesheet.
+                store.put(STYLE, &request.now_ms.to_be_bytes())?;
+            }
+            Ok::<_, SiteError>(())
+        })?;
         Ok(new)
+    }
+
+    /// The record of `entry`'s category when it is new to the cookbook: the
+    /// next order, which picks its colours and never changes.
+    fn category_for(&self, entry: &Listed) -> Result<Option<(String, Vec<u8>)>, SiteError> {
+        let slug = entry.category_slug();
+        let key = format!("{CATEGORIES}{slug}");
+        if self.store.get(&key)?.is_some() {
+            return Ok(None);
+        }
+        let order = self.store.list(CATEGORIES, None, usize::MAX)?.len();
+        let category = Category { slug, name: entry.category.clone(), order };
+        Ok(Some((key, serde_json::to_vec(&category).map_err(|_| SiteError::Invalid)?)))
     }
 
     pub fn delete_page(&mut self, request: &Request<'_>, slug: &str) -> Result<(), SiteError> {
@@ -235,8 +289,12 @@ impl<S: Store, C: SignatureCheck> Site<S, C> {
         if self.store.get(&key)?.is_none() {
             return Err(SiteError::NotFound);
         }
-        self.store.delete(&key)?;
-        Ok(())
+        let index = format!("{RECIPES}{slug}");
+        self.store.transaction(|store| {
+            store.delete(&key)?;
+            store.delete(&index)?;
+            Ok::<_, SiteError>(())
+        })
     }
 
     /// Counts a file about to be uploaded (its bytes go to R2, not here).
@@ -257,11 +315,16 @@ impl<S: Store, C: SignatureCheck> Site<S, C> {
         self.by_owner(request)?;
         let key = format!("{MEDIA}{id}");
         let previous = self.store.get(&key)?.map(|v| media_size(&v)).unwrap_or(0);
-        if previous == 0 && self.store.list(MEDIA, None, usize::MAX)?.len() >= self.limits.media {
+        let (files, bytes) = if self.has_cookbook()? {
+            (self.limits.media.max(self.limits.cookbook_media), self.limits.media_bytes.max(self.limits.cookbook_bytes))
+        } else {
+            (self.limits.media, self.limits.media_bytes)
+        };
+        if previous == 0 && self.store.list(MEDIA, None, usize::MAX)?.len() >= files {
             return Err(SiteError::Full);
         }
         let total = self.bytes()? - previous + size;
-        if total > self.limits.media_bytes {
+        if total > bytes {
             return Err(SiteError::Full);
         }
         self.store.transaction(|store| {
@@ -293,6 +356,73 @@ impl<S: Store, C: SignatureCheck> Site<S, C> {
         self.by_owner(request)?;
         self.store.clear()?;
         Ok(())
+    }
+
+    /// Whether the site lists a recipe.
+    fn has_cookbook(&self) -> Result<bool, SiteError> {
+        Ok(!self.store.list(RECIPES, None, 1)?.is_empty())
+    }
+
+    fn categories(&self) -> Result<Vec<Category>, SiteError> {
+        let mut categories: Vec<Category> = self
+            .store
+            .list(CATEGORIES, None, usize::MAX)?
+            .into_iter()
+            .filter_map(|(_, v)| serde_json::from_slice(&v).ok())
+            .collect();
+        categories.sort_by_key(|c| c.order);
+        Ok(categories)
+    }
+
+    /// The listed recipes, newest first.
+    fn recipes(&self) -> Result<Vec<Listed>, SiteError> {
+        let mut entries: Vec<Listed> = self
+            .store
+            .list(RECIPES, None, usize::MAX)?
+            .into_iter()
+            .filter_map(|(_, v)| serde_json::from_slice(&v).ok())
+            .collect();
+        entries.sort_by(|a, b| b.updated_ms.cmp(&a.updated_ms).then_with(|| a.slug.cmp(&b.slug)));
+        Ok(entries)
+    }
+
+    /// The cookbook's showcase, or a search in it; not found when the site
+    /// lists no recipe.
+    pub fn cookbook_html(&self, query: Option<&str>) -> Result<String, SiteError> {
+        let entries = self.recipes()?;
+        if entries.is_empty() {
+            return Err(SiteError::NotFound);
+        }
+        let settings = self.settings()?;
+        let uploaded = self.uploaded()?;
+        Ok(cookbook::showcase(
+            &self.name,
+            &settings,
+            &self.categories()?,
+            &entries,
+            &Query::parse(query),
+            &self.style_version()?,
+            &|id| uploaded.iter().any(|u| u == id),
+        ))
+    }
+
+    /// One category of the cookbook.
+    pub fn category_html(&self, slug: &str) -> Result<String, SiteError> {
+        if !page_slug(slug) {
+            return Err(SiteError::NotFound);
+        }
+        let settings = self.settings()?;
+        let uploaded = self.uploaded()?;
+        cookbook::category_page(
+            &self.name,
+            &settings,
+            &self.categories()?,
+            &self.recipes()?,
+            slug,
+            &self.style_version()?,
+            &|id| uploaded.iter().any(|u| u == id),
+        )
+        .ok_or(SiteError::NotFound)
     }
 
     fn bytes(&self) -> Result<u64, SiteError> {
@@ -335,7 +465,8 @@ impl<S: Store, C: SignatureCheck> Site<S, C> {
         Ok(render::home(&self.name, &self.settings()?, &self.entries(false)?, &self.style_version()?))
     }
 
-    pub fn page_html(&self, slug: &str) -> Result<String, SiteError> {
+    /// A page; for a recipe, `query` may ask for other servings (`p=`).
+    pub fn page_html(&self, slug: &str, query: Option<&str>) -> Result<String, SiteError> {
         if !page_slug(slug) {
             return Err(SiteError::NotFound);
         }
@@ -343,6 +474,21 @@ impl<S: Store, C: SignatureCheck> Site<S, C> {
         let json = self.store.get(&format!("{PAGES}{slug}"))?.ok_or(SiteError::NotFound)?;
         let stored: Stored = serde_json::from_slice(&json).map_err(|_| SiteError::Unavailable)?;
         let uploaded = self.uploaded()?;
+        if let Some(recipe) = &stored.page.recipe {
+            let others = if stored.page.listed { self.recipes()? } else { Vec::new() };
+            return Ok(cookbook::recipe_page(
+                &self.name,
+                slug,
+                &settings,
+                &stored.page,
+                recipe,
+                &self.categories()?,
+                &others,
+                Query::parse(query).servings,
+                &self.style_version()?,
+                &|id| uploaded.iter().any(|u| u == id),
+            ));
+        }
         let contents =
             if matches!(stored.page.layout, crate::page::Layout::Book) { self.entries(false)? } else { Vec::new() };
         Ok(render::page(&self.name, slug, &settings, &stored.page, &contents, &self.style_version()?, &|id| {
@@ -356,7 +502,8 @@ impl<S: Store, C: SignatureCheck> Site<S, C> {
     }
 
     pub fn style_css(&self) -> Result<String, SiteError> {
-        Ok(render::css(&self.settings()?))
+        let settings = self.settings()?;
+        Ok(render::css(&settings) + &cookbook::css(&settings, self.categories()?.len()))
     }
 
     /// The type of an uploaded file, for serving it.

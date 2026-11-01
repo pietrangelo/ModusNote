@@ -9,7 +9,7 @@ use base64::engine::general_purpose::STANDARD;
 use crypto::StrictEd25519;
 use modusnote_server::api::{ApiError, Route, route};
 use modusnote_server::serve::{
-    self, Blake2b, INTERNAL_FEED, INTERNAL_HOME, INTERNAL_MEDIA, INTERNAL_STYLE, Incoming, SiteDone,
+    self, Blake2b, INTERNAL_COOKBOOK, INTERNAL_FEED, INTERNAL_HOME, INTERNAL_MEDIA, INTERNAL_STYLE, Incoming, SiteDone,
 };
 use publish::{MediaType, Site};
 use serde_json::json;
@@ -161,6 +161,32 @@ fn a_site_object_serves_writes_and_reads() {
     assert_eq!(serve::site(&mut site, &Blake2b, &read(&media)), Ok(SiteDone::MediaType(MediaType::Png)));
     assert_eq!(serve::site(&mut site, &Blake2b, &read("/internal/page/nessuna")), Err(ApiError::NotFound));
     assert_eq!(serve::site(&mut site, &Blake2b, &read("/internal/other")), Err(ApiError::NotFound));
+    assert_eq!(serve::site(&mut site, &Blake2b, &read(INTERNAL_COOKBOOK)), Err(ApiError::NotFound), "no recipes yet");
+
+    let recipe = json!({"title": "Pane", "layout": "recipe", "listed": true, "blocks": [], "recipe": {
+        "category": "Lievitati", "servings": 2, "cover": [{"media": PIC}],
+        "ingredients": [{"name": "Farina", "amount": 500, "unit": "gram", "one": "g", "other": "g"}],
+        "steps": [{"text": "Impasta."}]}})
+    .to_string()
+    .into_bytes();
+    let signed = call(&owner, "PUT", "/api/s/quaderno/p/pane", &recipe);
+    assert_eq!(
+        serve::site(&mut site, &Blake2b, &send(&signed, &recipe, None)),
+        Ok(SiteDone::Json(201, r#"{"created":true}"#.into()))
+    );
+    let query = |path: &'static str, query: &'static str| Incoming { query: Some(query), ..read(path) };
+    let Ok(SiteDone::Html(cookbook)) = serve::site(&mut site, &Blake2b, &query(INTERNAL_COOKBOOK, "q=pane")) else {
+        panic!("a search")
+    };
+    assert!(cookbook.contains("/quaderno/pane") && cookbook.contains("noindex"));
+    let Ok(SiteDone::Html(category)) = serve::site(&mut site, &Blake2b, &read("/internal/cookbook/lievitati")) else {
+        panic!("a category")
+    };
+    assert!(category.contains("<h1>Lievitati</h1>"));
+    let Ok(SiteDone::Html(pane)) = serve::site(&mut site, &Blake2b, &query("/internal/page/pane", "p=4")) else {
+        panic!("a recipe")
+    };
+    assert!(pane.contains("1000 g"), "{pane}");
 
     let signed = call(&owner, "DELETE", "/api/s/quaderno", b"");
     assert_eq!(serve::site(&mut site, &Blake2b, &send(&signed, b"", None)), Ok(SiteDone::Json(200, "{}".into())));
