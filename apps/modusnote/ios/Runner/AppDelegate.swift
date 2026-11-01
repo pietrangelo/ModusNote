@@ -22,6 +22,9 @@ import UserNotifications
     if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "SensitiveClipboard") {
       SensitiveClipboard.register(with: registrar)
     }
+    if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "ScreenAwake") {
+      ScreenAwake.register(with: registrar)
+    }
   }
 
   /// Vaults, recordings and the vault list live in Application Support,
@@ -37,6 +40,23 @@ import UserNotifications
     var values = URLResourceValues()
     values.isExcludedFromBackup = true
     try? folder.setResourceValues(values)
+  }
+}
+
+/// Keeps the screen on while a recipe is open in cooking mode. iOS turns
+/// the idle timer back on by itself when the app leaves the foreground.
+final class ScreenAwake {
+  static func register(with registrar: FlutterPluginRegistrar) {
+    let channel = FlutterMethodChannel(
+      name: "run.serv.modus/screen", binaryMessenger: registrar.messenger())
+    channel.setMethodCallHandler { call, result in
+      guard call.method == "keepOn",
+        let args = call.arguments as? [String: Any],
+        let on = args["on"] as? Bool
+      else { return result(FlutterMethodNotImplemented) }
+      UIApplication.shared.isIdleTimerDisabled = on
+      result(nil)
+    }
   }
 }
 

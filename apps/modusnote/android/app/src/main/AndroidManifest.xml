@@ -1,7 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <!-- Recording audio notes; audio is encrypted in memory before storage. -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
-    <!-- Sync with Supabase and the recordings on R2. Flutter declares it
+    <!-- Sync with the server and the recordings on R2. Flutter declares it
          only for debug and profile builds: without it here, the build sent
          to Google Play could not sync. -->
     <uses-permission android:name="android.permission.INTERNET" />

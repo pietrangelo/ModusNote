@@ -1,6 +1,6 @@
 # Sicurezza
 
-Per segnalare una vulnerabilità di Modus Notes (app, client web su modus.serv.run, funzioni server in `supabase/`), scrivi a gplay.suave928@passmail.net in italiano o in inglese, senza aprire una issue pubblica, oppure usa «Report a vulnerability» nella scheda Security del repository. Descrivi il problema, come riprodurlo e cosa permette a un attaccante.
+Per segnalare una vulnerabilità di Modus Notes (app, client web su modus.serv.run, server di sincronizzazione in `server/`), scrivi a gplay.suave928@passmail.net in italiano o in inglese, senza aprire una issue pubblica, oppure usa «Report a vulnerability» nella scheda Security del repository. Descrivi il problema, come riprodurlo e cosa permette a un attaccante.
 
 Rispondo entro 7 giorni. Chiedo di non pubblicare dettagli finché la correzione non è distribuita, e comunque non prima di 90 giorni dalla segnalazione.
 

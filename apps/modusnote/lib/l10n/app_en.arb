@@ -2892,5 +2892,117 @@
         "type": "int"
       }
     }
+  },
+  "cookingMode": "Cooking mode",
+  "@cookingMode": {
+    "description": "Button opening a recipe one step at a time, with the screen kept on."
+  },
+  "cookingIngredients": "Ingredients",
+  "@cookingIngredients": {
+    "description": "First page of cooking mode."
+  },
+  "cookingServings": "{count, plural, =1{1 serving} other{{count} servings}}",
+  "@cookingServings": {
+    "description": "The servings cooking mode shows the ingredients for.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "cookingFewerServings": "Fewer servings",
+  "@cookingFewerServings": {
+    "description": "Tooltip."
+  },
+  "cookingMoreServings": "More servings",
+  "@cookingMoreServings": {
+    "description": "Tooltip."
+  },
+  "cookingStepOf": "Step {number} of {total}",
+  "@cookingStepOf": {
+    "description": "Heading of a step in cooking mode.",
+    "placeholders": {
+      "number": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "cookingPrevious": "Back",
+  "@cookingPrevious": {
+    "description": "Button to the previous page of cooking mode."
+  },
+  "cookingNext": "Next",
+  "@cookingNext": {
+    "description": "Button to the next page of cooking mode."
+  },
+  "cookingDone": "Done",
+  "@cookingDone": {
+    "description": "Button closing cooking mode on its last step."
+  },
+  "cookingHaveHint": "Tick what you already have",
+  "@cookingHaveHint": {
+    "description": "Hint above the ingredients in cooking mode."
+  },
+  "cookingNothing": "This recipe has no ingredients or steps yet.",
+  "@cookingNothing": {
+    "description": "Shown when cooking mode has nothing to show."
+  },
+  "addToShopping": "Add to shopping",
+  "@addToShopping": {
+    "description": "Button creating a to-do list with the ingredients not ticked."
+  },
+  "shoppingListTitle": "Shopping: {recipe}",
+  "@shoppingListTitle": {
+    "description": "Title of the to-do list made from a recipe.",
+    "placeholders": {
+      "recipe": {
+        "type": "String"
+      }
+    }
+  },
+  "shoppingListCreated": "{count, plural, =1{Shopping list created with 1 ingredient} other{Shopping list created with {count} ingredients}}",
+  "@shoppingListCreated": {
+    "description": "Snackbar after the shopping list is saved.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "shoppingNothing": "You have everything already",
+  "@shoppingNothing": {
+    "description": "Snackbar when every ingredient is ticked."
+  },
+  "stepTimer": "Timer",
+  "@stepTimer": {
+    "description": "Button starting a timer for a step."
+  },
+  "stepTimerFor": "Timer {time}",
+  "@stepTimerFor": {
+    "description": "Button starting a timer of a time read in the step, e.g. Timer 40 min.",
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "stepTimerMinutes": "Minutes",
+  "@stepTimerMinutes": {
+    "description": "Label of the minutes of a timer."
+  },
+  "stepTimerStart": "Start",
+  "@stepTimerStart": {
+    "description": "Button of the timer dialog."
+  },
+  "stepTimerStop": "Stop the timer",
+  "@stepTimerStop": {
+    "description": "Tooltip."
+  },
+  "stepTimerDone": "Time is up",
+  "@stepTimerDone": {
+    "description": "Shown when a step timer ends."
   }
 }

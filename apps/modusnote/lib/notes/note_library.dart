@@ -13,7 +13,6 @@ import '../appearance/appearance_scope.dart';
 import '../appearance/page_sheet.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../theme/golden_ratio.dart';
-import '../vault/auto_lock.dart';
 import 'categories/categories_screen.dart';
 import 'categories/category_picker.dart';
 import 'command_palette.dart';
@@ -25,6 +24,7 @@ import 'note_title.dart';
 import 'note_types.dart';
 import 'schema_text.dart';
 import 'trash_screen.dart';
+import 'vault_scopes.dart';
 import '../theme/modus_palette.dart';
 import '../theme/modus_themes.dart';
 
@@ -448,16 +448,9 @@ class _NoteLibraryScreenState extends State<NoteLibraryScreen> {
       _push(TrashScreen(schemas: widget.schemas, store: widget.store));
 
   void _push(Widget screen) {
-    // A pushed route sits beside the library, not under it: it gets the
-    // vault's auto-lock passed along explicitly.
-    final autoLock = AutoLockScope.maybeOf(context);
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => autoLock == null
-            ? screen
-            : AutoLockScope(autoLock: autoLock, child: screen),
-      ),
-    );
+    final scopes = VaultScopes.of(context);
+    Navigator.of(context)
+        .push(MaterialPageRoute<void>(builder: (_) => scopes.around(screen)));
   }
 
   bool get _isWide =>

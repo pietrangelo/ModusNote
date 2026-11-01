@@ -22,6 +22,12 @@ void main() {
     test('adversary: nothing ever clears the flag', () {
       expect(activity, isNot(contains('clearFlags')));
     });
+
+    test('cooking mode keeps the screen on through the view, not a flag', () {
+      expect(activity, contains('"run.serv.modus/screen"'));
+      expect(activity, contains('decorView.keepScreenOn = on'));
+      expect(activity, isNot(contains('FLAG_KEEP_SCREEN_ON')));
+    });
   });
 
   group('iOS', () {
@@ -40,6 +46,11 @@ void main() {
       expect(rgb, isNotNull);
       final hex = int.parse('${rgb![1]}${rgb[2]}${rgb[3]}', radix: 16);
       expect(0xFF000000 | hex, ModusColors.deepVoid.toARGB32());
+    });
+
+    test('cooking mode keeps the screen on with the idle timer', () {
+      expect(delegate, contains('"run.serv.modus/screen"'));
+      expect(delegate, contains('isIdleTimerDisabled = on'));
     });
 
     test('adversary: the scene lifecycle is not overridden', () {

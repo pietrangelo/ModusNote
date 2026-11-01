@@ -140,15 +140,9 @@ jobs:
             dart test -p chrome -c "$compiler" test/web || exit 1
           done
 
-      - name: Supabase schema and RLS tests
-        run: bash supabase/tests/run.sh
-
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22.22.0
-
-      - name: Edge Function tests
-        run: node --test "supabase/functions/**/*_test.ts"
 
       - name: App tests
         working-directory: apps/modusnote
