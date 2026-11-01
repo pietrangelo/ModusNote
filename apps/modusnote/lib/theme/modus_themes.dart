@@ -88,6 +88,7 @@ abstract final class ModusThemes {
   static const _violet = 305.0;
   static const _cyan = 230.0;
   static const _rose = 355.0;
+  static const _sage = 150.0;
   static const _red = 25.0;
 
   /// Background hue and chroma, text hue: per mood, then for the app.
@@ -154,6 +155,7 @@ abstract final class ModusThemes {
       gold: gold,
       success: cyan,
       rose: rose,
+      sage: accent(_sage),
       error: oklch(dark ? 0.80 : 0.48, dark ? 0.12 : 0.14, _red),
     );
   }

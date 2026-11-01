@@ -23,6 +23,7 @@ final class ModusPalette extends ThemeExtension<ModusPalette> {
     required this.violet,
     required this.success,
     required this.rose,
+    required this.sage,
     required this.error,
   });
 
@@ -41,6 +42,7 @@ final class ModusPalette extends ThemeExtension<ModusPalette> {
     violet: ModusColors.rhythmVioletText,
     success: ModusColors.cadenceCyan,
     rose: ModusColors.lucidRose,
+    sage: ModusColors.freshSage,
     error: Color(0xFFFF8A80),
   );
 
@@ -65,7 +67,7 @@ final class ModusPalette extends ThemeExtension<ModusPalette> {
   /// The gold of note types, whatever [primary] is.
   final Color gold;
 
-  /// Text and icons on [primary], [gold], [success] and [rose].
+  /// Text and icons on [primary], [gold], [success], [rose] and [sage].
   final Color onAccent;
 
   /// Violet as a fill only: below AA as text.
@@ -80,6 +82,9 @@ final class ModusPalette extends ThemeExtension<ModusPalette> {
 
   /// Dream notes.
   final Color rose;
+
+  /// Recipes.
+  final Color sage;
 
   final Color error;
 
@@ -100,6 +105,7 @@ final class ModusPalette extends ThemeExtension<ModusPalette> {
     NoteTint.violet => violet,
     NoteTint.cyan => success,
     NoteTint.rose => rose,
+    NoteTint.sage => sage,
     NoteTint.silver || null => muted,
   };
 
@@ -124,6 +130,7 @@ final class ModusPalette extends ThemeExtension<ModusPalette> {
     Color? violet,
     Color? success,
     Color? rose,
+    Color? sage,
     Color? error,
   }) => ModusPalette(
     brightness: brightness ?? this.brightness,
@@ -139,6 +146,7 @@ final class ModusPalette extends ThemeExtension<ModusPalette> {
     violet: violet ?? this.violet,
     success: success ?? this.success,
     rose: rose ?? this.rose,
+    sage: sage ?? this.sage,
     error: error ?? this.error,
   );
 
@@ -160,6 +168,7 @@ final class ModusPalette extends ThemeExtension<ModusPalette> {
       violet: mix(violet, other.violet),
       success: mix(success, other.success),
       rose: mix(rose, other.rose),
+      sage: mix(sage, other.sage),
       error: mix(error, other.error),
     );
   }

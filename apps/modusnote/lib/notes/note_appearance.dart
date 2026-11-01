@@ -20,6 +20,7 @@ abstract final class NoteAppearance {
     NoteIcon.place => Icons.place_outlined,
     NoteIcon.key => Icons.key_outlined,
     NoteIcon.calendar => Icons.calendar_today_outlined,
+    NoteIcon.recipe => Icons.restaurant_menu_outlined,
     null => Icons.description_outlined,
   };
 }

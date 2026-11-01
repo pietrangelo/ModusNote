@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:schema_dynamic_content/schema_dynamic_content.dart';
 
 import '../notes/note_title.dart';
+import '../notes/recipes/recipe_text.dart';
 import '../notes/schema_text.dart';
 import 'zip_writer.dart';
 
@@ -22,6 +23,7 @@ final class MarkdownExport {
   MarkdownExport({
     required this.schemas,
     required this.labels,
+    required this.recipes,
     required this.words,
     required this.categories,
     required this.categoryOf,
@@ -29,6 +31,7 @@ final class MarkdownExport {
 
   final List<SchemaDefinition> schemas;
   final SchemaText labels;
+  final RecipeText recipes;
   final MarkdownExportText words;
   final CategoryTree categories;
   final CategoryId? Function(EntryId id) categoryOf;
@@ -114,6 +117,40 @@ final class MarkdownExport {
             });
           }
           out.writeln();
+        case IngredientsValue(:final items):
+          if (items.isEmpty) continue;
+          out.writeln('## $label');
+          out.writeln();
+          for (final item in items) {
+            final line = _oneLine(recipes.line(item));
+            out.writeln(switch (item.link) {
+              final link? =>
+                '- $line ([${_escape(link.host)}](<${_angle(link.url)}>))',
+              null => '- $line',
+            });
+          }
+          out.writeln();
+        case StepsValue(:final steps):
+          if (steps.isEmpty) continue;
+          out.writeln('## $label');
+          out.writeln();
+          for (final (index, step) in steps.indexed) {
+            // Each line of a step indented under its number.
+            final text = _pictures(step.text, words).trimRight();
+            final lines = text.isEmpty ? <String>[] : text.split('\n');
+            out.writeln(
+              '${index + 1}. ${lines.isEmpty ? '' : lines.first}'.trimRight(),
+            );
+            for (final more in lines.skip(1)) {
+              out.writeln(more.isEmpty ? '' : '   $more');
+            }
+            for (final picture in step.pictures) {
+              out.writeln(
+                '   - ${words.picture}${picture.caption.isEmpty ? '' : ': ${_oneLine(picture.caption)}'}',
+              );
+            }
+          }
+          out.writeln();
         case TextValue(:final text)
             when field.type is! TextFieldType && field.type is! UrlFieldType:
           if (text.trim().isEmpty) continue;
@@ -145,6 +182,13 @@ final class MarkdownExport {
     },
     ChoiceValue(:final option) => labels.option(field, option),
     TagListValue(:final tags) => tags.map(_oneLine).join(', '),
+    ChoiceSetValue(:final options) => [
+      for (final option in switch (field.type) {
+        ChoiceSetFieldType(options: final all) => all.where(options.contains),
+        _ => options,
+      })
+        labels.option(field, option),
+    ].join(', '),
     AudioBlobValue() => words.recording,
     _ => '',
   };

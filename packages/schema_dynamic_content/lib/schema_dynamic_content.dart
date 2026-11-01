@@ -20,6 +20,7 @@ export 'src/core/note_links.dart';
 export 'src/core/note_type_choice.dart';
 export 'src/core/password_expiry.dart';
 export 'src/core/password_generator.dart';
+export 'src/core/recipe.dart';
 export 'src/core/schema_catalog.dart';
 export 'src/core/schema_codec.dart';
 export 'src/core/schema_definition.dart';

@@ -224,13 +224,18 @@ final class AttachmentsValue extends FieldValue {
 
   final List<Attachment> items;
 
-  /// The pictures every attachments field of [entry] holds, in order and
-  /// each once: the blobs the note needs beside it.
+  /// The pictures every attachments field and every step of [entry]
+  /// holds, in order and each once: the blobs the note needs beside it.
   static List<BlobId> imagesOf(DynamicEntry entry) => {
     for (final value in entry.attributes.values)
-      if (value is AttachmentsValue)
-        for (final item in value.items)
-          if (item is ImageAttachment) item.blob,
+      ...switch (value) {
+        AttachmentsValue(:final items) => [
+          for (final item in items)
+            if (item is ImageAttachment) item.blob,
+        ],
+        StepsValue(:final pictures) => pictures,
+        _ => const <BlobId>[],
+      },
   }.toList();
 
   @override
@@ -242,4 +247,162 @@ final class AttachmentsValue extends FieldValue {
 
   @override
   String toString() => 'AttachmentsValue(${items.length} items)';
+}
+
+/// What an amount of an [Ingredient] is counted in. Identifiers the app
+/// names in the person's language; a number alone counts pieces.
+enum IngredientUnit {
+  gram,
+  kilogram,
+  millilitre,
+  centilitre,
+  decilitre,
+  litre,
+  teaspoon,
+  tablespoon,
+  cup,
+  piece,
+  slice,
+  clove,
+  pinch,
+  ounce,
+  pound,
+}
+
+/// One line of a recipe's ingredients: what, how much, and where to buy it.
+///
+/// [amount] (with an optional [unit]) is what servings scale; [quantity]
+/// holds words a number cannot say, such as «q.b.» or «a piacere». The
+/// name and words are checked by [IngredientsFieldType], like the text of
+/// a task; the amount and unit always make sense on their own.
+@immutable
+final class Ingredient {
+  Ingredient(
+    this.name, {
+    this.amount,
+    this.unit,
+    this.quantity = '',
+    this.link,
+  }) {
+    final n = amount;
+    if (n != null && (!n.isFinite || n <= 0 || n > maxAmount)) {
+      throw const InvalidValueException('an amount is positive and finite');
+    }
+    if (unit != null && n == null) {
+      throw const InvalidValueException('a unit needs an amount');
+    }
+  }
+
+  static const maxAmount = 1000000;
+
+  final String name;
+  final num? amount;
+  final IngredientUnit? unit;
+  final String quantity;
+
+  /// Where to buy it; only ever opened by the person, never fetched.
+  final WebLink? link;
+
+  /// This ingredient with [amount] in place of its own.
+  Ingredient withAmount(num? amount) => Ingredient(
+    name,
+    amount: amount,
+    unit: amount == null ? null : unit,
+    quantity: quantity,
+    link: link,
+  );
+
+  @override
+  bool operator ==(Object other) =>
+      other is Ingredient &&
+      other.name == name &&
+      other.amount == amount &&
+      other.unit == unit &&
+      other.quantity == quantity &&
+      other.link == link;
+
+  @override
+  int get hashCode => Object.hash(name, amount, unit, quantity, link);
+
+  @override
+  String toString() => 'Ingredient(${name.length} chars, $amount $unit)';
+}
+
+/// A recipe's ingredients, in the order the person wrote them.
+final class IngredientsValue extends FieldValue {
+  IngredientsValue(List<Ingredient> items) : items = List.unmodifiable(items);
+
+  final List<Ingredient> items;
+
+  @override
+  bool operator ==(Object other) =>
+      other is IngredientsValue && listEquals(other.items, items);
+
+  @override
+  int get hashCode => Object.hashAll(items);
+
+  @override
+  String toString() => 'IngredientsValue(${items.length} items)';
+}
+
+/// One step of a preparation: what to do, in Markdown, and pictures of it.
+@immutable
+final class PreparationStep {
+  PreparationStep(this.text, {List<ImageAttachment> pictures = const []})
+    : pictures = List.unmodifiable(pictures);
+
+  final String text;
+  final List<ImageAttachment> pictures;
+
+  @override
+  bool operator ==(Object other) =>
+      other is PreparationStep &&
+      other.text == text &&
+      listEquals(other.pictures, pictures);
+
+  @override
+  int get hashCode => Object.hash(text, Object.hashAll(pictures));
+
+  @override
+  String toString() =>
+      'PreparationStep(${text.length} chars, ${pictures.length} pictures)';
+}
+
+/// The steps of a preparation, in order.
+final class StepsValue extends FieldValue {
+  StepsValue(List<PreparationStep> steps) : steps = List.unmodifiable(steps);
+
+  final List<PreparationStep> steps;
+
+  /// Every picture of every step, in order.
+  Iterable<BlobId> get pictures => [
+    for (final step in steps)
+      for (final picture in step.pictures) picture.blob,
+  ];
+
+  @override
+  bool operator ==(Object other) =>
+      other is StepsValue && listEquals(other.steps, steps);
+
+  @override
+  int get hashCode => Object.hashAll(steps);
+
+  @override
+  String toString() => 'StepsValue(${steps.length} steps)';
+}
+
+/// Some options of a [ChoiceSetFieldType], in no order.
+final class ChoiceSetValue extends FieldValue {
+  ChoiceSetValue(Set<String> options) : options = Set.unmodifiable(options);
+
+  final Set<String> options;
+
+  @override
+  bool operator ==(Object other) =>
+      other is ChoiceSetValue &&
+      other.options.length == options.length &&
+      other.options.containsAll(options);
+
+  @override
+  int get hashCode => Object.hashAllUnordered(options);
 }

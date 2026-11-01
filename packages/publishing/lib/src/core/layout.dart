@@ -39,7 +39,7 @@ enum PublicationLayout {
   /// of a type keeps it.
   static PublicationLayout forSchemaName(String name) => switch (name) {
     'book' || 'book_chapter' => book,
-    'song_sketch' || 'dream_log' => goldenCover,
+    'song_sketch' || 'dream_log' || 'recipe' => goldenCover,
     'book_character' || 'book_place' => goldenSection,
     _ => essay,
   };

@@ -418,6 +418,68 @@ void main() {
       );
     });
 
+    DynamicEntry recipe(List<List<String>> steps) => valid(
+      DynamicEntry.create(
+        schema: SeedSchemas.recipeV1,
+        id: EntryId('r' * 32),
+        attributes: {
+          FieldKey('title'): const TextValue('Pane'),
+          FieldKey('steps'): StepsValue([
+            for (final (i, pictures) in steps.indexed)
+              PreparationStep(
+                'Fase $i',
+                pictures: [
+                  for (final p in pictures) ImageAttachment(BlobId(p)),
+                ],
+              ),
+          ]),
+        },
+        at: at,
+      ),
+    );
+
+    test('the pictures of a recipe\'s steps are the note\'s pictures', () {
+      final note = RecordedNote.compose(
+        recipe([
+          ['s1'],
+          ['s2', 's3'],
+        ]),
+        pictures: [picture('s1'), picture('s2'), picture('s3')],
+      );
+      expect(note.images.keys.toSet(), {
+        BlobId('s1'),
+        BlobId('s2'),
+        BlobId('s3'),
+      });
+      expect(
+        () => RecordedNote.compose(
+          recipe([
+            ['s1'],
+          ]),
+        ),
+        throwsA(isA<ArgumentError>()),
+        reason: 'a step picture needs its metadata',
+      );
+
+      final back = valid(
+        RecordedNoteCodec.decode(
+          RecordedNoteCodec.encode(note),
+          schemas: SeedSchemas.catalog.schemaFor,
+        ),
+      );
+      expect(back.images.keys.toSet(), note.images.keys.toSet());
+
+      final after = note.edited(
+        recipe([
+          ['s3'],
+        ]),
+      );
+      expect(RecordedNote.released(before: note, after: after), {
+        BlobId('s1'),
+        BlobId('s2'),
+      });
+    });
+
     test('trash, restore and filing keep the pictures', () {
       final note = RecordedNote.compose(
         page(['a1']),

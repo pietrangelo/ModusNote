@@ -200,6 +200,7 @@ abstract final class PageComposer {
     required String Function(FieldDefinition field) labelOf,
     required String Function(FieldDefinition field, FieldValue value) describe,
     required bool listed,
+    String Function(Ingredient item)? ingredientLine,
     PublicationLayout? layout,
   }) {
     final blocks = <PageBlock>[];
@@ -267,6 +268,38 @@ abstract final class PageComposer {
           }
         case AudioBlobValue(:final blob):
           if (media[blob] case final id?) blocks.add(AudioBlock(label, id));
+        case IngredientsValue(:final items):
+          final lines = [
+            for (final item in items.take(maxItems))
+              if (_escaped(line((ingredientLine ?? _named)(item), maxShort))
+                  case final text when text.isNotEmpty)
+                switch (item.link) {
+                  final link? when link.url.startsWith('https://') =>
+                    '- $text ([${_escaped(link.host)}](<${_angled(link.url)}>))',
+                  _ => '- $text',
+                },
+          ];
+          if (lines.isNotEmpty) {
+            blocks.add(MarkdownBlock(label, lines.join('\n')));
+          }
+        case StepsValue(:final steps):
+          final out = StringBuffer();
+          for (final (index, step) in steps.take(maxItems).indexed) {
+            out.write(
+              '**${index + 1}.** ${_markdown(step.text, media).trim()}',
+            );
+            for (final picture in step.pictures) {
+              if (media[picture.blob] case final id?) {
+                out.write(
+                  '\n\n![${InlineImages.safeCaption(picture.caption)}]'
+                  '(image:${id.value})',
+                );
+              }
+            }
+            out.write('\n\n');
+          }
+          final text = out.toString().trim();
+          if (text.isNotEmpty) blocks.add(MarkdownBlock(label, text));
         case SecretValue():
           // Never published, whatever reached here.
           break;
@@ -289,6 +322,21 @@ abstract final class PageComposer {
       blocks: blocks,
     );
   }
+
+  static String _named(Ingredient item) => item.name;
+
+  /// [text] shown as written inside a list item: every mark Markdown
+  /// could read as emphasis, a link, code, a table or HTML escaped. Marks
+  /// that only count at the start of a line (`#`, `-`, `1.`) cannot be
+  /// there: the item starts with `- `.
+  static String _escaped(String text) => text.replaceAllMapped(
+    RegExp(r'[\\`*_{}\[\]()!|<>~&]'),
+    (m) => '\\${m[0]}',
+  );
+
+  /// An address as a Markdown destination in angle brackets.
+  static String _angled(String url) =>
+      url.replaceAll('<', '%3C').replaceAll('>', '%3E');
 
   /// Files a page's Markdown shows.
   static Iterable<MediaId> mediaIn(String markdown) =>

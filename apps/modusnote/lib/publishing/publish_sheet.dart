@@ -6,6 +6,7 @@ import 'package:schema_dynamic_content/schema_dynamic_content.dart';
 
 import '../attachments/open_in_browser.dart';
 import '../l10n/generated/app_localizations.dart';
+import '../notes/recipes/recipe_text.dart';
 import '../notes/schema_text.dart';
 import '../theme/golden_ratio.dart';
 import '../theme/modus_palette.dart';
@@ -181,6 +182,7 @@ class _PublishSheetState extends State<PublishSheet> {
     final book = _book;
     if (book == null) return;
     final texts = SchemaText(AppLocalizations.of(context));
+    final recipes = RecipeText(AppLocalizations.of(context));
     final locale = Localizations.localeOf(context).toLanguageTag();
     if (!await widget.access.confirm()) return;
     final content = PublicationPolicy.compose(
@@ -196,6 +198,7 @@ class _PublishSheetState extends State<PublishSheet> {
       schema: widget.schema,
       labelOf: (field) => texts.label(field.label),
       describe: (field, value) => _describe(texts, locale, field, value),
+      ingredientLine: recipes.line,
       draft: !listed,
       layout: _layout,
     );
@@ -243,6 +246,13 @@ class _PublishSheetState extends State<PublishSheet> {
       _ => '$rating',
     },
     ChoiceValue(:final option) => texts.option(field, option),
+    ChoiceSetValue(:final options) => [
+      for (final option in switch (field.type) {
+        ChoiceSetFieldType(options: final all) => all.where(options.contains),
+        _ => options,
+      })
+        texts.option(field, option),
+    ].join(', '),
     _ => '',
   };
 

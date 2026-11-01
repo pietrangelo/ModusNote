@@ -138,7 +138,7 @@ class _AttachmentsInputState extends State<AttachmentsInput> {
             runSpacing: Spacing.s,
             children: [
               for (final image in images)
-                _Thumbnail(
+                PictureThumbnail(
                   key: ValueKey('image-${image.blob.value}'),
                   image: image,
                   bytes: _bytesOf(image.blob),
@@ -234,9 +234,10 @@ enum _LinkAction { edit, copy, remove }
 
 enum _ImageAction { caption, remove }
 
-/// A picture in the page, φ : 1, with its caption below.
-class _Thumbnail extends StatelessWidget {
-  const _Thumbnail({
+/// A picture in the page, φ : 1, with its caption below; also used by
+/// the steps of a recipe.
+class PictureThumbnail extends StatelessWidget {
+  const PictureThumbnail({
     required this.image,
     required this.bytes,
     required this.onView,

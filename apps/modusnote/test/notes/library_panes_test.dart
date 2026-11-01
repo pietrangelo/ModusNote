@@ -87,6 +87,10 @@ void main() {
 
     expect(nav('all'), findsOneWidget);
     for (final schema in SeedSchemas.all) {
+      // The list of types is longer than the window: scroll to each.
+      if (nav(schema.id.name).evaluate().isEmpty) {
+        await reveal(tester, nav(schema.id.name));
+      }
       expect(nav(schema.id.name), findsOneWidget);
     }
     await reveal(tester, nav('trash'));

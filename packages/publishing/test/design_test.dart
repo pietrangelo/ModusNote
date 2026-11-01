@@ -92,6 +92,10 @@ void main() {
           PublicationLayout.goldenCover,
         );
         expect(
+          PublicationLayout.forSchemaName('recipe'),
+          PublicationLayout.goldenCover,
+        );
+        expect(
           PublicationLayout.forSchemaName('book_character'),
           PublicationLayout.goldenSection,
         );

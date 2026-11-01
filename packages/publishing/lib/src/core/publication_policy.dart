@@ -54,7 +54,8 @@ abstract final class PublicationPolicy {
   /// become links to their pages when [published] has them, plain text
   /// otherwise, so no id or page of a private note leaks. Without
   /// [includePictures] pictures in the text become their caption and
-  /// pictures among the attachments are left out.
+  /// pictures among the attachments and the steps of a recipe are left
+  /// out.
   static PublicationContent compose({
     required DynamicEntry entry,
     required SchemaDefinition schema,
@@ -88,6 +89,12 @@ abstract final class PublicationPolicy {
         ),
         AudioBlobValue(:final blob) =>
           (audio..add(blob)).isEmpty ? null : value,
+        StepsValue(:final steps) => _steps(
+          steps,
+          published,
+          includePictures,
+          images,
+        ),
         _ => value,
       };
       if (kept == null) continue;
@@ -143,6 +150,26 @@ abstract final class PublicationPolicy {
       at = image.end;
     }
     return (out..write(text.substring(at))).toString();
+  }
+
+  /// Steps with their text cleaned like any text, a picture written in it
+  /// always made its caption (a step's pictures are its own list), and
+  /// that list kept only with [includePictures].
+  static StepsValue? _steps(
+    List<PreparationStep> steps,
+    Map<EntryId, PageSlug> published,
+    bool includePictures,
+    Set<BlobId> images,
+  ) {
+    final kept = <PreparationStep>[];
+    for (final step in steps) {
+      final pictures = includePictures ? step.pictures : <ImageAttachment>[];
+      images.addAll(pictures.map((p) => p.blob));
+      final text = _pictures(_links(step.text, published), false, images);
+      if (text.trim().isEmpty && pictures.isEmpty) continue;
+      kept.add(PreparationStep(text, pictures: pictures));
+    }
+    return kept.isEmpty ? null : StepsValue(kept);
   }
 
   static AttachmentsValue? _attachments(

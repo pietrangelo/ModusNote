@@ -3,6 +3,7 @@ import 'field_value.dart';
 import 'identifiers.dart';
 import 'journal.dart';
 import 'label.dart';
+import 'recipe.dart';
 import 'schema_catalog.dart';
 import 'schema_definition.dart';
 import 'schema_migration.dart';
@@ -145,6 +146,36 @@ abstract final class SeedSchemas {
     ('tags', TagListFieldType(), false),
   ]);
 
+  /// A recipe: its name and a short description, photos for its page,
+  /// how many it serves, the ingredients (each with its amount and where
+  /// to buy it), the steps with their pictures, the times in minutes and
+  /// the ways it is cooked. Only the name is required. Its category is
+  /// the note's category: a cookbook is a category, like a book ([Recipe]).
+  static final recipeV1 = _seed('recipe', NoteIcon.recipe, NoteTint.sage, [
+    ('title', TextFieldType(maxLength: 200), true),
+    ('description', const MarkdownFieldType(), false),
+    ('photos', AttachmentsFieldType(maxItems: 13), false),
+    ('servings', NumberFieldType(min: 1, max: 100, integerOnly: true), false),
+    ('ingredients', IngredientsFieldType(), false),
+    ('steps', StepsFieldType(), false),
+    ('prep_time', _minutes(), false),
+    ('cook_time', _minutes(), false),
+    ('rest_time', _minutes(), false),
+    ('methods', ChoiceSetFieldType(Recipe.methods), false),
+    (
+      'oven_temperature',
+      NumberFieldType(min: 30, max: 300, integerOnly: true),
+      false,
+    ),
+    ('oven_mode', ChoiceFieldType(Recipe.ovenModes), false),
+    ('difficulty', RatingFieldType(min: 1, max: 3), false),
+    ('tags', TagListFieldType(), false),
+  ]);
+
+  /// Up to a week, in whole minutes: a dough that rises for days fits.
+  static NumberFieldType _minutes() =>
+      NumberFieldType(min: 0, max: 10080, integerOnly: true);
+
   /// A to-do is a list of tasks, with an optional title. A [taskV1] note
   /// becomes a one-task list: its description, made one safe line, and
   /// its completed flag.
@@ -188,6 +219,7 @@ abstract final class SeedSchemas {
     bookCharacterV1,
     bookPlaceV1,
     credentialV1,
+    recipeV1,
     // Last: the type a new note starts as.
     quickNoteV1,
   ]);
