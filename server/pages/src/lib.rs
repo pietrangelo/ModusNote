@@ -56,6 +56,25 @@ pub enum PublicRoute {
 /// Maps a path to what serv.pub serves there. The query is passed only to
 /// pages and the cookbook (the stylesheet carries a version in it only to
 /// bust caches).
+/// The part of a file a `Range` header asks for, `bytes=a-b` or `bytes=a-`,
+/// as offset and inclusive end: what a video needs to start and seek (Safari
+/// plays none without it). Anything else, several ranges included, is
+/// ignored and the whole file is sent, as HTTP allows.
+pub fn byte_range(header: Option<&str>) -> Option<(u64, Option<u64>)> {
+    let spec = header?.trim().strip_prefix("bytes=")?;
+    let (first, last) = spec.split_once('-')?;
+    let digits = |s: &str| !s.is_empty() && s.len() <= 16 && s.bytes().all(|b| b.is_ascii_digit());
+    if !digits(first) {
+        return None;
+    }
+    let first: u64 = first.parse().ok()?;
+    if last.is_empty() {
+        return Some((first, None));
+    }
+    let last: u64 = if digits(last) { last.parse().ok()? } else { return None };
+    (last >= first).then_some((first, Some(last)))
+}
+
 pub fn route(method: &str, path: &str) -> PublicRoute {
     if method != "GET" && method != "HEAD" {
         return PublicRoute::NotFound;
@@ -204,5 +223,17 @@ mod tests {
         assert_eq!(passed_query(Some("")), "");
         assert_eq!(passed_query(Some("q=pane&p=4")), "?q=pane&p=4");
         assert_eq!(passed_query(Some(&"a".repeat(MAX_QUERY + 1))), "");
+    }
+
+    #[test]
+    fn ranges_of_a_file() {
+        assert_eq!(byte_range(Some("bytes=0-")), Some((0, None)));
+        assert_eq!(byte_range(Some("bytes=100-199")), Some((100, Some(199))));
+        assert_eq!(byte_range(Some("bytes=200-100")), None);
+        assert_eq!(byte_range(Some("bytes=-500")), None, "a suffix: the whole file");
+        assert_eq!(byte_range(Some("bytes=0-1,5-9")), None);
+        assert_eq!(byte_range(Some("items=0-1")), None);
+        assert_eq!(byte_range(Some("bytes=99999999999999999-")), None);
+        assert_eq!(byte_range(None), None);
     }
 }

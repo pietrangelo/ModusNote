@@ -5,9 +5,9 @@
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Modus Notes records audio notes, song sketches and dream logs. Recordings are encrypted on this device before they are saved.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Modus Notes adds the pictures you choose to your pages. Each picture is encrypted on this device before it is saved.</string>
+	<string>Modus Notes adds the pictures and the short videos you choose to your pages. Each one is encrypted on this device before it is saved.</string>
 	<key>NSCameraUsageDescription</key>
-	<string>Modus Notes does not use the camera; pictures are chosen from your photos.</string>
+	<string>Modus Notes uses the camera only when you record a short video for a step of a recipe. The video is cleaned of its location and encrypted on this device before it is saved.</string>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>CFBundleDevelopmentRegion</key>

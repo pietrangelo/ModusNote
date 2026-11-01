@@ -164,6 +164,9 @@ class NoteEditorScreenState extends State<NoteEditorScreen>
   /// Pictures added since the last save, likewise.
   final _pictures = <BlobId, KeyedImage>{};
 
+  /// Videos added to the steps since the last save.
+  final _clips = <BlobId, KeyedVideo>{};
+
   final _markdown = ValueNotifier<MarkdownEditingController?>(null);
 
   /// The words of a chapter's or a journal page's text, counted as it is
@@ -393,6 +396,10 @@ class NoteEditorScreenState extends State<NoteEditorScreen>
       for (final blob in InlineImages.picturesOf(entry))
         if (!_pictures.containsKey(blob)) ?widget.store.imageOf(blob),
     ];
+    // A step's video is the note's own: one it no longer names goes.
+    final clips = [
+      for (final blob in StepsValue.videosOf(entry)) ?_clips[blob],
+    ];
     _show(SaveState.saving);
     // A save is not cut short by the vault locking itself.
     final release = AutoLockScope.maybeOf(context)?.hold();
@@ -401,6 +408,7 @@ class NoteEditorScreenState extends State<NoteEditorScreen>
         entry,
         takes: takes,
         pictures: pictures,
+        clips: clips,
         newIn: _newIn,
       );
     } on Object {
@@ -414,6 +422,9 @@ class NoteEditorScreenState extends State<NoteEditorScreen>
     }
     for (final picture in pictures) {
       _pictures.remove(picture.id);
+    }
+    for (final clip in clips) {
+      _clips.remove(clip.id);
     }
     _pendingViolations = const [];
     // Typing during the save leaves the note to be saved again.
@@ -558,6 +569,38 @@ class NoteEditorScreenState extends State<NoteEditorScreen>
     return null;
   }
 
+  Future<BlobId?> _addVideo({required bool camera}) async {
+    final images = widget.store.images;
+    if (images == null || !images.takesVideos) return null;
+    final l10n = AppLocalizations.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    final release = AutoLockScope.maybeOf(context)?.hold();
+    try {
+      final clip = await images.chooseVideo(camera: camera);
+      if (clip == null) return null;
+      _clips[clip.id] = clip;
+      return clip.id;
+    } on UnsupportedVideoException {
+      messenger.showSnackBar(SnackBar(content: Text(l10n.videoUnsupported)));
+    } on VideoTooLargeException {
+      messenger.showSnackBar(SnackBar(content: Text(l10n.videoUnsupported)));
+    } on Object {
+      messenger.showSnackBar(SnackBar(content: Text(l10n.videoAddFailed)));
+    } finally {
+      release?.call();
+    }
+    return null;
+  }
+
+  Future<Uint8List> _openVideo(BlobId blob) {
+    final images = widget.store.images;
+    final clip = _clips[blob] ?? widget.store.videoOf(blob);
+    if (images == null || clip == null) {
+      return Future.error(BlobNotFoundException(blob));
+    }
+    return images.openVideo(clip);
+  }
+
   /// Opens [recipe] to cook from; a shopping list made there is a new
   /// to-do note.
   Future<void> _cook(DynamicEntry recipe) {
@@ -568,6 +611,7 @@ class NoteEditorScreenState extends State<NoteEditorScreen>
       entry: recipe,
       title: title,
       openImage: _openImage,
+      openVideo: widget.store.images == null ? null : _openVideo,
       onShopping: (List<String> lines) async {
         final list = ShoppingList.of(
           id: _newEntryId(),
@@ -713,8 +757,12 @@ class NoteEditorScreenState extends State<NoteEditorScreen>
     // since the keys to save it are being released.
     _timer?.cancel();
     _recount?.cancel();
-    if (_takes.isNotEmpty || _pictures.isNotEmpty) {
-      widget.store.discardTakes([..._takes.values, ..._pictures.values]);
+    if (_takes.isNotEmpty || _pictures.isNotEmpty || _clips.isNotEmpty) {
+      widget.store.discardTakes([
+        ..._takes.values,
+        ..._pictures.values,
+        ..._clips.values,
+      ]);
     }
     // [_markdown] is left to the garbage collector: the Markdown field
     // clears it after this frame, which must not find it disposed.
@@ -968,6 +1016,18 @@ class NoteEditorScreenState extends State<NoteEditorScreen>
                                             widget.store.imageOf(blob))
                                         ?.metadata
                                         .info,
+                                addVideo:
+                                    widget.store.images?.takesVideos ?? false
+                                    ? _addVideo
+                                    : null,
+                                openVideo: widget.store.images == null
+                                    ? null
+                                    : _openVideo,
+                                videoLength: (blob) =>
+                                    (_clips[blob] ?? widget.store.videoOf(blob))
+                                        ?.metadata
+                                        .info
+                                        .duration,
                               ),
                             ),
                             if (_countedField != null)

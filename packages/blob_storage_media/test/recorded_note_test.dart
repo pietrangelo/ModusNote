@@ -217,6 +217,120 @@ void main() {
     );
   });
 
+  group('videos', () {
+    final recipe = SeedSchemas.recipeV1;
+    SchemaDefinition? recipes(SchemaId id) => id == recipe.id ? recipe : null;
+    final digest = ContentDigest.fromBytes(List.filled(32, 0xcd));
+    KeyedVideo clip(String id, {ContentDigest? digest}) => KeyedVideo(
+      epoch: KeyEpoch(2),
+      metadata: VideoMetadata(
+        blob: SealedBlob(
+          id: BlobId(id),
+          keyId: SubkeyId.fromBytes(List.filled(SubkeyId.length, 7)),
+          plaintextLength: 900000,
+          digest: digest,
+        ),
+        info: VideoHeader(
+          VideoFormat.mp4,
+          1080,
+          1920,
+          const Duration(seconds: 42, milliseconds: 500),
+        ),
+        addedAt: later,
+      ),
+    );
+    DynamicEntry dish(List<String> videos) => valid(
+      DynamicEntry.create(
+        schema: recipe,
+        id: EntryId('fedcba9876543210fedcba9876543210'),
+        attributes: {
+          FieldKey('title'): const TextValue('Pane'),
+          FieldKey('steps'): StepsValue([
+            for (final id in videos)
+              PreparationStep('Impasta', video: BlobId(id)),
+            PreparationStep('Inforna'),
+          ]),
+        },
+        at: at,
+      ),
+    );
+
+    test('a step\'s video travels with the note, as version 6', () {
+      final note = RecordedNote.compose(
+        dish(['clip_1']),
+        clips: [clip('clip_1', digest: digest)],
+      );
+      expect(note.videos.keys, [BlobId('clip_1')]);
+      expect(note.blobs.map((b) => b.id), [BlobId('clip_1')]);
+
+      final wire = RecordedNoteCodec.encode(note);
+      expect(wire[0], 6);
+      final back = valid(RecordedNoteCodec.decode(wire, schemas: recipes));
+      expect(back.videos, note.videos);
+      expect(back.videos.values.single.blob.digest, digest);
+      expect(back.entry.attributes, note.entry.attributes);
+      // Without a video the note keeps its older version.
+      expect(RecordedNoteCodec.encode(RecordedNote.of(dish([])))[0], 1);
+    });
+
+    test(
+      'a video the note does not name is left out; one it names is needed',
+      () {
+        final edited = RecordedNote.compose(
+          dish(['clip_1']),
+          clips: [clip('clip_1')],
+        ).edited(dish([]), clips: [clip('clip_2')]);
+        expect(edited.videos, isEmpty);
+        expect(
+          RecordedNote.released(
+            before: RecordedNote.compose(
+              dish(['clip_1']),
+              clips: [clip('clip_1')],
+            ),
+            after: edited,
+          ),
+          {BlobId('clip_1')},
+        );
+        expect(
+          () => RecordedNote.compose(dish(['clip_1'])),
+          throwsArgumentError,
+        );
+      },
+    );
+
+    test('adversary: truncations, a missing or unnamed video are refused', () {
+      final wire = RecordedNoteCodec.encode(
+        RecordedNote.compose(dish(['clip_1']), clips: [clip('clip_1')]),
+      );
+      for (var length = 0; length < wire.length; length++) {
+        expect(
+          () => RecordedNoteCodec.decode(
+            Uint8List.sublistView(wire, 0, length),
+            schemas: recipes,
+          ),
+          throwsA(isA<MalformedBlobException>()),
+          reason: '$length bytes',
+        );
+      }
+      expect(
+        () => RecordedNoteCodec.decode([...wire, 0], schemas: recipes),
+        throwsA(isA<MalformedBlobException>()),
+      );
+      // The same video section under a note whose steps name another.
+      final other = RecordedNoteCodec.encode(
+        RecordedNote.compose(dish(['clip_9']), clips: [clip('clip_9')]),
+      );
+      final swapped = Uint8List.fromList([
+        ...other.sublist(0, other.length - (wire.length - _body(wire))),
+        ...wire.sublist(_body(wire)),
+      ]);
+      expect(
+        () => RecordedNoteCodec.decode(swapped, schemas: recipes),
+        throwsA(isA<MalformedBlobException>()),
+      );
+    });
+  });
+
   group('trash', () {
     test('a note starts outside the trash', () {
       expect(RecordedNote.of(song()).trashedAt, isNull);
@@ -488,4 +602,11 @@ void main() {
           }
         });
   });
+}
+
+/// Where a version-6 note's flags start: after the version, the entry and
+/// the recordings' count (none in these tests).
+int _body(Uint8List wire) {
+  final data = ByteData.sublistView(wire);
+  return 1 + 4 + data.getUint32(1) + 2;
 }

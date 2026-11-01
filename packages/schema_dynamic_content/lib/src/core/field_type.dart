@@ -433,9 +433,9 @@ final class IngredientsFieldType extends FieldType {
   int get hashCode => Object.hash(IngredientsFieldType, maxItems);
 }
 
-/// The steps of a preparation ([StepsValue]): Markdown and pictures. The
-/// pictures of all the steps are bounded together, like the attachments
-/// of a page, and each appears once.
+/// The steps of a preparation ([StepsValue]): Markdown, pictures and a
+/// short video each. The pictures of all the steps are bounded together,
+/// like the attachments of a page, and each blob appears once.
 final class StepsFieldType extends FieldType {
   StepsFieldType({this.maxItems = 55}) {
     _requireRange(maxItems > 0 && maxItems <= maxAllowedItems);
@@ -453,6 +453,7 @@ final class StepsFieldType extends FieldType {
     if (value is! StepsValue) return const [ViolationCode.typeMismatch];
     final steps = value.steps;
     final pictures = value.pictures.toList();
+    final blobs = [...pictures, ...value.videos];
     return [
       if (steps.isEmpty) ViolationCode.missingRequired,
       if (steps.length > maxItems ||
@@ -460,13 +461,15 @@ final class StepsFieldType extends FieldType {
           steps.any((step) => step.pictures.length > maxPicturesPerStep))
         ViolationCode.tooManyItems,
       if (steps.any(
-        (step) => step.text.trim().isEmpty && step.pictures.isEmpty,
+        (step) =>
+            step.text.trim().isEmpty &&
+            step.pictures.isEmpty &&
+            step.video == null,
       ))
         ViolationCode.emptyItem,
       if (steps.any((step) => _length(step.text) > maxText))
         ViolationCode.tooLong,
-      if (pictures.toSet().length != pictures.length)
-        ViolationCode.duplicateItem,
+      if (blobs.toSet().length != blobs.length) ViolationCode.duplicateItem,
     ];
   }
 

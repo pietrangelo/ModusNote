@@ -8,6 +8,7 @@ import '../../l10n/generated/app_localizations.dart';
 import '../../theme/golden_ratio.dart';
 import '../../theme/modus_palette.dart';
 import '../attachments/attachments_input.dart';
+import '../attachments/video_viewer.dart';
 import '../markdown/markdown_document.dart';
 import '../markdown/markdown_view.dart';
 import 'recipe_text.dart';
@@ -44,6 +45,7 @@ class CookingModeScreen extends StatefulWidget {
     required this.entry,
     required this.title,
     required this.openImage,
+    this.openVideo,
     this.onShopping,
     super.key,
   });
@@ -51,6 +53,9 @@ class CookingModeScreen extends StatefulWidget {
   final DynamicEntry entry;
   final String title;
   final Future<Uint8List> Function(BlobId blob) openImage;
+
+  /// A step's video; null where videos cannot be opened.
+  final Future<Uint8List> Function(BlobId blob)? openVideo;
 
   /// Saves a shopping list of [lines]; null where notes cannot be saved.
   final Future<void> Function(List<String> lines)? onShopping;
@@ -60,6 +65,7 @@ class CookingModeScreen extends StatefulWidget {
     required DynamicEntry entry,
     required String title,
     required Future<Uint8List> Function(BlobId blob) openImage,
+    Future<Uint8List> Function(BlobId blob)? openVideo,
     Future<void> Function(List<String> lines)? onShopping,
   }) => Navigator.of(context).push(
     MaterialPageRoute<void>(
@@ -68,6 +74,7 @@ class CookingModeScreen extends StatefulWidget {
         entry: entry,
         title: title,
         openImage: openImage,
+        openVideo: openVideo,
         onShopping: onShopping,
       ),
     ),
@@ -391,6 +398,19 @@ class _CookingModeScreenState extends State<CookingModeScreen> {
                 bytes: _bytesOf(picture.blob),
                 fit: BoxFit.cover,
               ),
+            ),
+          ),
+        ),
+      if ((step.video, widget.openVideo) case (final video?, final open?))
+        Padding(
+          padding: const EdgeInsets.only(top: Spacing.m),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: FilledButton.tonalIcon(
+              key: const ValueKey('cooking-video'),
+              icon: const Icon(Icons.play_circle_outline),
+              label: Text(AppLocalizations.of(context).stepVideo),
+              onPressed: () => VideoViewer.show(context, bytes: open(video)),
             ),
           ),
         ),

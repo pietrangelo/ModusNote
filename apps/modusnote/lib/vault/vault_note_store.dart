@@ -93,10 +93,12 @@ final class VaultNoteStore extends ChangeNotifier implements NoteStore {
   // the notes change.
   List<DynamicEntry>? _entries;
   Map<BlobId, KeyedImage>? _images;
+  Map<BlobId, KeyedVideo>? _videos;
 
   void _notesChanged() {
     _entries = null;
     _images = null;
+    _videos = null;
   }
 
   @override
@@ -137,6 +139,19 @@ final class VaultNoteStore extends ChangeNotifier implements NoteStore {
   }
 
   @override
+  KeyedVideo? videoOf(BlobId id) {
+    if (_videos == null) {
+      final videos = _videos = {};
+      for (final note in _notes.values) {
+        for (final MapEntry(:key, :value) in note.videos.entries) {
+          videos.putIfAbsent(key, () => value);
+        }
+      }
+    }
+    return _videos![id];
+  }
+
+  @override
   CategoryTree get categories => _tree ??= CategoryTree(_categories.values);
 
   @override
@@ -148,6 +163,7 @@ final class VaultNoteStore extends ChangeNotifier implements NoteStore {
     DynamicEntry entry, {
     Iterable<KeyedRecording> takes = const [],
     Iterable<KeyedImage> pictures = const [],
+    Iterable<KeyedVideo> clips = const [],
     CategoryId? newIn,
   }) async {
     final before = _notes[entry.id];
@@ -158,9 +174,12 @@ final class VaultNoteStore extends ChangeNotifier implements NoteStore {
             entry,
             known: takes,
             pictures: pictures,
+            clips: clips,
             category: newIn,
           )
-        : before.edited(entry, takes: takes, pictures: pictures).restored();
+        : before
+              .edited(entry, takes: takes, pictures: pictures, clips: clips)
+              .restored();
     await _put(after);
     // Only once the note no longer points at them, and only what no note
     // points at: a picture pasted from one note's text into another's
@@ -171,7 +190,7 @@ final class VaultNoteStore extends ChangeNotifier implements NoteStore {
         : RecordedNote.released(before: before, after: after).difference(kept);
     await _delete({
       ...released,
-      for (final blob in [...takes, ...pictures])
+      for (final blob in [...takes, ...pictures, ...clips])
         if (!kept.contains(blob.id)) blob.id,
     });
     await _release(released);
@@ -238,6 +257,7 @@ final class VaultNoteStore extends ChangeNotifier implements NoteStore {
         entry,
         known: note.recordings.values,
         pictures: note.images.values,
+        clips: note.videos.values,
         category: note.category,
       ),
     );

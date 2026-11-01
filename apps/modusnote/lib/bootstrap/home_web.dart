@@ -159,6 +159,7 @@ VaultGate _gate({
       blobs: blobs,
       engine: engine,
       chooser: BrowserImageChooser(),
+      videoChooser: BrowserVideoChooser(),
       ensureLocal: ensureLocal,
     ),
     playbackFor: (engine, ensureLocal) => NotePlayback(

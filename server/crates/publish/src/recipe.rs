@@ -102,6 +102,9 @@ pub struct Step {
     pub text: String,
     #[serde(default)]
     pub pictures: Vec<Picture>,
+    /// A short clip (MP4, at most a minute), by its media id.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub video: Option<String>,
 }
 
 /// The app's limits (`IngredientsFieldType`, `StepsFieldType`, recipe v1).
@@ -170,6 +173,7 @@ impl Recipe {
         let mut out: Vec<String> = self.cover.iter().map(|p| p.media.clone()).collect();
         for step in &self.steps {
             out.extend(step.pictures.iter().map(|p| p.media.clone()));
+            out.extend(step.video.iter().cloned());
             out.extend(crate::render::images_in(&step.text));
         }
         out
@@ -254,7 +258,10 @@ impl Ingredient {
 
 impl Step {
     fn check(&self) -> Result<(), Invalid> {
-        if self.text.trim().is_empty() && self.pictures.is_empty() {
+        if self.video.as_deref().is_some_and(|id| !media_id(id)) {
+            return Err(Invalid::Media);
+        }
+        if self.text.trim().is_empty() && self.pictures.is_empty() && self.video.is_none() {
             return Err(Invalid::Item);
         }
         if !safe_text(&self.text, MAX_STEP) || self.pictures.len() > MAX_STEP_PICTURES {
@@ -423,8 +430,9 @@ pub(crate) fn sample() -> Recipe {
             Step {
                 text: "Taglia le melanzane e lasciale scolare **30 minuti**.".into(),
                 pictures: vec![Picture { media: "DDDDDDDDDDDDDDDD".into(), caption: "Fette".into() }],
+                video: None,
             },
-            Step { text: "Inforna a 180 °C per 45 minuti.".into(), pictures: vec![] },
+            Step { text: "Inforna a 180 °C per 45 minuti.".into(), pictures: vec![], video: None },
         ],
         tags: vec!["estate".into()],
     }
@@ -458,7 +466,14 @@ mod tests {
         assert_eq!(with(&|r| r.methods.push(" ".into())), Err(Invalid::Item));
         assert_eq!(with(&|r| r.cover[0].media = "../x".into()), Err(Invalid::Media));
         assert_eq!(with(&|r| r.steps[0].pictures[0].media = "x".into()), Err(Invalid::Media));
-        assert_eq!(with(&|r| r.steps.push(Step { text: " ".into(), pictures: vec![] })), Err(Invalid::Item));
+        assert_eq!(
+            with(&|r| r.steps.push(Step { text: " ".into(), pictures: vec![], video: None })),
+            Err(Invalid::Item)
+        );
+        // A step may be only its video, a media id like any other.
+        let clip = |id: &str| Step { text: String::new(), pictures: vec![], video: Some(id.into()) };
+        assert_eq!(with(&|r| r.steps.push(clip("VVVVVVVVVVVVVVVV"))), Ok(()));
+        assert_eq!(with(&|r| r.steps.push(clip("../../etc"))), Err(Invalid::Media));
         assert_eq!(with(&|r| r.steps[0].text = "a\rb".into()), Err(Invalid::Text));
         assert_eq!(with(&|r| r.ingredients = vec![sample().ingredients[0].clone(); 234]), Err(Invalid::Item));
         for bad in [f64::NAN, f64::INFINITY, 0.0, -1.0, 1e7] {
@@ -472,7 +487,7 @@ mod tests {
         }
         let many = vec![Picture { media: "DDDDDDDDDDDDDDDD".into(), caption: String::new() }; 8];
         assert_eq!(
-            with(&|r| r.steps = vec![Step { text: "x".into(), pictures: many.clone() }; 12]),
+            with(&|r| r.steps = vec![Step { text: "x".into(), pictures: many.clone(), video: None }; 12]),
             Err(Invalid::Item)
         );
     }

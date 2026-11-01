@@ -180,6 +180,29 @@ void main() {
       expect(roomy.check(StepsValue(steps)), [ViolationCode.tooManyItems]);
     });
 
+    test('a step may hold a short video, even alone', () {
+      final clip = BlobId('v' * 32);
+      expect(
+        type.check(StepsValue([PreparationStep('', video: clip)])),
+        isEmpty,
+      );
+      expect(
+        StepsValue([PreparationStep('a', video: clip), PreparationStep('b')])
+            .videos,
+        [clip],
+      );
+      // A blob is a picture or a video, once.
+      expect(
+        type.check(
+          StepsValue([
+            PreparationStep('a', pictures: [ImageAttachment(stepPhoto)]),
+            PreparationStep('b', video: stepPhoto),
+          ]),
+        ),
+        [ViolationCode.duplicateItem],
+      );
+    });
+
     test('a picture appears once across all the steps', () {
       expect(
         type.check(
@@ -249,7 +272,7 @@ void main() {
           'Friggi le **melanzane**.',
           pictures: [ImageAttachment(stepPhoto, caption: 'Dorate')],
         ),
-        PreparationStep('Inforna per 40 minuti.'),
+        PreparationStep('Inforna per 40 minuti.', video: BlobId('v' * 32)),
       ]),
       'prep_time': NumberValue(30),
       'cook_time': NumberValue(60),
@@ -281,6 +304,7 @@ void main() {
       );
 
       expect(back.attributes, full.attributes);
+      expect(StepsValue.videosOf(back), [BlobId('v' * 32)]);
     });
 
     test('survives the schema codec unchanged', () {
@@ -447,7 +471,10 @@ void main() {
     test('malformed steps are a format error', () {
       for (final step in [
         <Object?>[],
-        ['Taglia', 'b' * 32],
+        // An odd one out at the end is a video: a blob id, nothing else.
+        ['Taglia', 7],
+        ['Taglia', 'not a blob id!'],
+        ['Taglia', 'b' * 32, 'Dorate', 7],
         ['Taglia', 7, ''],
         ['Taglia', 'not a blob id!', ''],
         [7],

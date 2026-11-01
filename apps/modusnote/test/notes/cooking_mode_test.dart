@@ -23,7 +23,7 @@ DynamicEntry recipe({bool withServings = true}) => switch (DynamicEntry.create(
     ]),
     FieldKey('steps'): StepsValue([
       PreparationStep('Impasta e lascia lievitare **2 ore**.'),
-      PreparationStep('Inforna per 40 minuti.'),
+      PreparationStep('Inforna per 40 minuti.', video: BlobId('v' * 32)),
     ]),
   },
   at: at,
@@ -102,12 +102,17 @@ void main() {
     late List<List<String>> shopped;
     setUp(() => shopped = []);
 
-    Future<void> open(WidgetTester tester, {DynamicEntry? entry}) => pumpApp(
+    Future<void> open(
+      WidgetTester tester, {
+      DynamicEntry? entry,
+      bool videos = true,
+    }) => pumpApp(
       tester,
       CookingModeScreen(
         entry: entry ?? recipe(),
         title: 'Pane',
         openImage: (_) async => Uint8List(0),
+        openVideo: videos ? (_) async => Uint8List(0) : null,
         onShopping: (lines) async => shopped.add(lines),
       ),
     );
@@ -177,6 +182,19 @@ void main() {
       expect(find.text('Fase 2 di 2'), findsOneWidget);
       expect(find.text('Timer 40 min'), findsOneWidget);
       expect(find.text('Fatto'), findsOneWidget);
+      // The step's video plays only when asked.
+      expect(find.byKey(const ValueKey('cooking-video')), findsOneWidget);
+    });
+
+    testWidgets('a video is not offered where it cannot be opened', (
+      tester,
+    ) async {
+      await open(tester, videos: false);
+      await tester.tap(find.byKey(const ValueKey('cooking-next')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('cooking-next')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('cooking-video')), findsNothing);
     });
 
     testWidgets('a timer counts down and says when time is up', (tester) async {

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:ui' show PlatformDispatcher;
 
@@ -17,6 +18,7 @@ import 'package:sodium/sodium_sumo.dart';
 import 'package:sqlite3/sqlite3.dart';
 
 import '../attachments/note_images.dart';
+import '../attachments/playable_video.dart';
 import '../audio/note_playback.dart';
 import '../audio/note_recorder.dart';
 import '../sync/sync_config.dart';
@@ -163,12 +165,17 @@ VaultGate _gate({
       blobs: blobs,
       engine: engine,
     ),
-    imagesFor: (engine, ensureLocal) => NoteImages(
-      blobs: blobs,
-      engine: engine,
-      chooser: GalleryImageChooser(),
-      ensureLocal: ensureLocal,
-    ),
+    imagesFor: (engine, ensureLocal) {
+      // A vault opening: what a player stopped too soon left goes.
+      unawaited(sweepPlayableVideos());
+      return NoteImages(
+        blobs: blobs,
+        engine: engine,
+        chooser: GalleryImageChooser(),
+        videoChooser: GalleryVideoChooser(),
+        ensureLocal: ensureLocal,
+      );
+    },
     playbackFor: (engine, ensureLocal) => NotePlayback(
       decoding: RecordingPlayback(
         storage: blobs,

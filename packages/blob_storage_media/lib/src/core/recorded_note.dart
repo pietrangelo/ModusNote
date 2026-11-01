@@ -12,6 +12,7 @@ import 'blob_exception.dart';
 import 'blob_metadata.dart';
 import 'image_format.dart';
 import 'portable_int64.dart';
+import 'video_format.dart';
 
 /// A blob a note references, with the GroupKey epoch whose key sealed it:
 /// what replicating, downloading or deleting it needs, whatever it holds.
@@ -74,12 +75,37 @@ final class KeyedImage implements KeyedBlob {
   int get hashCode => Object.hash(epoch, metadata);
 }
 
+/// A step's video with the GroupKey epoch whose key sealed it, like
+/// [KeyedRecording].
+@immutable
+final class KeyedVideo implements KeyedBlob {
+  const KeyedVideo({required this.epoch, required this.metadata});
+
+  @override
+  final KeyEpoch epoch;
+  final VideoMetadata metadata;
+
+  @override
+  SealedBlob get blob => metadata.blob;
+
+  @override
+  BlobId get id => metadata.id;
+
+  @override
+  bool operator ==(Object other) =>
+      other is KeyedVideo && other.epoch == epoch && other.metadata == metadata;
+
+  @override
+  int get hashCode => Object.hash(epoch, metadata);
+}
+
 /// A note together with the metadata of every recording it references,
 /// the plaintext the vault seals as one record. Holding them together is
 /// what keeps format, length and key id out of the server's sight.
 ///
 /// Invariant: [recordings] has exactly the recordings the entry
-/// references, and [images] exactly its pictures.
+/// references, [images] exactly its pictures and [videos] exactly the
+/// videos of its steps.
 ///
 /// A note in the trash is still whole, recordings included, so restoring
 /// it brings everything back; only deleting it for good (a tombstone in the
@@ -93,10 +119,12 @@ final class RecordedNote {
     this.entry,
     Map<BlobId, KeyedRecording> recordings, {
     Map<BlobId, KeyedImage> images = const {},
+    Map<BlobId, KeyedVideo> videos = const {},
     DateTime? trashedAt,
     this.category,
   }) : recordings = Map.unmodifiable(recordings),
        images = Map.unmodifiable(images),
+       videos = Map.unmodifiable(videos),
        trashedAt = trashedAt?.toUtc();
 
   /// Pairs [entry] with the metadata of the blobs it references, picked
@@ -106,6 +134,7 @@ final class RecordedNote {
     DynamicEntry entry, {
     Iterable<KeyedRecording> known = const [],
     Iterable<KeyedImage> pictures = const [],
+    Iterable<KeyedVideo> clips = const [],
     CategoryId? category,
   }) {
     final byId = {for (final take in known) take.id: take};
@@ -122,10 +151,18 @@ final class RecordedNote {
           imagesById[id] ??
           (throw ArgumentError.value(id.value, 'entry', 'unknown picture'));
     }
+    final clipsById = {for (final clip in clips) clip.id: clip};
+    final videos = <BlobId, KeyedVideo>{};
+    for (final id in StepsValue.videosOf(entry)) {
+      videos[id] =
+          clipsById[id] ??
+          (throw ArgumentError.value(id.value, 'entry', 'unknown video'));
+    }
     return RecordedNote._(
       entry,
       recordings,
       images: images,
+      videos: videos,
       category: category,
     );
   }
@@ -138,8 +175,15 @@ final class RecordedNote {
   /// The pictures of the note's attachments.
   final Map<BlobId, KeyedImage> images;
 
-  /// Every blob the note needs: its recordings and its pictures.
-  Iterable<KeyedBlob> get blobs => [...recordings.values, ...images.values];
+  /// The videos of the note's steps.
+  final Map<BlobId, KeyedVideo> videos;
+
+  /// Every blob the note needs: its recordings, pictures and videos.
+  Iterable<KeyedBlob> get blobs => [
+    ...recordings.values,
+    ...images.values,
+    ...videos.values,
+  ];
 
   /// When the note was moved to the trash, in UTC; null when it is not.
   final DateTime? trashedAt;
@@ -155,19 +199,26 @@ final class RecordedNote {
     entry,
     recordings,
     images: images,
+    videos: videos,
     trashedAt: at,
     category: category,
   );
 
   /// The same note back out of the trash, in the category it had.
-  RecordedNote restored() =>
-      RecordedNote._(entry, recordings, images: images, category: category);
+  RecordedNote restored() => RecordedNote._(
+    entry,
+    recordings,
+    images: images,
+    videos: videos,
+    category: category,
+  );
 
   /// The same note filed in [category] (null: in none).
   RecordedNote filedIn(CategoryId? category) => RecordedNote._(
     entry,
     recordings,
     images: images,
+    videos: videos,
     trashedAt: trashedAt,
     category: category,
   );
@@ -195,22 +246,25 @@ final class RecordedNote {
   }
 
   /// The same note after an edit of its fields, with [takes] recorded and
-  /// [pictures] added during the edit: recordings and pictures it no
-  /// longer references go.
+  /// [pictures] and [clips] added during the edit: blobs it no longer
+  /// references go.
   RecordedNote edited(
     DynamicEntry next, {
     Iterable<KeyedRecording> takes = const [],
     Iterable<KeyedImage> pictures = const [],
+    Iterable<KeyedVideo> clips = const [],
   }) {
     final note = RecordedNote.compose(
       next,
       known: [...recordings.values, ...takes],
       pictures: [...images.values, ...pictures],
+      clips: [...videos.values, ...clips],
     );
     return RecordedNote._(
       note.entry,
       note.recordings,
       images: note.images,
+      videos: note.videos,
       trashedAt: trashedAt,
       category: category,
     );
@@ -236,13 +290,16 @@ final class RecordedNote {
 ///   bit 1 as needed, then after the category `count(u16) | pictures`;
 /// * in version 5, the same flags with bit 3 (digests) always set and
 ///   bit 2 as needed, then after the pictures, for each recording and then
-///   each picture, `has(u8) | digest(32)` when `has` is 1.
+///   each picture, `has(u8) | digest(32)` when `has` is 1;
+/// * in version 6, the same flags with bit 4 (videos) always set and bit
+///   3 as needed, then after the pictures `count(u16) | videos`, and the
+///   digests of the recordings, the pictures and then the videos.
 ///
 /// Each note is written in the oldest version that holds it: one outside
 /// the trash and any category is version 1, byte for byte what apps
 /// without a trash read, a trashed one outside any category version 2,
-/// only a note with pictures version 4 and only one naming a blob digest
-/// version 5.
+/// only a note with pictures version 4, only one naming a blob digest
+/// version 5 and only one with a video version 6.
 /// Older apps see a note in a later version as unreadable, so it leaves
 /// their library until they are updated. Decoding treats its input as
 /// hostile and throws only [MalformedBlobException].
@@ -252,27 +309,38 @@ abstract final class RecordedNoteCodec {
   static const _filedVersion = 3;
   static const _picturedVersion = 4;
   static const _digestedVersion = 5;
+  static const _videoVersion = 6;
   static const _trashedFlag = 1;
   static const _filedFlag = 2;
   static const _picturesFlag = 4;
   static const _digestsFlag = 8;
+  static const _videosFlag = 16;
   static const _maxRecordings = 64;
   static const _maxImages = AttachmentsFieldType.maxAllowedItems;
+  static const _maxVideos = StepsFieldType.maxAllowedItems;
 
   static Uint8List encode(RecordedNote note) {
     final bytes = _encodeBody(note.entry, note.recordings);
     final trashedAt = note.trashedAt;
     final category = note.category;
     final images = note.images.values;
+    final videos = note.videos.values;
     final digests = [
       for (final take in note.recordings.values) take.metadata.blob.digest,
       for (final image in images) image.metadata.blob.digest,
+      for (final video in videos) video.metadata.blob.digest,
     ];
     final digested = digests.any((digest) => digest != null);
-    if (trashedAt == null && category == null && images.isEmpty && !digested) {
+    if (trashedAt == null &&
+        category == null &&
+        images.isEmpty &&
+        videos.isEmpty &&
+        !digested) {
       return bytes;
     }
-    final version = digested
+    final version = videos.isNotEmpty
+        ? _videoVersion
+        : digested
         ? _digestedVersion
         : images.isNotEmpty
         ? _picturedVersion
@@ -287,7 +355,8 @@ abstract final class RecordedNoteCodec {
         (trashedAt == null ? 0 : _trashedFlag) |
             (category == null ? 0 : _filedFlag) |
             (images.isEmpty ? 0 : _picturesFlag) |
-            (digested ? _digestsFlag : 0),
+            (digested ? _digestsFlag : 0) |
+            (videos.isEmpty ? 0 : _videosFlag),
       );
     }
     if (trashedAt != null) {
@@ -300,6 +369,7 @@ abstract final class RecordedNoteCodec {
         ..add(id);
     }
     if (images.isNotEmpty) _writeImages(out, images);
+    if (videos.isNotEmpty) _writeVideos(out, videos);
     if (digested) {
       for (final digest in digests) {
         if (digest == null) {
@@ -349,6 +419,24 @@ abstract final class RecordedNoteCodec {
     }
   }
 
+  static void _writeVideos(BytesBuilder out, Iterable<KeyedVideo> videos) {
+    out.add(_uint(2, videos.length));
+    for (final video in videos) {
+      final metadata = video.metadata;
+      _blob(out, utf8.encode(metadata.id.value));
+      out
+        ..add(_uint(4, video.epoch.value))
+        ..add(metadata.blob.keyId.bytes)
+        ..add(_uint(8, metadata.blob.plaintextLength));
+      _blob(out, utf8.encode(metadata.format.wireName));
+      out
+        ..add(_uint(4, metadata.info.width))
+        ..add(_uint(4, metadata.info.height))
+        ..add(_uint(8, metadata.info.duration.inMicroseconds))
+        ..add(_uint(8, metadata.addedAt.microsecondsSinceEpoch));
+    }
+  }
+
   static Uint8List _encodeBody(
     DynamicEntry entry,
     Map<BlobId, KeyedRecording> recordings,
@@ -378,7 +466,7 @@ abstract final class RecordedNoteCodec {
     try {
       final reader = _Reader(bytes);
       final version = reader.uint(1);
-      if (version < _version || version > _digestedVersion) {
+      if (version < _version || version > _videoVersion) {
         throw const MalformedBlobException('unknown note version');
       }
       final entryBytes = reader.blob();
@@ -404,9 +492,16 @@ abstract final class RecordedNoteCodec {
         _filedVersion => _filedFlag,
         _picturedVersion => _picturesFlag,
         _digestedVersion => _digestsFlag,
+        _videoVersion => _videosFlag,
         _ => 0,
       };
       final allowed = switch (version) {
+        _videoVersion =>
+          _trashedFlag |
+              _filedFlag |
+              _picturesFlag |
+              _digestsFlag |
+              _videosFlag,
         _digestedVersion =>
           _trashedFlag | _filedFlag | _picturesFlag | _digestsFlag,
         _picturedVersion => _trashedFlag | _filedFlag | _picturesFlag,
@@ -434,6 +529,22 @@ abstract final class RecordedNoteCodec {
           images[image.id] = image;
         }
       }
+      final videos = <BlobId, KeyedVideo>{};
+      if (flags & _videosFlag != 0) {
+        final count = reader.uint(2);
+        if (count == 0 || count > _maxVideos) {
+          throw const MalformedBlobException('too many videos');
+        }
+        for (var i = 0; i < count; i++) {
+          final video = _readVideo(reader);
+          if (videos.containsKey(video.id) ||
+              images.containsKey(video.id) ||
+              recordings.containsKey(video.id)) {
+            throw const MalformedBlobException('duplicate video');
+          }
+          videos[video.id] = video;
+        }
+      }
       if (flags & _digestsFlag != 0) {
         var any = false;
         ContentDigest? next() {
@@ -450,6 +561,9 @@ abstract final class RecordedNoteCodec {
         for (final MapEntry(:key, value: image) in images.entries) {
           images[key] = _imageWith(image, next());
         }
+        for (final MapEntry(:key, value: video) in videos.entries) {
+          videos[key] = _videoWith(video, next());
+        }
         if (!any) throw const MalformedBlobException('digests without one');
       }
       reader.finish();
@@ -459,6 +573,7 @@ abstract final class RecordedNoteCodec {
             entry,
             recordings,
             images,
+            videos,
             trashedAt: trashedAt,
             category: category,
           ),
@@ -471,6 +586,8 @@ abstract final class RecordedNoteCodec {
       throw const MalformedBlobException('malformed recording');
     } on ImageTooLargeException {
       throw const MalformedBlobException('malformed picture');
+    } on VideoTooLargeException {
+      throw const MalformedBlobException('malformed video');
     } on InvalidSchemaException {
       throw const MalformedBlobException('malformed recording id');
     } on CollaborationException {
@@ -485,7 +602,8 @@ abstract final class RecordedNoteCodec {
   static RecordedNote _paired(
     DynamicEntry entry,
     Map<BlobId, KeyedRecording> recordings,
-    Map<BlobId, KeyedImage> images, {
+    Map<BlobId, KeyedImage> images,
+    Map<BlobId, KeyedVideo> videos, {
     DateTime? trashedAt,
     CategoryId? category,
   }) {
@@ -499,10 +617,15 @@ abstract final class RecordedNoteCodec {
         !pictured.containsAll(images.keys)) {
       throw const MalformedBlobException('pictures do not match the note');
     }
+    final filmed = StepsValue.videosOf(entry).toSet();
+    if (filmed.length != videos.length || !filmed.containsAll(videos.keys)) {
+      throw const MalformedBlobException('videos do not match the note');
+    }
     return RecordedNote._(
       entry,
       recordings,
       images: images,
+      videos: videos,
       trashedAt: trashedAt,
       category: category,
     );
@@ -538,6 +661,35 @@ abstract final class RecordedNoteCodec {
           addedAt: image.metadata.addedAt,
         ),
       );
+
+  static KeyedVideo _videoWith(KeyedVideo video, ContentDigest? digest) =>
+      KeyedVideo(
+        epoch: video.epoch,
+        metadata: VideoMetadata(
+          blob: _blobWith(video.metadata.blob, digest),
+          info: video.metadata.info,
+          addedAt: video.metadata.addedAt,
+        ),
+      );
+
+  static KeyedVideo _readVideo(_Reader reader) {
+    final id = BlobId(utf8.decode(reader.blob()));
+    final epoch = KeyEpoch(reader.uint(4));
+    final keyId = SubkeyId.fromBytes(reader.bytes(SubkeyId.length));
+    final length = reader.uint(8);
+    final format = VideoFormat.fromWireName(utf8.decode(reader.blob()));
+    final width = reader.uint(4);
+    final height = reader.uint(4);
+    final duration = Duration(microseconds: reader.uint(8));
+    return KeyedVideo(
+      epoch: epoch,
+      metadata: VideoMetadata(
+        blob: SealedBlob(id: id, keyId: keyId, plaintextLength: length),
+        info: VideoHeader(format, width, height, duration),
+        addedAt: _time(reader),
+      ),
+    );
+  }
 
   static KeyedImage _readImage(_Reader reader) {
     final id = BlobId(utf8.decode(reader.blob()));

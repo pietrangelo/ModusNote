@@ -33,14 +33,19 @@ def settings(title, indexable=False):
             "home": "collection", "indexable": indexable, "theme": THEME}
 
 
-def visit(path):
-    request = urllib.request.Request(PAGES + path, method="GET")
+def visit(path, headers=None):
+    request = urllib.request.Request(PAGES + path, method="GET", headers=headers or {})
     opener = urllib.request.build_opener(NoRedirect)
     try:
         with opener.open(request) as response:
             return response.status, response.read().decode(errors="replace"), dict(response.headers)
     except urllib.error.HTTPError as error:
         return error.code, error.read().decode(errors="replace"), dict(error.headers)
+
+
+# The smallest file the server takes as an MP4: a file type box, then
+# padding standing for the movie (the app cleans and checks real ones).
+MP4 = bytes.fromhex("00000018667479706d703432000000006d703432697369736f6d") + bytes(1000)
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -61,6 +66,7 @@ def main():
     name = "e2e-" + os.urandom(4).hex()
     s = f"/api/s/{name}"
     pic = os.urandom(12).hex()
+    clip = os.urandom(12).hex()
 
     expect(call("POST", s, owner, {"settings": settings("Quaderno"), "pow": {"day": 0, "nonce": b64(bytes(16))}}),
            403, "claiming without work")
@@ -114,13 +120,21 @@ def main():
         "ingredients": [{"name": "Semola", "amount": 500, "unit": "gram", "one": "g", "other": "g",
                          "link": "https://esempio.it/semola"},
                         {"name": "Sale", "quantity": "q.b."}],
-        "steps": [{"text": "Impasta e lascia riposare **2 ore**."}, {"text": "Inforna."}]}}
+        "steps": [{"text": "Impasta e lascia riposare **2 ore**.", "video": clip}, {"text": "Inforna."}]}}
+    expect(call("PUT", f"{s}/m/{clip}?type=mp4", owner, raw=PNG, signed_body=b""), 422, "a picture is not a video")
+    expect(call("PUT", f"{s}/m/{clip}?type=mp4", owner, raw=MP4, signed_body=b""), 201, "a step's video")
     expect(call("PUT", f"{s}/p/ricette", owner, recipe), 404, "no page at the cookbook's address")
     expect(call("PUT", f"{s}/p/pane", owner, recipe), 201, "a recipe")
     status, html, headers = seen(visit(f"/{name}/pane"), 200, "the recipe's page")
     assert "<h1>Pane di &lt;semola&gt;</h1>" in html and "<span>4 porzioni</span>" in html, html
     assert 'rel="nofollow ugc sponsored noopener noreferrer">su esempio.it</a>' in html, html
     assert "<script" not in html.lower(), "no structured data on a site that is not indexable"
+    assert f'<video class="clip" controls playsinline preload="metadata" src="/{name}/m/{clip}"></video>' in html, html
+    status, body, headers = seen(visit(f"/{name}/m/{clip}"), 200, "the video")
+    assert headers["Content-Type"] == "video/mp4" and headers["Accept-Ranges"] == "bytes", headers
+    status, body, headers = seen(visit(f"/{name}/m/{clip}", {"Range": "bytes=4-11"}), 206, "a part of it")
+    assert body == "ftypmp42" and headers["Content-Range"] == f"bytes 4-11/{len(MP4)}", (body, headers)
+    seen(visit(f"/{name}/m/{clip}", {"Range": "bytes=99999-"}), 416, "past its end")
     status, html, _ = seen(visit(f"/{name}/pane?p=8"), 200, "the recipe for 8")
     assert '<span class="qty">1000 g</span>' in html and "noindex" in html, html
     status, html, headers = seen(visit(f"/{name}/ricette"), 200, "the cookbook")

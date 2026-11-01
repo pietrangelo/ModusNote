@@ -568,8 +568,12 @@ final class _RecipeDraft {
             PageComposer._markdown(step.text, _media).trim(),
             PageRecipe.maxStep,
           );
-          if (text.trim().isEmpty && kept.isEmpty) continue;
-          _steps.add(RecipeStep(text, kept));
+          final video = switch (step.video) {
+            final blob? => _media[blob],
+            null => null,
+          };
+          if (text.trim().isEmpty && kept.isEmpty && video == null) continue;
+          _steps.add(RecipeStep(text, kept, video));
         }
       default:
         return false;

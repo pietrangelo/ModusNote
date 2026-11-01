@@ -409,6 +409,10 @@ class _VaultGateState extends State<VaultGate> with WidgetsBindingObserver {
                     );
                   },
                   reencode: reencodePicture,
+                  videoOf: store.videoOf,
+                  openVideo: (video) =>
+                      store.images?.openVideo(video) ??
+                      Future.error(BlobNotFoundException(video.id)),
                 ),
                 isConfirmed: () => widget.keeper.isConfirmed(vault),
               ),

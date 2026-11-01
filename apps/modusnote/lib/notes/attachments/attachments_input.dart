@@ -19,6 +19,9 @@ final class AttachmentHooks {
     required this.openLink,
     this.addImage,
     this.imageSize,
+    this.addVideo,
+    this.openVideo,
+    this.videoLength,
   });
 
   /// Picks and seals a picture; null when the person cancels. Null where
@@ -34,6 +37,16 @@ final class AttachmentHooks {
   /// A picture's size, from the note's metadata; null when the picture is
   /// not known, which pictures in the text then say.
   final ImageHeader? Function(BlobId blob)? imageSize;
+
+  /// Picks or records a step's video and seals it; null when the person
+  /// cancels. Null where videos cannot be kept, which hides the button.
+  final Future<BlobId?> Function({required bool camera})? addVideo;
+
+  /// A video's bytes, checked like a picture's.
+  final Future<Uint8List> Function(BlobId blob)? openVideo;
+
+  /// A video's length, from the note's metadata.
+  final Duration? Function(BlobId blob)? videoLength;
 }
 
 /// The pictures and links of a page: thumbnails decrypted in memory, links

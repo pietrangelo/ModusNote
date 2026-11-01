@@ -43,3 +43,27 @@ final class GalleryImageChooser implements ImageChooser {
     }
   }
 }
+
+/// Picks a video from the phone's library, or records one with the camera
+/// (asked for at most a minute), with the system's own screens. Like
+/// [GalleryImageChooser], the cache copy is read and deleted.
+final class GalleryVideoChooser implements VideoChooser {
+  final _picker = ImagePicker();
+
+  @override
+  Future<Uint8List?> choose({required bool camera}) async {
+    final file = await _picker.pickVideo(
+      source: camera ? ImageSource.camera : ImageSource.gallery,
+      maxDuration: const Duration(seconds: 60),
+    );
+    if (file == null) return null;
+    try {
+      if (await file.length() > VideoProbe.maxBytes) {
+        throw const VideoTooLargeException();
+      }
+      return await file.readAsBytes();
+    } finally {
+      await GalleryImageChooser._deleteCopy(file.path);
+    }
+  }
+}

@@ -345,27 +345,38 @@ final class IngredientsValue extends FieldValue {
   String toString() => 'IngredientsValue(${items.length} items)';
 }
 
-/// One step of a preparation: what to do, in Markdown, and pictures of it.
+/// One step of a preparation: what to do, in Markdown, pictures of it and
+/// at most one short [video] (a blob of its own, like a recording).
 @immutable
 final class PreparationStep {
-  PreparationStep(this.text, {List<ImageAttachment> pictures = const []})
-    : pictures = List.unmodifiable(pictures);
+  PreparationStep(
+    this.text, {
+    List<ImageAttachment> pictures = const [],
+    this.video,
+  }) : pictures = List.unmodifiable(pictures);
 
   final String text;
   final List<ImageAttachment> pictures;
+  final BlobId? video;
+
+  /// The same step with [video] in place of its own (null: none).
+  PreparationStep withVideo(BlobId? video) =>
+      PreparationStep(text, pictures: pictures, video: video);
 
   @override
   bool operator ==(Object other) =>
       other is PreparationStep &&
       other.text == text &&
+      other.video == video &&
       listEquals(other.pictures, pictures);
 
   @override
-  int get hashCode => Object.hash(text, Object.hashAll(pictures));
+  int get hashCode => Object.hash(text, video, Object.hashAll(pictures));
 
   @override
   String toString() =>
-      'PreparationStep(${text.length} chars, ${pictures.length} pictures)';
+      'PreparationStep(${text.length} chars, ${pictures.length} pictures'
+      '${video == null ? '' : ', a video'})';
 }
 
 /// The steps of a preparation, in order.
@@ -379,6 +390,16 @@ final class StepsValue extends FieldValue {
     for (final step in steps)
       for (final picture in step.pictures) picture.blob,
   ];
+
+  /// Every step's video, in order.
+  Iterable<BlobId> get videos => [for (final step in steps) ?step.video];
+
+  /// The videos every steps field of [entry] holds, in order and each
+  /// once: blobs the note needs beside it, like its pictures.
+  static List<BlobId> videosOf(DynamicEntry entry) => {
+    for (final value in entry.attributes.values)
+      if (value is StepsValue) ...value.videos,
+  }.toList();
 
   @override
   bool operator ==(Object other) =>
