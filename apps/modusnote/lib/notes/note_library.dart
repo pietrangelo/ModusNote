@@ -45,6 +45,7 @@ class NoteLibraryScreen extends StatefulWidget {
     this.onPasskey,
     this.passkeyLabel,
     this.onBackup,
+    this.onCookbook,
     this.onNotices,
     this.journalSettings,
     this.noteTypes,
@@ -76,6 +77,10 @@ class NoteLibraryScreen extends StatefulWidget {
   /// Opens the backup and export sheet; null where files cannot be
   /// saved and picked.
   final VoidCallback? onBackup;
+
+  /// Makes a book of the recipes in a category and the ones inside it;
+  /// null where files cannot be saved.
+  final void Function(CategoryId category, String name)? onCookbook;
 
   /// Opens the vault's notices, from the command palette; null where the
   /// vault has none (no server).
@@ -660,6 +665,15 @@ class _NoteLibraryScreenState extends State<NoteLibraryScreen> {
         tooltip: l10n.appearance,
         icon: const Icon(Icons.palette_outlined),
       ),
+    if ((widget.onCookbook, _selected) case (final onCookbook?, final at?)
+        when _holdsRecipes(at))
+      IconButton(
+        key: const ValueKey('cookbook-export'),
+        onPressed: () =>
+            onCookbook(at, widget.store.categories[at]?.name.value ?? ''),
+        tooltip: l10n.cookbookExport,
+        icon: const Icon(Icons.menu_book_outlined),
+      ),
     if (widget.onBackup case final onBackup?)
       IconButton(
         onPressed: onBackup,
@@ -679,6 +693,17 @@ class _NoteLibraryScreenState extends State<NoteLibraryScreen> {
         icon: const Icon(Icons.lock_outline),
       ),
   ];
+
+  /// Whether a recipe is filed in [category] or in one inside it.
+  bool _holdsRecipes(CategoryId category) {
+    final store = widget.store;
+    final inside = store.categories.subtree(category);
+    return store.entries.any(
+      (entry) =>
+          entry.schemaId.name == Recipe.schema &&
+          inside.contains(store.categoryOf(entry.id)),
+    );
+  }
 
   Widget _searchField(AppLocalizations l10n) => TextField(
     decoration: InputDecoration(

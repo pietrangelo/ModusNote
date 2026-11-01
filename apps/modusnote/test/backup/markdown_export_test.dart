@@ -23,14 +23,21 @@ DynamicEntry entry(
   Invalid(:final violations) => throw StateError('$violations'),
 };
 
-/// Reads back what [ZipWriter] wrote, checking every header and CRC.
-Map<String, String> unzip(Uint8List zip) {
+/// Reads back what [ZipWriter] wrote, as text.
+Map<String, String> unzip(Uint8List zip) => {
+  for (final MapEntry(:key, :value) in unzipBytes(zip).entries)
+    key: utf8.decode(value),
+};
+
+/// Reads back what [ZipWriter] wrote, checking every header and CRC, in
+/// the order of the archive.
+Map<String, Uint8List> unzipBytes(Uint8List zip) {
   final data = ByteData.sublistView(zip);
   final end = zip.length - 22;
   expect(data.getUint32(end, Endian.little), 0x06054b50);
   final count = data.getUint16(end + 10, Endian.little);
   var at = data.getUint32(end + 16, Endian.little);
-  final files = <String, String>{};
+  final files = <String, Uint8List>{};
   for (var i = 0; i < count; i++) {
     expect(data.getUint32(at, Endian.little), 0x02014b50);
     expect(data.getUint16(at + 8, Endian.little), 1 << 11, reason: 'UTF-8');
@@ -43,7 +50,7 @@ Map<String, String> unzip(Uint8List zip) {
     final start = local + 30 + data.getUint16(local + 26, Endian.little);
     final body = zip.sublist(start, start + size);
     expect(ZipWriter.crc32(body), crc, reason: name);
-    files[name] = utf8.decode(body);
+    files[name] = body;
     at += 46 + nameLength;
   }
   return files;

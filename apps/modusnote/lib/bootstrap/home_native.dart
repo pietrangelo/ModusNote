@@ -32,6 +32,7 @@ import 'home.dart' show AppHome;
 import '../vault/vault_shelf_gate.dart';
 import 'gallery_image_chooser.dart';
 import 'local_reminder_scheduler.dart';
+import 'native_file_exchange.dart';
 import 'vault_wiring.dart';
 
 /// libsodium is built by the `sodium` package's build hook and loaded once
@@ -153,6 +154,7 @@ VaultGate _gate({
           },
     passwordFrom: (bytes) => SodiumPasswordSecret.fromUtf8Bytes(sodium, bytes),
     catalog: SeedSchemas.catalog,
+    files: NativeFileExchange(),
     remindersFor: (l10n) => LocalReminderScheduler(
       channel: l10n.reminderChannel,
       description: l10n.reminderChannelDescription,

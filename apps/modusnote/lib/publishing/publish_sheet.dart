@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:intl/intl.dart';
 import 'package:publishing/publishing.dart';
 import 'package:schema_dynamic_content/schema_dynamic_content.dart';
 
@@ -10,6 +9,7 @@ import '../notes/recipes/recipe_text.dart';
 import '../notes/schema_text.dart';
 import '../theme/golden_ratio.dart';
 import '../theme/modus_palette.dart';
+import 'field_description.dart';
 import 'site_settings_sheet.dart';
 
 /// What the notes need to publish: the vault's [Publisher] and the way to
@@ -228,7 +228,7 @@ class _PublishSheetState extends State<PublishSheet> {
       content: content,
       schema: widget.schema,
       labelOf: (field) => texts.label(field.label),
-      describe: (field, value) => _describe(texts, locale, field, value),
+      describe: (field, value) => describeField(texts, locale, field, value),
       ingredientLine: recipes.line,
       recipeWords: words,
       draft: !listed,
@@ -256,37 +256,6 @@ class _PublishSheetState extends State<PublishSheet> {
       SnackBar(content: Text(AppLocalizations.of(context).publishWithdrawn)),
     );
   });
-
-  static String _describe(
-    SchemaText texts,
-    String locale,
-    FieldDefinition field,
-    FieldValue value,
-  ) => switch (value) {
-    NumberValue(:final number) => NumberFormat.decimalPattern(
-      locale,
-    ).format(number),
-    DateValue(:final year, :final month, :final day) => DateFormat.yMMMMd(
-      locale,
-    ).format(DateTime(year, month, day)),
-    DateTimeValue(:final instant) => DateFormat.yMMMMd(
-      locale,
-    ).add_Hm().format(instant.toLocal()),
-    BooleanValue(value: final yes) => yes ? '✓' : '✗',
-    RatingValue(:final rating) => switch (field.type) {
-      RatingFieldType(:final max) => '${'★' * rating}${'☆' * (max - rating)}',
-      _ => '$rating',
-    },
-    ChoiceValue(:final option) => texts.option(field, option),
-    ChoiceSetValue(:final options) => [
-      for (final option in switch (field.type) {
-        ChoiceSetFieldType(options: final all) => all.where(options.contains),
-        _ => options,
-      })
-        texts.option(field, option),
-    ].join(', '),
-    _ => '',
-  };
 
   @override
   Widget build(BuildContext context) {
